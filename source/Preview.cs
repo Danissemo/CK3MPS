@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -515,7 +516,7 @@ namespace CK3MPS
                 case 7:
                     return "the selected power profile values already match or no power change is needed right now.";
                 case 10:
-                    return "no Steam or launcher backup source file is available right now.";
+                    return "no selected file-changing launcher or CK3 step currently needs a backup.";
                 case 11:
                     return "Steam launch options already keep -noasync, risky launch flags are absent, and Steam Cloud is already off or hidden.";
                 case 12:
@@ -599,8 +600,10 @@ namespace CK3MPS
                         details.Add("Copy backup of `" + path + "` into the current quarantine.");
                     break;
                 case 11:
-                    details.Add("Normalize Steam CK3 launch options to keep `-noasync` and remove risky flags such as `debug_mode`, `dx11`, `opengl` and similar.");
-                    details.Add("Set Steam CK3 cloud flag to `0` when it is visible in `sharedconfig.vdf`.");
+                    if (LaunchOptionsNeedUpdate())
+                        details.Add("Normalize Steam CK3 launch options to keep `-noasync` and remove risky flags such as `debug_mode`, `dx11`, `opengl` and similar. New value: `" + NormalizeLaunchOptions(ExtractSteamLaunchOptions(), true) + "`.");
+                    if (SteamCloudFlagNeedsUpdate())
+                        details.Add("Set Steam CK3 cloud flag `cloudenabled` to `0` in `sharedconfig.vdf`.");
                     break;
                 case 12:
                     foreach (string path in EnumerateLauncherRebuildTargets())
@@ -613,9 +616,8 @@ namespace CK3MPS
                     details.Add("Rewrite `dlc_load.json` to exactly `{\"enabled_mods\":[],\"disabled_dlcs\":[]}` with UTF-8 no BOM.");
                     break;
                 case 15:
-                    details.Add("Rewrite `pdx_settings.txt` to the CK3MPS MP profile: autosave=`NO_AUTOSAVE`, cloud_save=`no`, save_on_exit=`no`, file_transfer_speed=`OPTION_HIGH`.");
-                    details.Add("Set graphics core values: renderer=`Vulkan`, display_mode=`fullscreen`, vsync=`yes`, adaptive_framerate=`no`, setting_framerate_cap=`60`, language=`l_english`.");
-                    details.Add("Apply the selected graphics profile `" + CurrentGraphicsProfile() + "` and rewrite its targeted graphics fields.");
+                    foreach (string detail in BuildPdxSettingsDiffPreview())
+                        details.Add(detail);
                     break;
                 case 16:
                     details.Add("Write runtime verification and settings-guard report files under `" + stabilizerRoot + "`.");
@@ -712,20 +714,47 @@ namespace CK3MPS
         private List<string> EnumerateSteamAndLauncherBackupTargets()
         {
             List<string> paths = new List<string>();
-            AddExistingFile(paths, localConfig);
-            AddExistingFile(paths, sharedConfig);
-            AddExistingFile(paths, appManifest);
-            AddExistingFile(paths, Path.Combine(ck3Docs, "launcher-v2.sqlite"));
-            AddExistingFile(paths, Path.Combine(ck3Docs, "launcher-v2_backup.sqlite"));
-            AddExistingFile(paths, Path.Combine(ck3Docs, "dlc_load.json"));
-            AddExistingFile(paths, Path.Combine(ck3Docs, "pdx_settings.txt"));
-            AddExistingFile(paths, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Paradox Interactive", "launcher-v2", "userSettings.json"));
+            if (IsStepChecked(11) && LaunchOptionsNeedUpdate())
+                AddExistingFile(paths, localConfig);
+            if (IsStepChecked(11) && SteamCloudFlagNeedsUpdate())
+                AddExistingFile(paths, sharedConfig);
+            if (IsStepChecked(12) && LauncherRebuildHasTargets())
+                AddExistingFile(paths, Path.Combine(ck3Docs, "launcher-v2.sqlite"));
+            if (IsStepChecked(14) && DlcLoadNeedsRewrite())
+                AddExistingFile(paths, Path.Combine(ck3Docs, "dlc_load.json"));
+            if (IsStepChecked(15) && PdxSettingsNeedsRewrite())
+                AddExistingFile(paths, Path.Combine(ck3Docs, "pdx_settings.txt"));
             return paths;
         }
 
         private bool SteamSettingsNeedUpdate()
         {
-            return !HasNoAsync() || HasRiskyLaunchOptions() || !SteamCloudDisabledOrUnknownQuiet();
+            return LaunchOptionsNeedUpdate() || SteamCloudFlagNeedsUpdate();
+        }
+
+        private bool LaunchOptionsNeedUpdate()
+        {
+            return !HasNoAsync() || HasRiskyLaunchOptions();
+        }
+
+        private bool SteamCloudFlagNeedsUpdate()
+        {
+            if (String.IsNullOrEmpty(sharedConfig) || !File.Exists(sharedConfig))
+                return false;
+
+            string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
+            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
+            if (appIndex < 0)
+                return false;
+
+            int open = text.IndexOf('{', appIndex);
+            int close = FindMatchingBrace(text, open);
+            if (open < 0 || close < open)
+                return false;
+
+            string block = text.Substring(open, close - open + 1);
+            Match m = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
+            return m.Success && m.Groups[1].Value != "0";
         }
 
         private bool LauncherRebuildHasTargets()
@@ -886,6 +915,63 @@ namespace CK3MPS
         {
             if (!String.IsNullOrEmpty(path) && Directory.Exists(path))
                 paths.Add(path);
+        }
+
+        private List<string> BuildPdxSettingsDiffPreview()
+        {
+            List<string> lines = new List<string>();
+            string path = Path.Combine(ck3Docs, "pdx_settings.txt");
+            string current = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
+            string expected = ApplyStablePdxSettingsToText(current);
+
+            AddPdxSettingDiff(lines, current, expected, "game", "autosave");
+            AddPdxSettingDiff(lines, current, expected, "game", "cloud_save");
+            AddPdxSettingDiff(lines, current, expected, "game", "save_on_exit");
+            AddPdxSettingDiff(lines, current, expected, "game", "file_transfer_speed");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "renderer");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "display_mode");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "vsync");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "adaptive_framerate");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "setting_framerate_cap");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "quality");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "texture_quality");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "shadowmap_resolution");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "refraction_quality");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "advanced_shaders");
+            AddPdxSettingDiff(lines, current, expected, "System", "language");
+
+            if (lines.Count == 0)
+                lines.Add("Rewrite `pdx_settings.txt` to the selected `" + CurrentGraphicsProfile() + "` profile and UTF-8 no BOM encoding.");
+
+            return lines;
+        }
+
+        private void AddPdxSettingDiff(List<string> lines, string current, string expected, string section, string key)
+        {
+            string before = NormalizePreviewSettingBlock(ExtractPreviewSettingBlock(current, section, key));
+            string after = NormalizePreviewSettingBlock(ExtractPreviewSettingBlock(expected, section, key));
+            if (String.Equals(before, after, StringComparison.Ordinal))
+                return;
+
+            lines.Add("Set `" + section + "." + key + "` from `" + NullText(before) + "` to `" + NullText(after) + "`.");
+        }
+
+        private string ExtractPreviewSettingBlock(string text, string section, string key)
+        {
+            string body = ExtractSectionBody(text, section);
+            if (String.IsNullOrEmpty(body))
+                return "";
+
+            Match match = Regex.Match(body, "\"" + Regex.Escape(key) + "\"\\s*=\\s*\\{(.*?)\\}", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value : "";
+        }
+
+        private string NormalizePreviewSettingBlock(string block)
+        {
+            if (String.IsNullOrWhiteSpace(block))
+                return "(missing)";
+
+            return Regex.Replace(block.Trim(), "\\s+", " ");
         }
     }
 }

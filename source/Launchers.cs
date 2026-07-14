@@ -58,8 +58,16 @@ namespace CK3MPS
         {
             string path = Path.Combine(ck3Docs, "dlc_load.json");
             ClearReadOnly(path);
+            string target = "{\"enabled_mods\":[],\"disabled_dlcs\":[]}";
+            string current = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8).Trim() : "";
+            if (File.Exists(path) && !HasUtf8Bom(path) && String.Equals(current, target, StringComparison.Ordinal))
+            {
+                Log("OK   dlc_load.json already matches the no-mod/no-disabled-DLC profile.");
+                return;
+            }
+
             BackupFile(path);
-            File.WriteAllText(path, "{\"enabled_mods\":[],\"disabled_dlcs\":[]}", Utf8NoBom);
+            File.WriteAllText(path, target, Utf8NoBom);
             Log("No-mod/no-disabled-DLC dlc_load.json written.");
         }
 
@@ -71,7 +79,6 @@ namespace CK3MPS
                 return;
             }
 
-            BackupFile(localConfig);
             string text = File.ReadAllText(localConfig, Encoding.UTF8);
             int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
             int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
@@ -90,7 +97,15 @@ namespace CK3MPS
             }
 
             string block = text.Substring(open + 1, close - open - 1);
-            string normalized = NormalizeLaunchOptions(ExtractLaunchOptionsFromBlock(block), true);
+            string existing = ExtractLaunchOptionsFromBlock(block);
+            string normalized = NormalizeLaunchOptions(existing, true);
+            if (String.Equals(existing, normalized, StringComparison.Ordinal))
+            {
+                Log("OK   Steam launch options already normalized: " + normalized);
+                return;
+            }
+
+            BackupFile(localConfig);
             if (Regex.IsMatch(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", RegexOptions.IgnoreCase))
                 block = Regex.Replace(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", "\"LaunchOptions\"\t\t\"" + EscapeVdfValue(normalized) + "\"", RegexOptions.IgnoreCase);
             else
@@ -109,7 +124,6 @@ namespace CK3MPS
                 return;
             }
 
-            BackupFile(localConfig);
             string text = File.ReadAllText(localConfig, Encoding.UTF8);
             int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
             int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
@@ -136,7 +150,13 @@ namespace CK3MPS
             }
 
             string cleaned = NormalizeLaunchOptions(m.Groups[1].Value, true);
+            if (String.Equals(m.Groups[1].Value, cleaned, StringComparison.Ordinal))
+            {
+                Log("OK   Steam launch options already have debug_mode removed and -noasync kept.");
+                return;
+            }
 
+            BackupFile(localConfig);
             block = Regex.Replace(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", "\"LaunchOptions\"\t\t\"" + cleaned + "\"", RegexOptions.IgnoreCase);
             text = text.Substring(0, open + 1) + block + text.Substring(close);
             File.WriteAllText(localConfig, text, Encoding.UTF8);
@@ -151,7 +171,6 @@ namespace CK3MPS
                 return;
             }
 
-            BackupFile(sharedConfig);
             string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
             int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
             if (appIndex < 0)
@@ -169,6 +188,14 @@ namespace CK3MPS
             }
 
             string block = text.Substring(open + 1, close - open - 1);
+            Match current = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
+            if (current.Success && current.Groups[1].Value == "0")
+            {
+                Log("OK   Steam Cloud flag already set to off for CK3.");
+                return;
+            }
+
+            BackupFile(sharedConfig);
             if (Regex.IsMatch(block, "\"cloudenabled\"\\s+\"[^\"]*\"", RegexOptions.IgnoreCase))
                 block = Regex.Replace(block, "\"cloudenabled\"\\s+\"[^\"]*\"", "\"cloudenabled\"\t\t\"0\"", RegexOptions.IgnoreCase);
             else

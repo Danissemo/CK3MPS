@@ -35,12 +35,19 @@ namespace CK3MPS
         {
             string path = Path.Combine(ck3Docs, "pdx_settings.txt");
             ClearReadOnly(path);
-            string text = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
+            string original = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
+            string text = original;
+            string updated = ApplyStablePdxSettingsToText(text);
+            if (File.Exists(path) && !HasUtf8Bom(path) && String.Equals(original, updated, StringComparison.Ordinal))
+            {
+                Log("OK   pdx_settings.txt already matches the selected CK3MPS profile. Graphics profile: " + CurrentGraphicsProfile() + ".");
+                return;
+            }
+
             if (backup)
                 BackupFile(path);
 
-            text = ApplyStablePdxSettingsToText(text);
-            File.WriteAllText(path, text, Utf8NoBom);
+            File.WriteAllText(path, updated, Utf8NoBom);
             Log("OK   " + successMessage + " Graphics profile: " + CurrentGraphicsProfile() + ".");
         }
 
