@@ -277,18 +277,6 @@ namespace CK3MPS
             openSettingsPathButton.Click += delegate { OpenPathIfExists(ck3Docs); };
             pathsPage.Controls.Add(openSettingsPathButton);
 
-            resetGamePathButton.Text = "Reset game";
-            resetGamePathButton.Location = new Point(514, 100);
-            resetGamePathButton.Size = new Size(100, 32);
-            resetGamePathButton.Click += delegate { ResetGamePathToAutoDetect(); };
-            pathsPage.Controls.Add(resetGamePathButton);
-
-            resetSettingsPathButton.Text = "Reset settings";
-            resetSettingsPathButton.Location = new Point(626, 100);
-            resetSettingsPathButton.Size = new Size(112, 32);
-            resetSettingsPathButton.Click += delegate { ResetSettingsPathToDefault(); };
-            pathsPage.Controls.Add(resetSettingsPathButton);
-
             var pathsHint = new Label();
             pathsHint.Text = "Game folder must contain binaries\\ck3.exe. Settings/saves should be the Crusader Kings III folder under Documents.";
             pathsHint.Location = new Point(124, 148);
