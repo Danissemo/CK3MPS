@@ -40,6 +40,7 @@ namespace CK3MPS
             mainTabs.TabPages.Add(pathsPage);
             mainTabs.TabPages.Add(logPage);
             mainTabs.TabPages.Add(reportsPage);
+            mainTabs.TabPages.Add(restorePage);
             mainTabs.TabPages.Add(advancedPage);
             Controls.Add(mainTabs);
 
@@ -47,6 +48,7 @@ namespace CK3MPS
             BuildPathsTab();
             BuildLogTab();
             BuildReportsTab();
+            BuildRestoreTab();
             BuildAdvancedTab();
 
             progress.Location = new Point(20, 574);
@@ -275,6 +277,48 @@ namespace CK3MPS
             historyBox.WordWrap = false;
             historyBox.Font = new Font("Consolas", 9F);
             reportsPage.Controls.Add(historyBox);
+        }
+
+        private void BuildRestoreTab()
+        {
+            refreshRestoreButton.Text = "Refresh";
+            refreshRestoreButton.Location = new Point(16, 18);
+            refreshRestoreButton.Size = new Size(100, 34);
+            refreshRestoreButton.Click += delegate { RefreshRestoreList(); };
+            restorePage.Controls.Add(refreshRestoreButton);
+
+            restoreSelectedButton.Text = "Restore selected";
+            restoreSelectedButton.Location = new Point(130, 18);
+            restoreSelectedButton.Size = new Size(140, 34);
+            restoreSelectedButton.Click += delegate { RestoreSelectedItem(); };
+            restorePage.Controls.Add(restoreSelectedButton);
+
+            openQuarantineButton.Text = "Open quarantine";
+            openQuarantineButton.Location = new Point(284, 18);
+            openQuarantineButton.Size = new Size(140, 34);
+            openQuarantineButton.Click += delegate
+            {
+                string dir = GetKnownQuarantine();
+                if (!String.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    Process.Start("explorer.exe", dir);
+            };
+            restorePage.Controls.Add(openQuarantineButton);
+
+            restoreListBox.Location = new Point(16, 66);
+            restoreListBox.Size = new Size(410, 370);
+            restoreListBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+            restoreListBox.SelectedIndexChanged += delegate { ShowSelectedRestoreDetails(); };
+            restorePage.Controls.Add(restoreListBox);
+
+            restoreDetailsBox.Location = new Point(442, 66);
+            restoreDetailsBox.Size = new Size(462, 370);
+            restoreDetailsBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            restoreDetailsBox.Multiline = true;
+            restoreDetailsBox.ReadOnly = true;
+            restoreDetailsBox.ScrollBars = ScrollBars.Both;
+            restoreDetailsBox.WordWrap = false;
+            restoreDetailsBox.Font = new Font("Consolas", 9F);
+            restorePage.Controls.Add(restoreDetailsBox);
         }
 
         private void BuildAdvancedTab()

@@ -62,6 +62,7 @@ namespace CK3MPS
         {
             try
             {
+                RecordRegistryBeforeChange(root, subKey, name, "Before registry DWORD change: " + subKey + "\\" + name, "DWord:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
                     if (key != null)
@@ -79,6 +80,7 @@ namespace CK3MPS
         {
             try
             {
+                RecordRegistryBeforeChange(root, subKey, name, "Before registry string change: " + subKey + "\\" + name, "String:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
                     if (key != null)

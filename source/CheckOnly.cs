@@ -262,6 +262,7 @@ namespace CK3MPS
             Directory.CreateDirectory(Path.Combine(lastQuarantine, "settings_backup"));
             Directory.CreateDirectory(Path.Combine(lastQuarantine, "steam_settings"));
             Directory.CreateDirectory(Path.Combine(lastQuarantine, "paradox_launcher"));
+            InitializeRestoreManifest();
             Log("Quarantine: " + lastQuarantine);
         }
 

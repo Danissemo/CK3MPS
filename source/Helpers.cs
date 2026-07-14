@@ -18,8 +18,14 @@ namespace CK3MPS
     {
         private void BackupFile(string path)
         {
-            if (String.IsNullOrEmpty(lastQuarantine) || !File.Exists(path))
+            if (String.IsNullOrEmpty(lastQuarantine) || String.IsNullOrEmpty(path))
                 return;
+            if (!File.Exists(path))
+            {
+                RecordCreatedFileForRestore(path, "Before CK3MPS creates file: " + path);
+                return;
+            }
+            BackupForRestore(path, "Before CK3MPS changes file: " + path);
             string dest = Path.Combine(lastQuarantine, "settings_backup", SafeFileName(path) + ".bak");
             File.Copy(path, UniquePath(dest), true);
         }
@@ -29,6 +35,7 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(path) || !File.Exists(path))
                 return;
             Directory.CreateDirectory(destDir);
+            BackupForRestore(path, "Explicit backup before CK3MPS run: " + path);
             string dest = UniquePath(Path.Combine(destDir, Path.GetFileName(path) + ".bak"));
             File.Copy(path, dest, true);
             Log("Backed up: " + path + " -> " + dest);
@@ -55,6 +62,7 @@ namespace CK3MPS
                     File.Move(source, dest);
                 else
                     Directory.Move(source, dest);
+                RecordMovedForRestore(source, dest, "Moved to quarantine: " + source);
                 Log("Moved: " + source + " -> " + dest);
             }
             catch (Exception ex)
@@ -511,6 +519,9 @@ namespace CK3MPS
             openReportsButton.Enabled = !busy;
             exportSupportButton.Enabled = !busy;
             refreshHistoryButton.Enabled = !busy;
+            refreshRestoreButton.Enabled = !busy;
+            restoreSelectedButton.Enabled = !busy;
+            openQuarantineButton.Enabled = !busy;
             updateButton.Enabled = !busy;
             gamePathBrowseButton.Enabled = !busy;
             settingsPathBrowseButton.Enabled = !busy;

@@ -36,7 +36,7 @@ namespace CK3MPS
             string path = Path.Combine(ck3Docs, "pdx_settings.txt");
             ClearReadOnly(path);
             string text = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
-            if (backup && File.Exists(path))
+            if (backup)
                 BackupFile(path);
 
             text = ApplyStablePdxSettingsToText(text);

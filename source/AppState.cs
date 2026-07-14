@@ -33,6 +33,7 @@ namespace CK3MPS
         private readonly TabPage pathsPage = new TabPage("Paths");
         private readonly TabPage logPage = new TabPage("Log");
         private readonly TabPage reportsPage = new TabPage("Reports");
+        private readonly TabPage restorePage = new TabPage("Restore");
         private readonly TabPage advancedPage = new TabPage("Advanced");
         private readonly ComboBox presetBox = new ComboBox();
         private readonly ComboBox graphicsProfileBox = new ComboBox();
@@ -53,6 +54,11 @@ namespace CK3MPS
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
         private readonly TextBox historyBox = new TextBox();
+        private readonly ListBox restoreListBox = new ListBox();
+        private readonly TextBox restoreDetailsBox = new TextBox();
+        private readonly Button restoreSelectedButton = new Button();
+        private readonly Button refreshRestoreButton = new Button();
+        private readonly Button openQuarantineButton = new Button();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
         private readonly CheckBox portableModeBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();
@@ -191,6 +197,7 @@ namespace CK3MPS
             Shown += delegate
             {
                 RefreshHistoryView();
+                RefreshRestoreList();
                 CheckForUpdatesOnStartup();
             };
         }

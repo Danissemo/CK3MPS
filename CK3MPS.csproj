@@ -45,6 +45,7 @@
     <Compile Include="source\Launchers.cs" />
     <Compile Include="source\GameSettings.cs" />
     <Compile Include="source\Cleanup.cs" />
+    <Compile Include="source\Restore.cs" />
     <Compile Include="source\Network.cs" />
     <Compile Include="source\Reports.cs" />
     <Compile Include="source\Readiness.cs" />

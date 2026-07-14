@@ -451,6 +451,12 @@ namespace CK3MPS
             }
 
             string quotedExe = "\"" + exe + "\"";
+            StringBuilder firewallBefore = new StringBuilder();
+            firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3 Stabilizer - CK3 Inbound\""));
+            firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3 Stabilizer - CK3 Outbound\""));
+            firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Inbound\""));
+            firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Outbound\""));
+            RecordSystemSnapshot("Firewall rules before CK3MPS firewall step", "netsh advfirewall firewall show CK3MPS/legacy CK3 rules", firewallBefore.ToString());
             string[] rules = new[]
             {
                 "advfirewall firewall delete rule name=\"CK3 Stabilizer - CK3 Inbound\"",

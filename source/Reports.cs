@@ -742,6 +742,7 @@ namespace CK3MPS
         {
             string ck3Exe = String.IsNullOrEmpty(ck3Bin) ? "" : Path.Combine(ck3Bin, "ck3.exe");
 
+            RecordSystemSnapshot("Windows Time service before CK3MPS resync", "sc query W32Time", RunCommandQuiet("sc.exe", "query W32Time"));
             SetRegistryDword(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0);
             SetRegistryDword(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_Enabled", 0);
             SetRegistryDword(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2);
@@ -781,6 +782,7 @@ namespace CK3MPS
             Log("INFO Adaptive network apply profile");
             Log("INFO Routes: gateway=" + profile.GatewayAdapters + " ipv6_gateway=" + profile.Ipv6GatewayAdapters + " physical=" + profile.PhysicalRoutes + " wifi=" + profile.WifiRoutes + " vpn=" + profile.VpnRoutes + " pppoe=" + profile.PppoeRoutes + " mobile=" + profile.MobileRoutes + " low_speed=" + profile.LowSpeedRoutes + " proxy=" + (profile.ProxyDetected ? "yes" : "no"));
             LogAdaptiveNetworkPlan(profile);
+            RecordSystemSnapshot("TCP global settings before CK3MPS network profile", "netsh interface tcp show global", RunCommandQuiet("netsh.exe", "interface tcp show global"));
 
             if (profile.HasPppoe || profile.HasIpv6OnlyOrDsLiteSignal)
             {
@@ -839,6 +841,8 @@ namespace CK3MPS
         private void ApplyPowerAdapterProfile()
         {
             NetworkRouteProfile profile = AnalyzeNetworkRouteProfile(false);
+            RecordSystemSnapshot("Power scheme before CK3MPS adapter profile", "powercfg /getactivescheme", RunCommandQuiet("powercfg.exe", "/getactivescheme"));
+            RecordSystemSnapshot("PCI Express power settings before CK3MPS adapter profile", "powercfg /query SCHEME_CURRENT SUB_PCIEXPRESS ASPM", RunCommandQuiet("powercfg.exe", "/query SCHEME_CURRENT SUB_PCIEXPRESS ASPM"));
             RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0", true);
             RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0", true);
             RunCommand("powercfg.exe", "/setactive SCHEME_CURRENT", true);
