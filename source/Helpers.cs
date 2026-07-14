@@ -438,18 +438,19 @@ namespace CK3MPS
 
         private void ApplyRecommendedPreset()
         {
-            // Recommended must be non-destructive: diagnostics, backups, and report files only.
-            // Steps that rewrite Steam/CK3 settings, move saves/mods/caches, or change Windows
-            // firewall/registry/adapter state belong to Maximum or explicit manual selection.
+            // Recommended keeps the important reversible CK3 multiplayer fixes, but avoids the
+            // highest-risk actions: Windows firewall/registry/adapter tuning, save movement,
+            // local .mod descriptor quarantine, and broad CK3 Documents cleanup.
             SetPresetSteps(new[]
             {
-                3, 7, 8,
-                9, 12,
-                15, 16,
+                2, 3,
+                7, 8,
+                9, 10, 11, 12,
+                13, 14, 15, 16, 17, 18, 19,
                 21, 24, 25, 26, 27
             });
 
-            statusLabel.Text = "Preset selected: Recommended. Safe default: diagnostics, backups and reports only. No CK3, Steam or Windows settings are changed.";
+            statusLabel.Text = "Preset selected: Recommended. Applies backed-up CK3/Launcher fixes, but skips Windows tuning, save movement, .mod quarantine and broad folder cleanup.";
         }
 
         private void SetPresetSteps(int[] indices)
