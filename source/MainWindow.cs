@@ -35,6 +35,7 @@ namespace CK3MPS
             Controls.Add(subtitle);
 
             mainTabs.Location = new Point(16, 74);
+            mainTabs.Size = new Size(924, 488);
             mainTabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             mainTabs.TabPages.Add(mainPage);
             mainTabs.TabPages.Add(pathsPage);
@@ -48,8 +49,6 @@ namespace CK3MPS
             BuildReportsTab();
             BuildRestoreTab();
             BuildAdvancedTab();
-            Resize += delegate { LayoutRootControls(); };
-            LayoutRootControls();
 
             stabilizeButton.Text = "Stabilize CK3";
             stabilizeButton.Size = new Size(150, 34);
@@ -74,11 +73,6 @@ namespace CK3MPS
                     Process.Start("explorer.exe", ck3Docs);
             };
             mainPage.Controls.Add(openFolderButton);
-        }
-
-        private void LayoutRootControls()
-        {
-            mainTabs.Size = new Size(ClientSize.Width - 32, Math.Max(520, ClientSize.Height - mainTabs.Top - 16));
         }
 
         private void BuildMainTab()
