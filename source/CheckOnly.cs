@@ -30,6 +30,31 @@ namespace CK3MPS
             RunStep(index, label, action);
         }
 
+        private void RunCoreStabilizeStep(int index, string label, Action action, bool shouldRun)
+        {
+            if (!shouldRun)
+                return;
+
+            RunStep(index, label, action);
+        }
+
+        private void RunPlannedStabilizeStep(int index, string label, Action action)
+        {
+            if (!IsStepChecked(index))
+            {
+                Log("Skipped: " + StepTitle(index));
+                return;
+            }
+
+            if (!ShouldRunSelectedStabilizeStep(index))
+            {
+                Log("INFO No change needed: " + StepTitle(index) + " | " + GetStabilizeStepSkipReason(index));
+                return;
+            }
+
+            RunStep(index, label, action);
+        }
+
         private void RunCheckStep(int index)
         {
             string item = StepTitle(index);
