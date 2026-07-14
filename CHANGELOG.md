@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added polished GitHub README with screenshots, badges, safety notes and release/package links.
+- Added GitHub issue templates, pull request template, build workflow, support, security and contribution notes.
+- Added repository social preview image and screenshot assets.
+- Added GitHub NuGet package helper script.
+
 ## v0.1-beta
 
 First beta release.
@@ -13,4 +20,3 @@ First beta release.
 - Added OOS reports, MP parity, risk summary, and prevention protocol.
 - Added minimal git-ready project structure with `source`, `assets`, `scripts`, and `release`.
 - Added runnable `release/CK3MPS.exe`.
-

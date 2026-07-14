@@ -7,6 +7,7 @@ release/*.zip
 .dev-backup/
 source.zip
 *.zip
+*.nupkg
 
 # User/local runtime artifacts
 *.log

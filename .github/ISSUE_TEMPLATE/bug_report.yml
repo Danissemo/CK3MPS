@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a CK3MPS problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+      placeholder: CK3MPS marked a check as failed after applying Recommended.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CK3MPS version
+      placeholder: v0.1 beta
+    validations:
+      required: true
+  - type: input
+    id: ck3
+    attributes:
+      label: CK3 version
+      placeholder: 1.x.x
+  - type: dropdown
+    id: preset
+    attributes:
+      label: Preset
+      options:
+        - Recommended
+        - Maximum
+        - Clean profile only
+        - Network only
+        - Diagnostic only
+        - Custom
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Close CK3.
+        2. Run CK3MPS as admin.
+        3. Select Recommended.
+        4. Click Apply Selected.
+  - type: textarea
+    id: report
+    attributes:
+      label: Relevant CK3MPS report lines
+      description: Paste only relevant lines. Do not include private saves.

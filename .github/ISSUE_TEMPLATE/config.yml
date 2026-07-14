@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Latest release
+    url: https://github.com/Danissemo/CK3MPS/releases/latest
+    about: Download the current CK3MPS build.

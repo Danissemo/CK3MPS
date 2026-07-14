@@ -11,6 +11,12 @@
     <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <ApplicationManifest>assets\app.manifest</ApplicationManifest>
     <LangVersion>latest</LangVersion>
+    <RepositoryUrl>https://github.com/Danissemo/CK3MPS</RepositoryUrl>
+    <PackageId>CK3MPS</PackageId>
+    <Version>0.1.0-beta</Version>
+    <Authors>Danissemo</Authors>
+    <Company>Danissemo</Company>
+    <Description>CK3 multiplayer stabilization utility for Windows.</Description>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <OutputPath>bin\</OutputPath>
