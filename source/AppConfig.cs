@@ -15,6 +15,8 @@ namespace CK3MPS
             steamRoot = DetectSteamRoot();
             appManifest = DetectManifest();
             ck3Install = DetectInstallPath();
+            settingsPathOverrideActive = false;
+            gamePathOverrideActive = false;
             RefreshDerivedPaths();
         }
 
@@ -27,30 +29,43 @@ namespace CK3MPS
 
         private void ResetPathsToAutoDetect()
         {
+            string oldGame = ck3Install;
+            string oldSettings = ck3Docs;
             AutoDetectPaths();
             DeleteLegacyPathOverrides();
             SaveAppConfig();
             UpdatePathStatusIndicators();
+            statusLabel.Text = BuildResetSummary(oldGame, ck3Install, oldSettings, ck3Docs, true, true);
             Log("INFO Paths reset to automatic detection.");
         }
 
         private void ResetGamePathToAutoDetect()
         {
+            string oldPath = ck3Install;
             steamRoot = DetectSteamRoot();
             appManifest = DetectManifest();
             ck3Install = DetectInstallPath();
+            gamePathOverrideActive = false;
             RefreshDerivedPaths();
             SaveAppConfig();
             UpdatePathStatusIndicators();
+            statusLabel.Text = String.Equals(oldPath, ck3Install, StringComparison.OrdinalIgnoreCase)
+                ? "Game folder was already using the detected Steam install path."
+                : "Game folder reset to detected Steam install path.";
             Log("INFO CK3 game folder reset to automatic detection.");
         }
 
         private void ResetSettingsPathToDefault()
         {
+            string oldPath = ck3Docs;
             ck3Docs = Ck3PathUtilities.DefaultSettingsFolder();
+            settingsPathOverrideActive = false;
             RefreshDerivedPaths();
             SaveAppConfig();
             UpdatePathStatusIndicators();
+            statusLabel.Text = String.Equals(oldPath, ck3Docs, StringComparison.OrdinalIgnoreCase)
+                ? "Settings/saves folder was already using the default Documents location."
+                : "Settings/saves folder reset to default Documents location.";
             Log("INFO CK3 settings/saves folder reset to default Documents location.");
         }
 
@@ -108,9 +123,15 @@ namespace CK3MPS
                 string value = line.Substring(separator + 1).Trim();
 
                 if (String.Equals(key, "ck3Docs", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                {
                     ApplySettingsFolder(value);
+                    settingsPathOverrideActive = true;
+                }
                 else if (String.Equals(key, "ck3Install", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                {
                     ApplyGameFolder(value);
+                    gamePathOverrideActive = true;
+                }
                 else if (String.Equals(key, "updateCheckOnStartup", StringComparison.OrdinalIgnoreCase))
                     updateCheckOnStartup = ParseBool(value, true);
                 else if (String.Equals(key, "portableMode", StringComparison.OrdinalIgnoreCase))
@@ -138,9 +159,15 @@ namespace CK3MPS
                     continue;
 
                 if (String.Equals(key, "ck3Docs", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                {
                     ApplySettingsFolder(value);
+                    settingsPathOverrideActive = true;
+                }
                 else if (String.Equals(key, "ck3Install", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                {
                     ApplyGameFolder(value);
+                    gamePathOverrideActive = true;
+                }
             }
         }
 
@@ -174,8 +201,8 @@ namespace CK3MPS
 
             File.WriteAllLines(targetPath, new[]
             {
-                "ck3Docs=" + ck3Docs,
-                "ck3Install=" + ck3Install,
+                settingsPathOverrideActive ? "ck3Docs=" + ck3Docs : "",
+                gamePathOverrideActive ? "ck3Install=" + ck3Install : "",
                 "updateCheckOnStartup=" + updateCheckOnStartup,
                 "portableMode=" + portableMode,
                 "logVerbosity=" + logVerbosity
@@ -183,6 +210,20 @@ namespace CK3MPS
 
             if (File.Exists(otherPath))
                 File.Delete(otherPath);
+        }
+
+        private string BuildResetSummary(string oldGame, string newGame, string oldSettings, string newSettings, bool includeGame, bool includeSettings)
+        {
+            List<string> parts = new List<string>();
+            if (includeGame)
+                parts.Add(String.Equals(oldGame, newGame, StringComparison.OrdinalIgnoreCase)
+                    ? "game folder was already auto-detected"
+                    : "game folder reset to detected Steam path");
+            if (includeSettings)
+                parts.Add(String.Equals(oldSettings, newSettings, StringComparison.OrdinalIgnoreCase)
+                    ? "settings folder was already using Documents default"
+                    : "settings folder reset to Documents default");
+            return Char.ToUpperInvariant(parts[0][0]) + parts[0].Substring(1) + (parts.Count > 1 ? "; " + parts[1] + "." : ".");
         }
 
         private void UpdateSettingsUi()

@@ -97,6 +97,8 @@ namespace CK3MPS
         private bool updateCheckOnStartup = true;
         private bool portableMode;
         private string logVerbosity = "Normal";
+        private bool gamePathOverrideActive;
+        private bool settingsPathOverrideActive;
 
         private sealed class StepGroupUi
         {

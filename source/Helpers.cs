@@ -855,6 +855,7 @@ namespace CK3MPS
 
             ck3Install = path;
             ck3Bin = Path.Combine(ck3Install, "binaries");
+            gamePathOverrideActive = true;
         }
 
         private void ApplySettingsFolder(string selectedPath)
@@ -864,6 +865,7 @@ namespace CK3MPS
                 return;
 
             ck3Docs = path;
+            settingsPathOverrideActive = true;
         }
 
         private string FormatLogLine(string message)
