@@ -25,7 +25,6 @@ namespace CK3MPS
         private readonly Panel checklistContentPanel = new Panel();
         private readonly VScrollBar checklistScrollBar = new VScrollBar();
         private readonly ToolTip stepToolTip = new ToolTip();
-        private Control activeStepToolTipControl;
         private readonly List<StepGroupUi> stepGroups = new List<StepGroupUi>();
         private readonly List<StepRowUi> stepRows = new List<StepRowUi>();
         private bool updatingChecklistUi;
@@ -45,7 +44,9 @@ namespace CK3MPS
         private readonly Button openReportsButton = new Button();
         private readonly Button exportSupportButton = new Button();
         private readonly Button refreshHistoryButton = new Button();
+        private readonly Button clearReportsButton = new Button();
         private readonly Button updateButton = new Button();
+        private readonly Button deleteRestorePointsButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
         private readonly Button previewButton = new Button();
@@ -73,6 +74,7 @@ namespace CK3MPS
         private readonly Label restoreSortLabel = new Label();
         private readonly ComboBox restoreSortBox = new ComboBox();
         private readonly ComboBox restoreSortDirectionBox = new ComboBox();
+        private readonly CheckBox restoreSelectAllBox = new CheckBox();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
         private readonly CheckBox portableModeBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();
@@ -95,6 +97,7 @@ namespace CK3MPS
         private string lastQuarantine;
         private string currentRestoreRunId;
         private bool updatingRestoreUi;
+        private bool updatingRestoreSelectionUi;
         private DateTime lastSettingsGuardRepairUtc = DateTime.MinValue;
         private bool settingsGuardActive;
         private int lastReadinessFailures;
@@ -133,7 +136,7 @@ namespace CK3MPS
             public readonly Panel RowPanel = new Panel();
             public readonly CheckBox CheckBox = new CheckBox();
             public readonly Label TitleLabel = new Label();
-            public readonly Button HelpButton = new Button();
+            public readonly Label HelpButton = new Label();
         }
 
         private readonly string[] suspectBinaryFiles = new[]

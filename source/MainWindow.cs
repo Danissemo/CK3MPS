@@ -353,6 +353,12 @@ namespace CK3MPS
             refreshHistoryButton.Click += delegate { RefreshHistoryView(); };
             reportsPage.Controls.Add(refreshHistoryButton);
 
+            clearReportsButton.Text = "Clear reports";
+            clearReportsButton.Location = new Point(488, 18);
+            clearReportsButton.Size = new Size(130, 34);
+            clearReportsButton.Click += delegate { ClearAllReports(); };
+            reportsPage.Controls.Add(clearReportsButton);
+
             historyBox.Location = new Point(16, 66);
             historyBox.Size = new Size(888, 370);
             historyBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -425,13 +431,23 @@ namespace CK3MPS
             };
             restorePage.Controls.Add(restoreSortDirectionBox);
 
+            restoreSelectAllBox.Text = "Select all visible";
+            restoreSelectAllBox.AutoSize = true;
+            restoreSelectAllBox.CheckedChanged += delegate
+            {
+                if (updatingRestoreSelectionUi)
+                    return;
+                SetAllVisibleRestoreEntriesChecked(restoreSelectAllBox.Checked);
+            };
+            restorePage.Controls.Add(restoreSelectAllBox);
+
             restoreListBox.HorizontalScrollbar = true;
             restoreListBox.CheckOnClick = true;
             restoreListBox.IntegralHeight = false;
             restoreListBox.SelectedIndexChanged += delegate { ShowSelectedRestoreDetails(); };
             restoreListBox.ItemCheck += delegate(object sender, ItemCheckEventArgs e)
             {
-                BeginInvoke((MethodInvoker)delegate { SyncCheckedRestoreEntryIds(); ShowSelectedRestoreDetails(); });
+                BeginInvoke((MethodInvoker)delegate { SyncCheckedRestoreEntryIds(); UpdateRestoreSelectAllState(); ShowSelectedRestoreDetails(); });
             };
             restorePage.Controls.Add(restoreListBox);
 
@@ -456,7 +472,7 @@ namespace CK3MPS
             int rightPadding = 16;
             int detailsMinWidth = 360;
             int filterTop = top + buttonHeight + 12;
-            int listTop = filterTop + 34;
+            int listTop = filterTop + 58;
             int bottomPadding = 16;
 
             refreshRestoreButton.Location = new Point(left, top);
@@ -491,6 +507,8 @@ namespace CK3MPS
             int directionWidth = Math.Max(140, restorePage.ClientSize.Width - directionLeft - rightPadding);
             restoreSortDirectionBox.Location = new Point(directionLeft, filterTop);
             restoreSortDirectionBox.Size = new Size(directionWidth, 24);
+
+            restoreSelectAllBox.Location = new Point(left, filterTop + 30);
 
             int listWidth = Math.Max(300, restorePage.ClientSize.Width - left - rightPadding - gap - detailsMinWidth);
             restoreListBox.Location = new Point(left, listTop);
@@ -563,6 +581,12 @@ namespace CK3MPS
             updateButton.Click += delegate { CheckForUpdatesManual(); };
             advancedPage.Controls.Add(updateButton);
 
+            deleteRestorePointsButton.Text = "Delete CK3MPS restore points";
+            deleteRestorePointsButton.Location = new Point(18, 182);
+            deleteRestorePointsButton.Size = new Size(220, 34);
+            deleteRestorePointsButton.Click += delegate { DeleteCk3MpsRestorePoints(); };
+            advancedPage.Controls.Add(deleteRestorePointsButton);
+
             updateDownloadProgress.Location = new Point(164, 142);
             updateDownloadProgress.Size = new Size(280, 22);
             advancedPage.Controls.Add(updateDownloadProgress);
@@ -587,6 +611,9 @@ namespace CK3MPS
             int progressWidth = Math.Max(progressMinWidth, advancedPage.ClientSize.Width - progressLeft - rightPadding);
             updateDownloadProgress.Location = new Point(progressLeft, topButton + 6);
             updateDownloadProgress.Size = new Size(progressWidth, 22);
+
+            deleteRestorePointsButton.Location = new Point(left, topButton + 46);
+            deleteRestorePointsButton.Size = new Size(Math.Max(220, Math.Min(280, advancedPage.ClientSize.Width - left - rightPadding)), 34);
         }
 
         private void FillSteps()

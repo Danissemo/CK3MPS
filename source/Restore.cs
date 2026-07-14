@@ -350,11 +350,47 @@ namespace CK3MPS
             }
 
             SyncCheckedRestoreEntryIds();
+            UpdateRestoreSelectAllState();
 
             if (restoreListBox.Items.Count > 0)
                 restoreListBox.SelectedIndex = 0;
             else
                 restoreDetailsBox.Text = "(no restore entries yet)";
+        }
+
+        private void SetAllVisibleRestoreEntriesChecked(bool value)
+        {
+            updatingRestoreSelectionUi = true;
+            try
+            {
+                for (int i = 0; i < restoreListBox.Items.Count; i++)
+                    restoreListBox.SetItemChecked(i, value);
+            }
+            finally
+            {
+                updatingRestoreSelectionUi = false;
+            }
+
+            SyncCheckedRestoreEntryIds();
+            UpdateRestoreSelectAllState();
+            ShowSelectedRestoreDetails();
+        }
+
+        private void UpdateRestoreSelectAllState()
+        {
+            updatingRestoreSelectionUi = true;
+            try
+            {
+                int total = restoreListBox.Items.Count;
+                int selected = restoreListBox.CheckedItems.Count;
+                restoreSelectAllBox.CheckState = total == 0 || selected == 0
+                    ? CheckState.Unchecked
+                    : (selected == total ? CheckState.Checked : CheckState.Indeterminate);
+            }
+            finally
+            {
+                updatingRestoreSelectionUi = false;
+            }
         }
 
         private void ShowSelectedRestoreDetails()

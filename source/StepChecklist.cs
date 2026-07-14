@@ -165,19 +165,17 @@ namespace CK3MPS
             row.HelpButton.Width = 24;
             row.HelpButton.Height = 22;
             row.HelpButton.Location = new Point(66, 3);
-            row.HelpButton.TabStop = false;
+            row.HelpButton.BorderStyle = BorderStyle.FixedSingle;
+            row.HelpButton.TextAlign = ContentAlignment.MiddleCenter;
+            row.HelpButton.BackColor = Color.FromArgb(240, 242, 245);
+            row.HelpButton.ForeColor = Color.FromArgb(50, 65, 85);
             stepToolTip.SetToolTip(row.HelpButton, row.HelpText);
-            row.HelpButton.Click += delegate
-            {
-                ShowStepToolTip(row.HelpButton, row.HelpText);
-            };
             row.RowPanel.Controls.Add(row.HelpButton);
 
             row.TitleLabel.Text = row.Title;
             row.TitleLabel.Location = new Point(98, 6);
             row.TitleLabel.Size = new Size(Math.Max(100, rowWidth - row.TitleLabel.Left - 8), 18);
             row.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-            stepToolTip.SetToolTip(row.TitleLabel, row.HelpText);
             row.RowPanel.Controls.Add(row.TitleLabel);
 
             HookChecklistWheel(row.RowPanel);
@@ -187,21 +185,6 @@ namespace CK3MPS
 
             return row;
         }
-
-        private void ShowStepToolTip(Control target, string text)
-        {
-            if (target == null || String.IsNullOrEmpty(text))
-                return;
-
-            if (activeStepToolTipControl != null)
-                stepToolTip.Hide(activeStepToolTipControl);
-
-            activeStepToolTipControl = target;
-            stepToolTip.Active = false;
-            stepToolTip.Active = true;
-            stepToolTip.Show(text, target, 0, target.Height + 2, 8000);
-        }
-
         private void ToggleStepGroup(StepGroupUi group)
         {
             group.Expanded = !group.Expanded;

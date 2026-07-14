@@ -505,6 +505,7 @@ namespace CK3MPS
             openReportsButton.Enabled = !busy;
             exportSupportButton.Enabled = !busy;
             refreshHistoryButton.Enabled = !busy;
+            clearReportsButton.Enabled = !busy;
             refreshRestoreButton.Enabled = !busy;
             restoreSelectedButton.Enabled = !busy;
             restoreDefaultButton.Enabled = !busy;
@@ -520,6 +521,8 @@ namespace CK3MPS
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
             graphicsProfileBox.Enabled = !busy;
+            deleteRestorePointsButton.Enabled = !busy;
+            restoreSelectAllBox.Enabled = !busy;
             portableModeBox.Enabled = !busy && !portableModeChangeInProgress;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
@@ -528,8 +531,23 @@ namespace CK3MPS
         {
             EnsureStabilizerRoot();
 
-            string[] reports = new[]
+            foreach (string report in KnownReportFiles())
             {
+                if (File.Exists(report))
+                {
+                    Process.Start("explorer.exe", "/select,\"" + report + "\"");
+                    return;
+                }
+            }
+
+            Process.Start("explorer.exe", stabilizerRoot);
+        }
+
+        private string[] KnownReportFiles()
+        {
+            return new[]
+            {
+                HistoryFile(),
                 StabilizerFile("ck3_stabilizer_last_report.txt"),
                 StabilizerFile("ck3_stabilizer_check_only_report.txt"),
                 StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt"),
@@ -543,19 +561,46 @@ namespace CK3MPS
                 StabilizerFile("ck3_stabilizer_oos_history.txt"),
                 StabilizerFile("ck3_stabilizer_oos_protocol.txt"),
                 StabilizerFile("ck3_stabilizer_portable_notes.txt"),
-                StabilizerFile("ck3_stabilizer_evidence_pack_index.txt")
+                StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"),
+                StabilizerFile("ck3_stabilizer_clean_save_note.txt"),
+                StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt"),
+                StabilizerFile("ck3_stabilizer_folder_cleanup.txt"),
+                StabilizerFile("ck3_stabilizer_cache_cleanup.txt"),
+                StabilizerFile("ck3_stabilizer_cache_diagnostics.txt"),
+                StabilizerFile("ck3_stabilizer_binary_inspection.txt")
             };
+        }
 
-            foreach (string report in reports)
+        private void ClearAllReports()
+        {
+            EnsureStabilizerRoot();
+            DialogResult result = MessageBox.Show(
+                "Delete CK3MPS report files, run history, and exported support-package folders from this state root?\r\n\r\nRestore entries and quarantine backups are not deleted.",
+                "CK3MPS reports",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            int deletedFiles = 0;
+            int deletedDirs = 0;
+            foreach (string file in KnownReportFiles())
             {
-                if (File.Exists(report))
-                {
-                    Process.Start("explorer.exe", "/select,\"" + report + "\"");
-                    return;
-                }
+                if (!File.Exists(file))
+                    continue;
+                File.Delete(file);
+                deletedFiles++;
             }
 
-            Process.Start("explorer.exe", stabilizerRoot);
+            foreach (string dir in Directory.GetDirectories(stabilizerRoot, "support_package_*", SearchOption.TopDirectoryOnly))
+            {
+                Directory.Delete(dir, true);
+                deletedDirs++;
+            }
+
+            RefreshHistoryView();
+            statusLabel.Text = "Deleted CK3MPS reports: files=" + deletedFiles + ", folders=" + deletedDirs + ".";
+            Log("OK   Deleted CK3MPS reports: files=" + deletedFiles + ", folders=" + deletedDirs + ".");
         }
 
         private void EnsureStabilizerRoot()
