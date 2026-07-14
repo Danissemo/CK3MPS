@@ -581,23 +581,21 @@ namespace CK3MPS
             updateButton.Click += delegate { CheckForUpdatesManual(); };
             advancedPage.Controls.Add(updateButton);
 
-            deleteLatestRestorePointButton.Text = "Delete latest CK3MPS restore point";
-            deleteLatestRestorePointButton.Location = new Point(18, 182);
-            deleteLatestRestorePointButton.Size = new Size(250, 34);
-            deleteLatestRestorePointButton.Click += delegate { DeleteLatestCk3MpsRestorePoint(); };
-            advancedPage.Controls.Add(deleteLatestRestorePointButton);
+            restorePointsLabel.Text = "Restore Points";
+            restorePointsLabel.AutoSize = true;
+            restorePointsLabel.Location = new Point(18, 184);
+            advancedPage.Controls.Add(restorePointsLabel);
 
-            deleteRestorePointsButton.Text = "Delete CK3MPS restore points";
-            deleteRestorePointsButton.Location = new Point(18, 222);
-            deleteRestorePointsButton.Size = new Size(220, 34);
-            deleteRestorePointsButton.Click += delegate { DeleteCk3MpsRestorePoints(); };
-            advancedPage.Controls.Add(deleteRestorePointsButton);
+            restorePointsListBox.CheckOnClick = true;
+            restorePointsListBox.HorizontalScrollbar = true;
+            restorePointsListBox.IntegralHeight = false;
+            advancedPage.Controls.Add(restorePointsListBox);
 
-            deleteAllRestorePointsButton.Text = "Delete all Windows restore points";
-            deleteAllRestorePointsButton.Location = new Point(18, 262);
-            deleteAllRestorePointsButton.Size = new Size(230, 34);
-            deleteAllRestorePointsButton.Click += delegate { DeleteAllWindowsRestorePoints(); };
-            advancedPage.Controls.Add(deleteAllRestorePointsButton);
+            deleteSelectedRestorePointsButton.Text = "Delete selected restore points";
+            deleteSelectedRestorePointsButton.Location = new Point(18, 418);
+            deleteSelectedRestorePointsButton.Size = new Size(240, 34);
+            deleteSelectedRestorePointsButton.Click += delegate { DeleteSelectedRestorePoints(); };
+            advancedPage.Controls.Add(deleteSelectedRestorePointsButton);
 
             clearOtherLogsButton.Text = "Delete other logs";
             clearOtherLogsButton.Location = new Point(18, 316);
@@ -615,6 +613,11 @@ namespace CK3MPS
             updateDownloadProgress.Size = new Size(280, 22);
             advancedPage.Controls.Add(updateDownloadProgress);
 
+            mainTabs.SelectedIndexChanged += delegate
+            {
+                if (mainTabs.SelectedTab == advancedPage)
+                    RefreshRestorePointsList();
+            };
             advancedPage.Resize += delegate { LayoutAdvancedTabControls(); };
             LayoutAdvancedTabControls();
         }
@@ -636,21 +639,20 @@ namespace CK3MPS
             updateDownloadProgress.Location = new Point(progressLeft, topButton + 6);
             updateDownloadProgress.Size = new Size(progressWidth, 22);
 
-            int actionWidth = Math.Max(220, Math.Min(320, advancedPage.ClientSize.Width - left - rightPadding));
-            deleteLatestRestorePointButton.Location = new Point(left, topButton + 46);
-            deleteLatestRestorePointButton.Size = new Size(actionWidth, 34);
+            int rightColumnWidth = Math.Max(200, Math.Min(260, advancedPage.ClientSize.Width - left - rightPadding));
+            clearOtherLogsButton.Location = new Point(advancedPage.ClientSize.Width - rightPadding - rightColumnWidth, 18);
+            clearOtherLogsButton.Size = new Size(rightColumnWidth, 34);
 
-            deleteRestorePointsButton.Location = new Point(left, topButton + 86);
-            deleteRestorePointsButton.Size = new Size(actionWidth, 34);
+            clearQuarantineButton.Location = new Point(clearOtherLogsButton.Left, clearOtherLogsButton.Bottom + 10);
+            clearQuarantineButton.Size = new Size(rightColumnWidth, 34);
 
-            deleteAllRestorePointsButton.Location = new Point(left, topButton + 126);
-            deleteAllRestorePointsButton.Size = new Size(actionWidth, 34);
-
-            clearOtherLogsButton.Location = new Point(left, topButton + 180);
-            clearOtherLogsButton.Size = new Size(actionWidth, 34);
-
-            clearQuarantineButton.Location = new Point(left, topButton + 220);
-            clearQuarantineButton.Size = new Size(actionWidth, 34);
+            int listRight = clearOtherLogsButton.Left - gap;
+            int listWidth = Math.Max(320, listRight - left);
+            restorePointsLabel.Location = new Point(left, topButton + 48);
+            restorePointsListBox.Location = new Point(left, restorePointsLabel.Bottom + 6);
+            restorePointsListBox.Size = new Size(listWidth, Math.Max(220, advancedPage.ClientSize.Height - restorePointsListBox.Top - 70));
+            deleteSelectedRestorePointsButton.Location = new Point(left, restorePointsListBox.Bottom + 10);
+            deleteSelectedRestorePointsButton.Size = new Size(Math.Min(260, listWidth), 34);
         }
 
         private void FillSteps()

@@ -11,6 +11,19 @@ namespace CK3MPS
     {
         private const string Ck3MpsRestorePointPrefix = "CK3MPS before changes ";
 
+        private sealed class RestorePointListItem
+        {
+            public string SequenceNumber;
+            public string CreationTime;
+            public string Description;
+            public bool IsCk3Mps;
+
+            public override string ToString()
+            {
+                return (IsCk3Mps ? "[CK3MPS] " : "[Other] ") + CreationTime + " | " + Description;
+            }
+        }
+
         private void CreateWindowsRestorePoint()
         {
             if (!IsAdministrator())
@@ -92,105 +105,73 @@ namespace CK3MPS
             return RunPowerShellScriptQuiet(script, 60000).Trim();
         }
 
-        private void DeleteCk3MpsRestorePoints()
+        private void RefreshRestorePointsList()
         {
-            List<string> restorePoints = ListCk3MpsRestorePoints();
-            if (restorePoints.Count == 0)
-            {
-                MessageBox.Show("No CK3MPS-created restore points were found.", "CK3MPS restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            DialogResult result = MessageBox.Show(
-                "Delete " + restorePoints.Count + " restore point(s) created by CK3MPS?\r\n\r\nThis removes only restore points whose description starts with \"" + Ck3MpsRestorePointPrefix.Trim() + "\".",
-                "CK3MPS restore points",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes)
-                return;
-
-            string script =
-                "$ErrorActionPreference = 'Stop'\r\n" +
-                "$points = Get-ComputerRestorePoint | Where-Object { $_.Description -like '" + EscapePowerShellSingleQuoted(Ck3MpsRestorePointPrefix) + "*' } | Sort-Object SequenceNumber -Descending\r\n" +
-                "$removed = 0\r\n" +
-                "foreach ($point in $points) {\r\n" +
-                "  $result = ([WMIClass]'root/default:SystemRestore').RemoveRestorePoint($point.SequenceNumber)\r\n" +
-                "  if ($result.ReturnValue -ne 0) { throw 'Failed to remove restore point sequence ' + $point.SequenceNumber + ' (code ' + $result.ReturnValue + ')' }\r\n" +
-                "  $removed++\r\n" +
-                "}\r\n" +
-                "Write-Output ('Removed restore points: ' + $removed)\r\n";
-
-            RunPowerShellScriptLogged(script, 180000);
-            statusLabel.Text = "Deleted CK3MPS restore points: " + restorePoints.Count + ".";
-            Log("OK   Deleted CK3MPS restore points: " + restorePoints.Count + ".");
+            restorePointsListBox.Items.Clear();
+            foreach (RestorePointListItem item in ListRestorePointItems())
+                restorePointsListBox.Items.Add(item);
         }
 
-        private void DeleteLatestCk3MpsRestorePoint()
+        private void DeleteSelectedRestorePoints()
         {
-            List<string> restorePoints = ListCk3MpsRestorePoints();
-            if (restorePoints.Count == 0)
-            {
-                MessageBox.Show("No CK3MPS-created restore points were found.", "CK3MPS restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            string latest = restorePoints[0];
-            string[] parts = latest.Split('|');
-            string sequenceNumber = parts.Length > 0 ? parts[0] : "";
-            string description = parts.Length > 2 ? parts[2] : Ck3MpsRestorePointPrefix.Trim();
-
-            DialogResult result = MessageBox.Show(
-                "Delete the latest CK3MPS restore point?\r\n\r\n" + description,
-                "CK3MPS restore points",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes)
-                return;
-
-            DeleteRestorePointsBySequenceNumbers(new[] { sequenceNumber }, "Deleted latest CK3MPS restore point.");
-        }
-
-        private void DeleteAllWindowsRestorePoints()
-        {
-            List<string> allRestorePoints = ListRestorePoints(null);
-            if (allRestorePoints.Count == 0)
-            {
-                MessageBox.Show("No Windows restore points were found.", "Windows restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            DialogResult result = MessageBox.Show(
-                "Delete ALL Windows restore points?\r\n\r\nCount: " + allRestorePoints.Count + "\r\n\r\nThis is broader than CK3MPS cleanup and affects restore points created by other software too.",
-                "Windows restore points",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes)
-                return;
-
             List<string> sequenceNumbers = new List<string>();
-            foreach (string item in allRestorePoints)
+            int ck3MpsCount = 0;
+            int otherCount = 0;
+            foreach (object checkedItem in restorePointsListBox.CheckedItems)
             {
-                string[] parts = item.Split('|');
-                if (parts.Length > 0 && !String.IsNullOrEmpty(parts[0]))
-                    sequenceNumbers.Add(parts[0]);
+                RestorePointListItem item = checkedItem as RestorePointListItem;
+                if (item == null || String.IsNullOrWhiteSpace(item.SequenceNumber))
+                    continue;
+                sequenceNumbers.Add(item.SequenceNumber);
+                if (item.IsCk3Mps)
+                    ck3MpsCount++;
+                else
+                    otherCount++;
             }
 
-            DeleteRestorePointsBySequenceNumbers(sequenceNumbers.ToArray(), "Deleted all Windows restore points.");
+            if (sequenceNumbers.Count == 0)
+            {
+                MessageBox.Show("Select one or more restore points first.", "Restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                "Delete selected restore points?\r\n\r\nSelected: " + sequenceNumbers.Count + "\r\nCK3MPS: " + ck3MpsCount + "\r\nOther: " + otherCount,
+                "Restore points",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            DeleteRestorePointsBySequenceNumbers(sequenceNumbers.ToArray(), "Deleted selected restore points: " + sequenceNumbers.Count + ".");
+            RefreshRestorePointsList();
         }
 
-        private List<string> ListCk3MpsRestorePoints()
+        private List<RestorePointListItem> ListRestorePointItems()
         {
-            return ListRestorePoints(Ck3MpsRestorePointPrefix);
+            List<RestorePointListItem> items = new List<RestorePointListItem>();
+            foreach (string line in ListRestorePoints())
+            {
+                string[] parts = line.Split(new[] { '|' }, 3);
+                if (parts.Length < 3)
+                    continue;
+                string description = parts[2].Trim();
+                items.Add(new RestorePointListItem
+                {
+                    SequenceNumber = parts[0].Trim(),
+                    CreationTime = parts[1].Trim(),
+                    Description = description,
+                    IsCk3Mps = description.StartsWith(Ck3MpsRestorePointPrefix, StringComparison.OrdinalIgnoreCase)
+                });
+            }
+            return items;
         }
 
-        private List<string> ListRestorePoints(string descriptionPrefix)
+        private List<string> ListRestorePoints()
         {
             string script =
                 "$ErrorActionPreference = 'Stop'\r\n" +
-                "$points = Get-ComputerRestorePoint\r\n";
-            if (!String.IsNullOrEmpty(descriptionPrefix))
-                script += "$points = $points | Where-Object { $_.Description -like '" + EscapePowerShellSingleQuoted(descriptionPrefix) + "*' }\r\n";
-            script += "($points | Sort-Object CreationTime -Descending) | ForEach-Object { $_.SequenceNumber.ToString() + '|' + $_.CreationTime + '|' + $_.Description }\r\n";
+                "Get-ComputerRestorePoint | Sort-Object CreationTime -Descending | ForEach-Object { $_.SequenceNumber.ToString() + '|' + $_.CreationTime + '|' + $_.Description }\r\n";
             string output = RunPowerShellScriptQuiet(script, 60000);
             List<string> items = new List<string>();
             foreach (string line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
