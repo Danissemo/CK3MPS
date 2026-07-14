@@ -38,7 +38,6 @@ namespace CK3MPS
             mainTabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             mainTabs.TabPages.Add(mainPage);
             mainTabs.TabPages.Add(pathsPage);
-            mainTabs.TabPages.Add(logPage);
             mainTabs.TabPages.Add(reportsPage);
             mainTabs.TabPages.Add(restorePage);
             mainTabs.TabPages.Add(advancedPage);
@@ -46,7 +45,6 @@ namespace CK3MPS
 
             BuildMainTab();
             BuildPathsTab();
-            BuildLogTab();
             BuildReportsTab();
             BuildRestoreTab();
             BuildAdvancedTab();
@@ -331,15 +329,6 @@ namespace CK3MPS
             settingsPathStatusLabel.Location = new Point(statusLeft, 63);
 
             pathDetailsLabel.Size = new Size(Math.Max(520, pathsPage.ClientSize.Width - leftMargin - rightMargin), 120);
-        }
-
-        private void BuildLogTab()
-        {
-            ConfigureLogView(logTabBox);
-            logTabBox.Location = new Point(8, 8);
-            logTabBox.Size = new Size(896, 428);
-            logTabBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            logPage.Controls.Add(logTabBox);
         }
 
         private static void ConfigureLogView(RichTextBox box)

@@ -30,11 +30,9 @@ namespace CK3MPS
         private bool updatingChecklistUi;
         private readonly ProgressBar progress = new ProgressBar();
         private readonly RichTextBox logBox = new RichTextBox();
-        private readonly RichTextBox logTabBox = new RichTextBox();
         private readonly TabControl mainTabs = new TabControl();
         private readonly TabPage mainPage = new TabPage("Main");
         private readonly TabPage pathsPage = new TabPage("Paths");
-        private readonly TabPage logPage = new TabPage("Log");
         private readonly TabPage reportsPage = new TabPage("Reports");
         private readonly TabPage restorePage = new TabPage("Restore");
         private readonly TabPage advancedPage = new TabPage("Advanced");

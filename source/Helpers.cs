@@ -712,7 +712,6 @@ namespace CK3MPS
         private void AppendLogLine(string text, Color color)
         {
             AppendLogLineTo(logBox, text, color);
-            AppendLogLineTo(logTabBox, text, color);
             AppendLiveLogLine(text);
         }
 
@@ -730,7 +729,6 @@ namespace CK3MPS
         private void ClearLogViews()
         {
             logBox.Clear();
-            logTabBox.Clear();
         }
 
         private string LiveLogsFolder()
