@@ -1089,7 +1089,8 @@ namespace CK3MPS
             if (String.Equals(profile, "Balanced", StringComparison.OrdinalIgnoreCase))
                 return SectionSettingMatches(text, "Graphics", "texture_quality", "version=1\\s*value=\"medium\"")
                     && SectionSettingMatches(text, "Graphics", "shadowmap_resolution", "version=2\\s*value=\"2048x2048\"")
-                    && SectionSettingMatches(text, "Graphics", "refraction_quality", "version=1\\s*value=\"medium\"");
+                    && SectionSettingMatches(text, "Graphics", "refraction_quality", "version=1\\s*value=\"medium\"")
+                    && SectionSettingMatches(text, "Graphics", "advanced_shaders", "version=0\\s*enabled=yes");
             return SectionSettingMatches(text, "Graphics", "texture_quality", "version=1\\s*value=\"low\"")
                 && SectionSettingMatches(text, "Graphics", "shadowmap_resolution", "version=2\\s*value=\"disabled\"")
                 && SectionSettingMatches(text, "Graphics", "refraction_quality", "version=1\\s*value=\"disabled\"");

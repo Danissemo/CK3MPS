@@ -102,7 +102,7 @@ namespace CK3MPS
 
         private string ApplyBalancedGraphicsProfile(string text)
         {
-            text = ApplyGraphicsCommon(text, "medium", "medium", "2048x2048", "medium", "medium", "medium", "FXAA", true, false, false, false, true, true, true, false, false, false, false, false);
+            text = ApplyGraphicsCommon(text, "medium", "medium", "2048x2048", "medium", "medium", "medium", "FXAA", true, false, false, false, true, true, true, false, false, true, false, false);
             text = SetSectionSettingBlock(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=yes");
             text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=yes");
             text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=yes");
