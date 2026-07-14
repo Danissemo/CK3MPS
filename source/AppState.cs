@@ -21,7 +21,7 @@ namespace CK3MPS
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private readonly CheckedListBox steps = new CheckedListBox();
-        private readonly FlowLayoutPanel checklistPanel = new FlowLayoutPanel();
+        private readonly Panel checklistPanel = new Panel();
         private readonly ToolTip stepToolTip = new ToolTip();
         private readonly List<StepGroupUi> stepGroups = new List<StepGroupUi>();
         private readonly List<StepRowUi> stepRows = new List<StepRowUi>();

@@ -28,6 +28,8 @@ namespace CK3MPS
             finally
             {
                 updatingChecklistUi = false;
+                ResizeChecklistRows();
+                RelayoutChecklistGroups();
                 RefreshAllGroupStates();
                 checklistPanel.ResumeLayout();
             }
@@ -38,9 +40,10 @@ namespace CK3MPS
             StepGroupUi group = new StepGroupUi(title, indices);
             stepGroups.Add(group);
 
-            group.Header.Width = checklistPanel.ClientSize.Width - 28;
-            group.Header.Height = 30;
-            group.Header.Margin = new Padding(0, 4, 0, 0);
+            int groupWidth = Math.Max(300, checklistPanel.ClientSize.Width - 28);
+            group.Header.Size = new Size(groupWidth, 30);
+            group.Header.MinimumSize = new Size(groupWidth, 30);
+            group.Header.MaximumSize = new Size(groupWidth, 30);
             group.Header.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
             group.Header.BackColor = Color.FromArgb(242, 244, 247);
 
@@ -66,7 +69,7 @@ namespace CK3MPS
             group.TitleLabel.Text = title;
             group.TitleLabel.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
             group.TitleLabel.Location = new Point(62, 6);
-            group.TitleLabel.Size = new Size(760, 18);
+            group.TitleLabel.Size = new Size(Math.Max(100, groupWidth - group.TitleLabel.Left - 8), 18);
             group.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
             group.Header.Controls.Add(group.TitleLabel);
 
@@ -86,13 +89,36 @@ namespace CK3MPS
             int width = Math.Max(300, checklistPanel.ClientSize.Width - 28);
             foreach (StepGroupUi group in stepGroups)
             {
-                group.Header.Width = width;
+                group.Header.Size = new Size(width, 30);
+                group.Header.MinimumSize = new Size(width, 30);
+                group.Header.MaximumSize = new Size(width, 30);
                 group.TitleLabel.Width = Math.Max(100, width - group.TitleLabel.Left - 8);
                 foreach (StepRowUi row in group.Rows)
                 {
-                    row.RowPanel.Width = width;
+                    row.RowPanel.Size = new Size(width, 28);
+                    row.RowPanel.MinimumSize = new Size(width, 28);
+                    row.RowPanel.MaximumSize = new Size(width, 28);
                     row.TitleLabel.Width = Math.Max(100, width - row.TitleLabel.Left - 8);
                 }
+            }
+            RelayoutChecklistGroups();
+        }
+
+        private void RelayoutChecklistGroups()
+        {
+            int y = 4;
+            foreach (StepGroupUi group in stepGroups)
+            {
+                group.Header.Location = new Point(0, y);
+                y += group.Header.Height;
+                foreach (StepRowUi row in group.Rows)
+                {
+                    row.RowPanel.Visible = group.Expanded;
+                    row.RowPanel.Location = new Point(0, y);
+                    if (group.Expanded)
+                        y += row.RowPanel.Height;
+                }
+                y += 4;
             }
         }
 
@@ -103,9 +129,10 @@ namespace CK3MPS
             row.Title = StepTitle(index);
             row.HelpText = StepHelpText(index);
 
-            row.RowPanel.Width = checklistPanel.ClientSize.Width - 28;
-            row.RowPanel.Height = 28;
-            row.RowPanel.Margin = new Padding(0);
+            int rowWidth = Math.Max(300, checklistPanel.ClientSize.Width - 28);
+            row.RowPanel.Size = new Size(rowWidth, 28);
+            row.RowPanel.MinimumSize = new Size(rowWidth, 28);
+            row.RowPanel.MaximumSize = new Size(rowWidth, 28);
             row.RowPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
 
             row.CheckBox.Width = 22;
@@ -135,7 +162,7 @@ namespace CK3MPS
 
             row.TitleLabel.Text = row.Title;
             row.TitleLabel.Location = new Point(98, 6);
-            row.TitleLabel.Size = new Size(760, 18);
+            row.TitleLabel.Size = new Size(Math.Max(100, rowWidth - row.TitleLabel.Left - 8), 18);
             row.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
             stepToolTip.SetToolTip(row.TitleLabel, row.HelpText);
             row.RowPanel.Controls.Add(row.TitleLabel);
@@ -149,6 +176,7 @@ namespace CK3MPS
             group.ToggleButton.Text = group.Expanded ? "-" : "+";
             foreach (StepRowUi row in group.Rows)
                 row.RowPanel.Visible = group.Expanded;
+            RelayoutChecklistGroups();
         }
 
         private void SetGroupChecked(StepGroupUi group, bool value)
