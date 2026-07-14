@@ -144,25 +144,25 @@ namespace CK3MPS
 
         private void CheckBasePaths()
         {
-            if (!Directory.Exists(ck3Docs))
-                throw new InvalidOperationException("CK3 Documents folder was not found: " + ck3Docs);
+            if (!SettingsFolderValid())
+                throw new InvalidOperationException("CK3 settings/saves folder is invalid: " + ck3Docs);
 
             EnsureStabilizerRoot();
             MoveLegacyStabilizerArtifacts();
             UpdatePathStatusIndicators();
-            Log("OK   CK3 settings folder found: " + ck3Docs);
-            if (String.IsNullOrEmpty(ck3Install) || !Directory.Exists(ck3Install))
-                Log("WARN CK3 game folder not found automatically. Steam/binary checks will be skipped.");
+            Log("OK   CK3 settings/saves folder valid: " + ck3Docs);
+            if (!GameFolderValid())
+                Log("WARN CK3 game folder invalid or not found. Steam/binary checks will be skipped.");
             else
-                Log("OK   CK3 game folder found: " + ck3Install);
+                Log("OK   CK3 game folder valid: " + ck3Install);
         }
 
         private void CheckBasePathsReadOnly()
         {
             EnsureStabilizerRoot();
             MoveLegacyStabilizerArtifacts();
-            Check("CK3 Documents exists", Directory.Exists(ck3Docs));
-            Check("CK3 install detected", !String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install));
+            Check("CK3 settings/saves folder valid", SettingsFolderValid());
+            Check("CK3 install folder valid", GameFolderValid());
             Check("CK3 is not currently running", !IsGameRunning());
             Log("INFO Stabilizer files folder: " + stabilizerRoot);
             Log("INFO Installed CK3 version: " + NullText(DetectInstalledVersion()));

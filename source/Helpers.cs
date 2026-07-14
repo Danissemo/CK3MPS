@@ -521,12 +521,16 @@ namespace CK3MPS
             checkButton.Enabled = !busy;
             openFolderButton.Enabled = !busy;
             openReportsButton.Enabled = !busy;
+            exportSupportButton.Enabled = !busy;
+            refreshHistoryButton.Enabled = !busy;
             updateButton.Enabled = !busy;
             gamePathBrowseButton.Enabled = !busy;
             settingsPathBrowseButton.Enabled = !busy;
+            resetPathsButton.Enabled = !busy;
             selectAllButton.Enabled = !busy;
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
+            graphicsProfileBox.Enabled = !busy;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
 
@@ -704,7 +708,19 @@ namespace CK3MPS
                 .Replace("[INFO]", "INFO")
                 .Replace("Warning:", "WARN ");
             string formatted = FormatLogLine(clean);
+            if (ShouldSuppressLogLine(formatted))
+                return;
             AppendLogLine(formatted, LogColorForLine(formatted, clean));
+        }
+
+        private bool ShouldSuppressLogLine(string formatted)
+        {
+            if (!String.Equals(logVerbosity, "Quiet", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string text = (formatted ?? "").TrimStart();
+            return text.StartsWith("INFO", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("SKIP", StringComparison.OrdinalIgnoreCase);
         }
 
         private void AppendLogLine(string text, Color color)
@@ -741,19 +757,21 @@ namespace CK3MPS
 
         private void UpdatePathStatusIndicators()
         {
-            bool gameFound = !String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install);
-            bool settingsFound = Directory.Exists(ck3Docs);
+            bool gameExists = !String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install);
+            bool settingsExists = !String.IsNullOrEmpty(ck3Docs) && Directory.Exists(ck3Docs);
+            bool gameValid = Ck3PathUtilities.IsValidGameFolder(ck3Install);
+            bool settingsValid = Ck3PathUtilities.IsValidSettingsFolder(ck3Docs);
 
             gamePathBox.Text = NullText(ck3Install);
-            settingsPathBox.Text = ck3Docs;
-            ApplyPathStatus(gamePathStatusLabel, "Game folder", gameFound, ck3Install);
-            ApplyPathStatus(settingsPathStatusLabel, "Settings folder", settingsFound, ck3Docs);
+            settingsPathBox.Text = NullText(ck3Docs);
+            ApplyPathStatus(gamePathStatusLabel, gameExists, gameValid, ck3Install);
+            ApplyPathStatus(settingsPathStatusLabel, settingsExists, settingsValid, ck3Docs);
         }
 
-        private void ApplyPathStatus(Label label, string name, bool found, string path)
+        private void ApplyPathStatus(Label label, bool exists, bool valid, string path)
         {
-            label.Text = found ? "found" : "not found";
-            label.ForeColor = found ? Color.FromArgb(0, 128, 64) : Color.FromArgb(192, 0, 0);
+            label.Text = Ck3PathUtilities.ValidationText(exists, valid);
+            label.ForeColor = valid ? Color.FromArgb(0, 128, 64) : Color.FromArgb(192, 0, 0);
             label.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
             label.Tag = path;
         }
@@ -770,9 +788,10 @@ namespace CK3MPS
                     return;
 
                 ApplyGameFolder(dialog.SelectedPath);
-                SavePathOverrides();
+                RefreshDerivedPaths();
+                SaveAppConfig();
                 UpdatePathStatusIndicators();
-                Log("OK   CK3 game folder selected manually: " + ck3Install);
+                Log((GameFolderValid() ? "OK   " : "WARN ") + "CK3 game folder selected manually: " + ck3Install);
             }
         }
 
@@ -788,20 +807,18 @@ namespace CK3MPS
                     return;
 
                 ApplySettingsFolder(dialog.SelectedPath);
-                SavePathOverrides();
+                RefreshDerivedPaths();
+                SaveAppConfig();
                 UpdatePathStatusIndicators();
-                Log("OK   CK3 settings/saves folder selected manually: " + ck3Docs);
+                Log((SettingsFolderValid() ? "OK   " : "WARN ") + "CK3 settings/saves folder selected manually: " + ck3Docs);
             }
         }
 
         private void ApplyGameFolder(string selectedPath)
         {
-            string path = NormalizeDirectoryPath(selectedPath);
+            string path = Ck3PathUtilities.NormalizeGameFolderSelection(selectedPath);
             if (String.IsNullOrEmpty(path))
                 return;
-
-            if (File.Exists(Path.Combine(path, "ck3.exe")) && String.Equals(Path.GetFileName(path), "binaries", StringComparison.OrdinalIgnoreCase))
-                path = Directory.GetParent(path) != null ? Directory.GetParent(path).FullName : path;
 
             ck3Install = path;
             ck3Bin = Path.Combine(ck3Install, "binaries");
@@ -809,67 +826,11 @@ namespace CK3MPS
 
         private void ApplySettingsFolder(string selectedPath)
         {
-            string path = NormalizeDirectoryPath(selectedPath);
+            string path = Ck3PathUtilities.NormalizeSettingsFolderSelection(selectedPath);
             if (String.IsNullOrEmpty(path))
                 return;
 
-            if (String.Equals(Path.GetFileName(path), "save games", StringComparison.OrdinalIgnoreCase) && Directory.GetParent(path) != null)
-                path = Directory.GetParent(path).FullName;
-
             ck3Docs = path;
-        }
-
-        private string NormalizeDirectoryPath(string path)
-        {
-            if (String.IsNullOrWhiteSpace(path))
-                return "";
-            return Path.GetFullPath(path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        }
-
-        private string PathOverridesFile()
-        {
-            return Path.Combine(stabilizerRoot, "paths.ini");
-        }
-
-        private void LoadPathOverrides()
-        {
-            try
-            {
-                string path = PathOverridesFile();
-                if (!File.Exists(path))
-                    return;
-
-                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
-                {
-                    int separator = line.IndexOf('=');
-                    if (separator <= 0)
-                        continue;
-
-                    string key = line.Substring(0, separator).Trim();
-                    string value = line.Substring(separator + 1).Trim();
-                    if (String.IsNullOrEmpty(value))
-                        continue;
-
-                    if (String.Equals(key, "ck3Docs", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
-                        ApplySettingsFolder(value);
-                    else if (String.Equals(key, "ck3Install", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
-                        ApplyGameFolder(value);
-                }
-            }
-            catch
-            {
-                // Path overrides are optional; broken config should not block startup.
-            }
-        }
-
-        private void SavePathOverrides()
-        {
-            EnsureStabilizerRoot();
-            File.WriteAllLines(PathOverridesFile(), new[]
-            {
-                "ck3Docs=" + ck3Docs,
-                "ck3Install=" + ck3Install
-            }, Encoding.UTF8);
         }
 
         private string FormatLogLine(string message)

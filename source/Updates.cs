@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -20,12 +21,19 @@ namespace CK3MPS
             public string TagName;
             public string AssetName;
             public string DownloadUrl;
+            public string ChecksumUrl;
         }
 
         private void CheckForUpdatesOnStartup()
         {
             if (updateCheckStarted)
                 return;
+
+            if (!updateCheckOnStartup)
+            {
+                Log("INFO Startup update check is disabled in Advanced settings.");
+                return;
+            }
 
             updateCheckStarted = true;
             CheckForUpdates(false);
@@ -43,6 +51,7 @@ namespace CK3MPS
 
             updateCheckRunning = true;
             updateButton.Enabled = false;
+            updateDownloadProgress.Value = 0;
 
             try
             {
@@ -57,7 +66,7 @@ namespace CK3MPS
                     return;
                 }
 
-                if (!IsNewerRelease(release.TagName, AppVersion))
+                if (!VersionUtilities.IsNewerRelease(release.TagName, AppVersion))
                 {
                     if (manual)
                     {
@@ -153,45 +162,39 @@ namespace CK3MPS
                 {
                     release.AssetName = name;
                     release.DownloadUrl = url;
+                    release.ChecksumUrl = FindChecksumUrl(json, release.AssetName);
                     return;
                 }
             }
 
             release.AssetName = fallbackName;
             release.DownloadUrl = fallbackUrl;
+            if (!String.IsNullOrEmpty(release.AssetName))
+                release.ChecksumUrl = FindChecksumUrl(json, release.AssetName);
+        }
+
+        private static string FindChecksumUrl(string json, string assetName)
+        {
+            MatchCollection matches = Regex.Matches(
+                json ?? "",
+                "\"name\"\\s*:\\s*\"([^\"]+)\".*?\"browser_download_url\"\\s*:\\s*\"([^\"]+)\"",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+            string wanted = (assetName + ".sha256").ToLowerInvariant();
+            foreach (Match match in matches)
+            {
+                string name = UnescapeJsonString(match.Groups[1].Value);
+                string url = UnescapeJsonString(match.Groups[2].Value);
+                string lower = name.ToLowerInvariant();
+                if (lower == wanted || (lower.Contains("sha256") && lower.EndsWith(".txt", StringComparison.Ordinal)))
+                    return url;
+            }
+            return "";
         }
 
         private static string UnescapeJsonString(string value)
         {
             return (value ?? "").Replace("\\/", "/").Replace("\\\"", "\"");
-        }
-
-        private static bool IsNewerRelease(string latestTag, string currentTag)
-        {
-            int[] latest = VersionParts(latestTag);
-            int[] current = VersionParts(currentTag);
-            for (int i = 0; i < latest.Length; i++)
-            {
-                if (latest[i] > current[i])
-                    return true;
-                if (latest[i] < current[i])
-                    return false;
-            }
-
-            return false;
-        }
-
-        private static int[] VersionParts(string tag)
-        {
-            int[] parts = new[] { 0, 0, 0, 0 };
-            MatchCollection matches = Regex.Matches(tag ?? "", "\\d+");
-            for (int i = 0; i < parts.Length && i < matches.Count; i++)
-            {
-                int parsed;
-                if (Int32.TryParse(matches[i].Value, out parsed))
-                    parts[i] = parsed;
-            }
-            return parts;
         }
 
         private async Task DownloadAndStartUpdater(ReleaseInfo release)
@@ -204,10 +207,30 @@ namespace CK3MPS
 
             Log("INFO Downloading update asset: " + release.AssetName);
             using (WebClient client = CreateGitHubWebClient())
+            {
+                client.DownloadProgressChanged += delegate (object sender, DownloadProgressChangedEventArgs e)
+                {
+                    updateDownloadProgress.Value = Math.Max(0, Math.Min(100, e.ProgressPercentage));
+                };
                 await client.DownloadFileTaskAsync(new Uri(release.DownloadUrl), downloadPath);
+            }
 
             if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length == 0)
                 throw new InvalidOperationException("Downloaded update asset is empty.");
+
+            if (!String.IsNullOrEmpty(release.ChecksumUrl))
+            {
+                using (WebClient client = CreateGitHubWebClient())
+                {
+                    string checksumText = await client.DownloadStringTaskAsync(new Uri(release.ChecksumUrl));
+                    VerifyDownloadedSha256(downloadPath, checksumText);
+                    Log("OK   Update SHA256 checksum verified.");
+                }
+            }
+            else
+            {
+                Log("INFO No SHA256 checksum asset found for this release. Update will use downloaded file size validation only.");
+            }
 
             string script = Path.Combine(workDir, "apply-update.ps1");
             File.WriteAllText(script, BuildUpdaterScript(), Encoding.UTF8);
@@ -225,6 +248,31 @@ namespace CK3MPS
             Process.Start(info);
             Log("INFO Updater started. CK3MPS will close and restart after the executable is replaced.");
             Application.Exit();
+        }
+
+        private void VerifyDownloadedSha256(string path, string checksumText)
+        {
+            Match match = Regex.Match(checksumText ?? "", "[A-Fa-f0-9]{64}");
+            if (!match.Success)
+                throw new InvalidOperationException("SHA256 checksum asset did not contain a 64-character hash.");
+
+            string expected = match.Value.ToLowerInvariant();
+            string actual = Sha256File(path);
+            if (!String.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("SHA256 mismatch. Expected " + expected + ", got " + actual + ".");
+        }
+
+        private string Sha256File(string path)
+        {
+            using (SHA256 sha = SHA256.Create())
+            using (FileStream stream = File.OpenRead(path))
+            {
+                byte[] hash = sha.ComputeHash(stream);
+                StringBuilder sb = new StringBuilder();
+                foreach (byte b in hash)
+                    sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
         }
 
         private static string QuoteArg(string value)
@@ -248,6 +296,8 @@ namespace CK3MPS
             sb.AppendLine("    $Candidate = Get-ChildItem -LiteralPath $ExtractDir -Recurse -Filter 'CK3MPS.exe' | Select-Object -First 1 -ExpandProperty FullName");
             sb.AppendLine("    if (-not $Candidate) { throw 'CK3MPS.exe was not found in the release archive.' }");
             sb.AppendLine("}");
+            sb.AppendLine("$Backup = $Target + '.bak'");
+            sb.AppendLine("if (Test-Path -LiteralPath $Target) { Copy-Item -LiteralPath $Target -Destination $Backup -Force }");
             sb.AppendLine("Copy-Item -LiteralPath $Candidate -Destination $Target -Force");
             sb.AppendLine("Start-Process -FilePath $Target");
             sb.AppendLine("Start-Sleep -Seconds 2");

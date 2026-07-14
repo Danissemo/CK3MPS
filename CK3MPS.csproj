@@ -38,6 +38,7 @@
   <ItemGroup>
     <Compile Include="source\Start.cs" />
     <Compile Include="source\AppState.cs" />
+    <Compile Include="source\AppConfig.cs" />
     <Compile Include="source\MainWindow.cs" />
     <Compile Include="source\CheckOnly.cs" />
     <Compile Include="source\Launchers.cs" />
@@ -48,6 +49,7 @@
     <Compile Include="source\Readiness.cs" />
     <Compile Include="source\Helpers.cs" />
     <Compile Include="source\Updates.cs" />
+    <Compile Include="source\Utilities.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />

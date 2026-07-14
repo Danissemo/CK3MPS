@@ -33,11 +33,68 @@ namespace CK3MPS
             subtitle.Location = new Point(18, 48);
             Controls.Add(subtitle);
 
+            mainTabs.Location = new Point(16, 74);
+            mainTabs.Size = new Size(924, 488);
+            mainTabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            mainTabs.TabPages.Add(mainPage);
+            mainTabs.TabPages.Add(pathsPage);
+            mainTabs.TabPages.Add(logPage);
+            mainTabs.TabPages.Add(reportsPage);
+            mainTabs.TabPages.Add(advancedPage);
+            Controls.Add(mainTabs);
+
+            BuildMainTab();
+            BuildPathsTab();
+            BuildLogTab();
+            BuildReportsTab();
+            BuildAdvancedTab();
+
+            progress.Location = new Point(20, 574);
+            progress.Size = new Size(920, 24);
+            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            Controls.Add(progress);
+
+            statusLabel.Location = new Point(20, 604);
+            statusLabel.Size = new Size(920, 28);
+            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            statusLabel.Text = "Ready.";
+            Controls.Add(statusLabel);
+
+            stabilizeButton.Text = "Stabilize CK3";
+            stabilizeButton.Location = new Point(20, 642);
+            stabilizeButton.Size = new Size(150, 34);
+            stabilizeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            stabilizeButton.Click += delegate { RunStabilize(); };
+            Controls.Add(stabilizeButton);
+
+            checkButton.Text = "Check only";
+            checkButton.Location = new Point(184, 642);
+            checkButton.Size = new Size(130, 34);
+            checkButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            checkButton.Click += delegate { RunCheckOnly(); };
+            Controls.Add(checkButton);
+
+            openFolderButton.Text = "Open quarantine";
+            openFolderButton.Location = new Point(328, 642);
+            openFolderButton.Size = new Size(150, 34);
+            openFolderButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            openFolderButton.Click += delegate
+            {
+                if (!String.IsNullOrEmpty(lastQuarantine) && Directory.Exists(lastQuarantine))
+                    Process.Start("explorer.exe", lastQuarantine);
+                else if (Directory.Exists(ck3Docs))
+                    Process.Start("explorer.exe", ck3Docs);
+            };
+            Controls.Add(openFolderButton);
+        }
+
+        private void BuildMainTab()
+        {
             var presetLabel = new Label();
             presetLabel.Text = "Preset:";
             presetLabel.AutoSize = true;
-            presetLabel.Location = new Point(20, 78);
-            Controls.Add(presetLabel);
+            presetLabel.Location = new Point(12, 18);
+            mainPage.Controls.Add(presetLabel);
 
             presetBox.DropDownStyle = ComboBoxStyle.DropDownList;
             presetBox.Items.AddRange(new object[]
@@ -49,17 +106,17 @@ namespace CK3MPS
                 "Network only",
                 "Diagnostic only"
             });
-            presetBox.Location = new Point(76, 74);
+            presetBox.Location = new Point(68, 14);
             presetBox.Size = new Size(180, 24);
             presetBox.SelectedIndexChanged += delegate
             {
                 if (presetBox.SelectedItem != null)
                     ApplyPreset(presetBox.SelectedItem.ToString());
             };
-            Controls.Add(presetBox);
+            mainPage.Controls.Add(presetBox);
 
             selectAllButton.Text = "All";
-            selectAllButton.Location = new Point(270, 72);
+            selectAllButton.Location = new Point(262, 12);
             selectAllButton.Size = new Size(58, 28);
             selectAllButton.Click += delegate
             {
@@ -68,10 +125,10 @@ namespace CK3MPS
                 else
                     presetBox.SelectedItem = "Maximum";
             };
-            Controls.Add(selectAllButton);
+            mainPage.Controls.Add(selectAllButton);
 
             selectNoneButton.Text = "None";
-            selectNoneButton.Location = new Point(336, 72);
+            selectNoneButton.Location = new Point(328, 12);
             selectNoneButton.Size = new Size(70, 28);
             selectNoneButton.Click += delegate
             {
@@ -79,13 +136,13 @@ namespace CK3MPS
                 presetBox.SelectedIndex = -1;
                 statusLabel.Text = "No steps selected. Choose a preset or tick steps manually.";
             };
-            Controls.Add(selectNoneButton);
+            mainPage.Controls.Add(selectNoneButton);
 
             var graphicsLabel = new Label();
             graphicsLabel.Text = "Graphics:";
             graphicsLabel.AutoSize = true;
-            graphicsLabel.Location = new Point(420, 78);
-            Controls.Add(graphicsLabel);
+            graphicsLabel.Location = new Point(420, 18);
+            mainPage.Controls.Add(graphicsLabel);
 
             graphicsProfileBox.DropDownStyle = ComboBoxStyle.DropDownList;
             graphicsProfileBox.Items.AddRange(new object[]
@@ -95,66 +152,85 @@ namespace CK3MPS
                 "Quality",
                 "Keep current"
             });
-            graphicsProfileBox.Location = new Point(486, 74);
+            graphicsProfileBox.Location = new Point(486, 14);
             graphicsProfileBox.Size = new Size(140, 24);
-            Controls.Add(graphicsProfileBox);
+            mainPage.Controls.Add(graphicsProfileBox);
 
+            steps.CheckOnClick = true;
+            steps.Location = new Point(12, 52);
+            steps.Size = new Size(888, 372);
+            steps.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            mainPage.Controls.Add(steps);
+        }
+
+        private void BuildPathsTab()
+        {
             var gamePathLabel = new Label();
             gamePathLabel.Text = "Game folder:";
             gamePathLabel.AutoSize = true;
-            gamePathLabel.Location = new Point(20, 112);
-            Controls.Add(gamePathLabel);
+            gamePathLabel.Location = new Point(16, 28);
+            pathsPage.Controls.Add(gamePathLabel);
 
-            gamePathBox.Location = new Point(118, 108);
+            gamePathBox.Location = new Point(124, 24);
             gamePathBox.Size = new Size(630, 24);
             gamePathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             gamePathBox.ReadOnly = true;
-            Controls.Add(gamePathBox);
+            pathsPage.Controls.Add(gamePathBox);
 
             gamePathBrowseButton.Text = "Browse...";
-            gamePathBrowseButton.Location = new Point(758, 106);
+            gamePathBrowseButton.Location = new Point(766, 22);
             gamePathBrowseButton.Size = new Size(84, 28);
             gamePathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             gamePathBrowseButton.Click += delegate { BrowseForGameFolder(); };
-            Controls.Add(gamePathBrowseButton);
+            pathsPage.Controls.Add(gamePathBrowseButton);
 
-            gamePathStatusLabel.Location = new Point(852, 111);
+            gamePathStatusLabel.Location = new Point(858, 27);
             gamePathStatusLabel.Size = new Size(88, 20);
             gamePathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            Controls.Add(gamePathStatusLabel);
+            pathsPage.Controls.Add(gamePathStatusLabel);
 
             var settingsPathLabel = new Label();
             settingsPathLabel.Text = "Settings/saves:";
             settingsPathLabel.AutoSize = true;
-            settingsPathLabel.Location = new Point(20, 144);
-            Controls.Add(settingsPathLabel);
+            settingsPathLabel.Location = new Point(16, 64);
+            pathsPage.Controls.Add(settingsPathLabel);
 
-            settingsPathBox.Location = new Point(118, 140);
+            settingsPathBox.Location = new Point(124, 60);
             settingsPathBox.Size = new Size(630, 24);
             settingsPathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             settingsPathBox.ReadOnly = true;
-            Controls.Add(settingsPathBox);
+            pathsPage.Controls.Add(settingsPathBox);
 
             settingsPathBrowseButton.Text = "Browse...";
-            settingsPathBrowseButton.Location = new Point(758, 138);
+            settingsPathBrowseButton.Location = new Point(766, 58);
             settingsPathBrowseButton.Size = new Size(84, 28);
             settingsPathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             settingsPathBrowseButton.Click += delegate { BrowseForSettingsFolder(); };
-            Controls.Add(settingsPathBrowseButton);
+            pathsPage.Controls.Add(settingsPathBrowseButton);
 
-            settingsPathStatusLabel.Location = new Point(852, 143);
+            settingsPathStatusLabel.Location = new Point(858, 63);
             settingsPathStatusLabel.Size = new Size(88, 20);
             settingsPathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            Controls.Add(settingsPathStatusLabel);
+            pathsPage.Controls.Add(settingsPathStatusLabel);
 
-            steps.CheckOnClick = true;
-            steps.Location = new Point(20, 176);
-            steps.Size = new Size(430, 348);
-            steps.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
-            Controls.Add(steps);
+            resetPathsButton.Text = "Auto-detect paths";
+            resetPathsButton.Location = new Point(124, 100);
+            resetPathsButton.Size = new Size(140, 32);
+            resetPathsButton.Click += delegate { ResetPathsToAutoDetect(); };
+            pathsPage.Controls.Add(resetPathsButton);
 
-            logBox.Location = new Point(470, 176);
-            logBox.Size = new Size(470, 348);
+            var pathsHint = new Label();
+            pathsHint.Text = "Game folder must contain binaries\\ck3.exe. Settings/saves should be the Crusader Kings III folder under Documents.";
+            pathsHint.Location = new Point(124, 148);
+            pathsHint.Size = new Size(720, 44);
+            pathsHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            pathsPage.Controls.Add(pathsHint);
+        }
+
+        private void BuildLogTab()
+        {
+            logBox.Location = new Point(8, 8);
+            logBox.Size = new Size(896, 428);
             logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             logBox.Multiline = true;
             logBox.ScrollBars = RichTextBoxScrollBars.Both;
@@ -164,65 +240,92 @@ namespace CK3MPS
             logBox.BackColor = Color.White;
             logBox.BorderStyle = BorderStyle.FixedSingle;
             logBox.DetectUrls = false;
-            Controls.Add(logBox);
+            logPage.Controls.Add(logBox);
+        }
 
-            progress.Location = new Point(20, 540);
-            progress.Size = new Size(920, 24);
-            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            Controls.Add(progress);
-
-            statusLabel.Location = new Point(20, 574);
-            statusLabel.Size = new Size(920, 28);
-            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            statusLabel.Text = "Ready.";
-            Controls.Add(statusLabel);
-
-            stabilizeButton.Text = "Stabilize CK3";
-            stabilizeButton.Location = new Point(20, 615);
-            stabilizeButton.Size = new Size(150, 34);
-            stabilizeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            stabilizeButton.Click += delegate { RunStabilize(); };
-            Controls.Add(stabilizeButton);
-
-            checkButton.Text = "Check only";
-            checkButton.Location = new Point(184, 615);
-            checkButton.Size = new Size(130, 34);
-            checkButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            checkButton.Click += delegate { RunCheckOnly(); };
-            Controls.Add(checkButton);
-
-            openFolderButton.Text = "Open quarantine";
-            openFolderButton.Location = new Point(328, 615);
-            openFolderButton.Size = new Size(150, 34);
-            openFolderButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            openFolderButton.Click += delegate
-            {
-                if (!String.IsNullOrEmpty(lastQuarantine) && Directory.Exists(lastQuarantine))
-                    Process.Start("explorer.exe", lastQuarantine);
-                else if (Directory.Exists(ck3Docs))
-                    Process.Start("explorer.exe", ck3Docs);
-            };
-            Controls.Add(openFolderButton);
-
+        private void BuildReportsTab()
+        {
             openReportsButton.Text = "Open reports";
-            openReportsButton.Location = new Point(492, 615);
+            openReportsButton.Location = new Point(16, 18);
             openReportsButton.Size = new Size(130, 34);
-            openReportsButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            openReportsButton.Click += delegate
+            openReportsButton.Click += delegate { OpenReportsLocation(); };
+            reportsPage.Controls.Add(openReportsButton);
+
+            exportSupportButton.Text = "Export support package";
+            exportSupportButton.Location = new Point(160, 18);
+            exportSupportButton.Size = new Size(170, 34);
+            exportSupportButton.Click += delegate { ExportSupportPackage(); };
+            reportsPage.Controls.Add(exportSupportButton);
+
+            refreshHistoryButton.Text = "Refresh history";
+            refreshHistoryButton.Location = new Point(344, 18);
+            refreshHistoryButton.Size = new Size(130, 34);
+            refreshHistoryButton.Click += delegate { RefreshHistoryView(); };
+            reportsPage.Controls.Add(refreshHistoryButton);
+
+            historyBox.Location = new Point(16, 66);
+            historyBox.Size = new Size(888, 370);
+            historyBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            historyBox.Multiline = true;
+            historyBox.ReadOnly = true;
+            historyBox.ScrollBars = ScrollBars.Both;
+            historyBox.WordWrap = false;
+            historyBox.Font = new Font("Consolas", 9F);
+            reportsPage.Controls.Add(historyBox);
+        }
+
+        private void BuildAdvancedTab()
+        {
+            updateOnStartupBox.Text = "Check for updates on startup";
+            updateOnStartupBox.Location = new Point(18, 22);
+            updateOnStartupBox.Size = new Size(260, 24);
+            updateOnStartupBox.CheckedChanged += delegate
             {
-                OpenReportsLocation();
+                updateCheckOnStartup = updateOnStartupBox.Checked;
+                SaveAppConfig();
             };
-            Controls.Add(openReportsButton);
+            advancedPage.Controls.Add(updateOnStartupBox);
+
+            portableModeBox.Text = "Portable mode";
+            portableModeBox.Location = new Point(18, 56);
+            portableModeBox.Size = new Size(180, 24);
+            portableModeBox.CheckedChanged += delegate
+            {
+                portableMode = portableModeBox.Checked;
+                SaveAppConfig();
+            };
+            advancedPage.Controls.Add(portableModeBox);
+
+            var logVerbosityLabel = new Label();
+            logVerbosityLabel.Text = "Log verbosity:";
+            logVerbosityLabel.AutoSize = true;
+            logVerbosityLabel.Location = new Point(18, 96);
+            advancedPage.Controls.Add(logVerbosityLabel);
+
+            logVerbosityBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            logVerbosityBox.Items.AddRange(new object[] { "Quiet", "Normal", "Verbose" });
+            logVerbosityBox.Location = new Point(124, 92);
+            logVerbosityBox.Size = new Size(130, 24);
+            logVerbosityBox.SelectedIndexChanged += delegate
+            {
+                if (logVerbosityBox.SelectedItem != null)
+                {
+                    logVerbosity = Convert.ToString(logVerbosityBox.SelectedItem);
+                    SaveAppConfig();
+                }
+            };
+            advancedPage.Controls.Add(logVerbosityBox);
 
             updateButton.Text = "Check updates";
-            updateButton.Location = new Point(636, 615);
+            updateButton.Location = new Point(18, 136);
             updateButton.Size = new Size(130, 34);
-            updateButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            updateButton.Click += delegate
-            {
-                CheckForUpdatesManual();
-            };
-            Controls.Add(updateButton);
+            updateButton.Click += delegate { CheckForUpdatesManual(); };
+            advancedPage.Controls.Add(updateButton);
+
+            updateDownloadProgress.Location = new Point(164, 142);
+            updateDownloadProgress.Size = new Size(280, 22);
+            updateDownloadProgress.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            advancedPage.Controls.Add(updateDownloadProgress);
         }
 
         private void FillSteps()
@@ -284,10 +387,18 @@ namespace CK3MPS
                 Log("Preset: " + NullText(Convert.ToString(presetBox.SelectedItem)));
                 Log("Selected steps: " + CountSelectedSteps());
 
+                if (!ValidateBeforeRun())
+                {
+                    statusLabel.Text = "Stopped: fix folder paths before running Stabilize.";
+                    AppendRunHistory("stabilize", "stopped_path_validation");
+                    return;
+                }
+
                 if (CountSelectedSteps() == 0)
                 {
                     statusLabel.Text = "No steps selected.";
                     Log("No steps selected. Choose a preset or tick steps manually.");
+                    AppendRunHistory("stabilize", "stopped_no_steps");
                     return;
                 }
 
@@ -295,6 +406,7 @@ namespace CK3MPS
                 {
                     MessageBox.Show("Close CK3 and Paradox Launcher first. Steam may stay open.", "CK3 is running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     Log("Stopped: CK3 or Paradox Launcher is running.");
+                    AppendRunHistory("stabilize", "stopped_game_running");
                     return;
                 }
 
@@ -337,17 +449,20 @@ namespace CK3MPS
                 {
                     statusLabel.Text = "Done. CK3 profile is prepared for stable vanilla multiplayer.";
                     Log("Done. Use host local save, no hotjoin, speed 1-2 after load.");
+                    AppendRunHistory("stabilize", "ready");
                 }
                 else
                 {
                     statusLabel.Text = "Completed with blockers. Fix failed readiness checks before serious MP.";
                     Log("RESULT Completed with blockers. Fix failed readiness checks before serious MP.");
+                    AppendRunHistory("stabilize", "completed_with_blockers");
                 }
             }
             catch (Exception ex)
             {
                 statusLabel.Text = "Failed: " + ex.Message;
                 Log("ERROR: " + ex);
+                AppendRunHistory("stabilize", "failed");
                 MessageBox.Show(ex.Message, "CK3MPS", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
@@ -366,6 +481,13 @@ namespace CK3MPS
             {
                 LogSection("Check only started");
                 Log("Mode: read-only scan of every checklist item. No files or settings will be changed.");
+                if (!ValidateBeforeRun())
+                {
+                    statusLabel.Text = "Check stopped: fix folder paths first.";
+                    AppendRunHistory("check_only", "stopped_path_validation");
+                    return;
+                }
+
                 for (int i = 0; i < steps.Items.Count; i++)
                     RunCheckStep(i);
 
@@ -373,10 +495,12 @@ namespace CK3MPS
                 RunReadinessChecks(false);
                 WriteCheckOnlyReport();
                 statusLabel.Text = "Check complete. Every checklist item was checked in read-only mode.";
+                AppendRunHistory("check_only", lastReadinessFailures == 0 ? "ready" : "completed_with_blockers");
             }
             catch (Exception ex)
             {
                 Log("ERROR: " + ex.Message);
+                AppendRunHistory("check_only", "failed");
             }
             finally
             {

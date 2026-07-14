@@ -23,12 +23,20 @@ namespace CK3MPS
         private readonly CheckedListBox steps = new CheckedListBox();
         private readonly ProgressBar progress = new ProgressBar();
         private readonly RichTextBox logBox = new RichTextBox();
+        private readonly TabControl mainTabs = new TabControl();
+        private readonly TabPage mainPage = new TabPage("Main");
+        private readonly TabPage pathsPage = new TabPage("Paths");
+        private readonly TabPage logPage = new TabPage("Log");
+        private readonly TabPage reportsPage = new TabPage("Reports");
+        private readonly TabPage advancedPage = new TabPage("Advanced");
         private readonly ComboBox presetBox = new ComboBox();
         private readonly ComboBox graphicsProfileBox = new ComboBox();
         private readonly Button stabilizeButton = new Button();
         private readonly Button checkButton = new Button();
         private readonly Button openFolderButton = new Button();
         private readonly Button openReportsButton = new Button();
+        private readonly Button exportSupportButton = new Button();
+        private readonly Button refreshHistoryButton = new Button();
         private readonly Button updateButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
@@ -36,24 +44,33 @@ namespace CK3MPS
         private readonly TextBox settingsPathBox = new TextBox();
         private readonly Button gamePathBrowseButton = new Button();
         private readonly Button settingsPathBrowseButton = new Button();
+        private readonly Button resetPathsButton = new Button();
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
+        private readonly TextBox historyBox = new TextBox();
+        private readonly CheckBox updateOnStartupBox = new CheckBox();
+        private readonly CheckBox portableModeBox = new CheckBox();
+        private readonly ComboBox logVerbosityBox = new ComboBox();
+        private readonly ProgressBar updateDownloadProgress = new ProgressBar();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
 
         private string ck3Docs;
         private readonly string stabilizerRoot;
-        private readonly string steamRoot;
+        private string steamRoot;
         private string ck3Install;
         private string ck3Bin;
-        private readonly string appManifest;
-        private readonly string localConfig;
-        private readonly string sharedConfig;
+        private string appManifest;
+        private string localConfig;
+        private string sharedConfig;
 
         private string lastQuarantine;
         private DateTime lastSettingsGuardRepairUtc = DateTime.MinValue;
         private bool settingsGuardActive;
         private int lastReadinessFailures;
+        private bool updateCheckOnStartup = true;
+        private bool portableMode;
+        private string logVerbosity = "Normal";
 
         private readonly string[] suspectBinaryFiles = new[]
         {
@@ -105,23 +122,19 @@ namespace CK3MPS
         {
             Text = "CK3MPS " + AppVersion;
             Width = 980;
-            Height = 700;
-            MinimumSize = new Size(860, 600);
+            Height = 760;
+            MinimumSize = new Size(900, 700);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9F);
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
             ck3Docs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "Crusader Kings III");
             stabilizerRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "CK3MPS");
-            steamRoot = DetectSteamRoot();
-            appManifest = DetectManifest();
-            ck3Install = DetectInstallPath();
-            LoadPathOverrides();
-            ck3Bin = String.IsNullOrEmpty(ck3Install) ? "" : Path.Combine(ck3Install, "binaries");
-            localConfig = DetectLocalConfig();
-            sharedConfig = DetectSharedConfig();
+            AutoDetectPaths();
+            LoadAppConfig();
 
             BuildUi();
+            UpdateSettingsUi();
             UpdatePathStatusIndicators();
             EnsureStabilizerRoot();
             MigrateLegacyStabilizerState();
@@ -141,7 +154,11 @@ namespace CK3MPS
             Log("Steam: " + NullText(steamRoot));
             Log((!String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install) ? "OK   " : "WARN ") + "CK3 game folder: " + NullText(ck3Install));
             Log("Launch options file: " + NullText(localConfig));
-            Shown += delegate { CheckForUpdatesOnStartup(); };
+            Shown += delegate
+            {
+                RefreshHistoryView();
+                CheckForUpdatesOnStartup();
+            };
         }
     }
 }

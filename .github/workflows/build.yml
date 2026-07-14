@@ -24,6 +24,10 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1
 
+      - name: Test
+        shell: pwsh
+        run: ./scripts/test.ps1
+
       - name: Package release zip
         shell: pwsh
         run: |
