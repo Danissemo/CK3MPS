@@ -25,6 +25,7 @@ namespace CK3MPS
         private readonly Panel checklistContentPanel = new Panel();
         private readonly VScrollBar checklistScrollBar = new VScrollBar();
         private readonly ToolTip stepToolTip = new ToolTip();
+        private Control activeStepToolTipControl;
         private readonly List<StepGroupUi> stepGroups = new List<StepGroupUi>();
         private readonly List<StepRowUi> stepRows = new List<StepRowUi>();
         private bool updatingChecklistUi;
@@ -55,8 +56,6 @@ namespace CK3MPS
         private readonly Button settingsPathBrowseButton = new Button();
         private readonly Button openGamePathButton = new Button();
         private readonly Button openSettingsPathButton = new Button();
-        private readonly Button resetGamePathButton = new Button();
-        private readonly Button resetSettingsPathButton = new Button();
         private readonly Button resetPathsButton = new Button();
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
@@ -101,6 +100,7 @@ namespace CK3MPS
         private int lastReadinessFailures;
         private bool updateCheckOnStartup = true;
         private bool portableMode;
+        private bool portableModeChangeInProgress;
         private string logVerbosity = "Normal";
         private bool gamePathOverrideActive;
         private bool settingsPathOverrideActive;

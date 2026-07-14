@@ -169,7 +169,7 @@ namespace CK3MPS
             stepToolTip.SetToolTip(row.HelpButton, row.HelpText);
             row.HelpButton.Click += delegate
             {
-                stepToolTip.Show(row.HelpText, row.HelpButton, 0, row.HelpButton.Height + 2, 8000);
+                ShowStepToolTip(row.HelpButton, row.HelpText);
             };
             row.RowPanel.Controls.Add(row.HelpButton);
 
@@ -186,6 +186,20 @@ namespace CK3MPS
             HookChecklistWheel(row.TitleLabel);
 
             return row;
+        }
+
+        private void ShowStepToolTip(Control target, string text)
+        {
+            if (target == null || String.IsNullOrEmpty(text))
+                return;
+
+            if (activeStepToolTipControl != null)
+                stepToolTip.Hide(activeStepToolTipControl);
+
+            activeStepToolTipControl = target;
+            stepToolTip.Active = false;
+            stepToolTip.Active = true;
+            stepToolTip.Show(text, target, 0, target.Height + 2, 8000);
         }
 
         private void ToggleStepGroup(StepGroupUi group)

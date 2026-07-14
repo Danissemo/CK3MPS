@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -37,36 +38,6 @@ namespace CK3MPS
             UpdatePathStatusIndicators();
             statusLabel.Text = BuildResetSummary(oldGame, ck3Install, oldSettings, ck3Docs, true, true);
             Log("INFO Paths reset to automatic detection.");
-        }
-
-        private void ResetGamePathToAutoDetect()
-        {
-            string oldPath = ck3Install;
-            steamRoot = DetectSteamRoot();
-            appManifest = DetectManifest();
-            ck3Install = DetectInstallPath();
-            gamePathOverrideActive = false;
-            RefreshDerivedPaths();
-            SaveAppConfig();
-            UpdatePathStatusIndicators();
-            statusLabel.Text = String.Equals(oldPath, ck3Install, StringComparison.OrdinalIgnoreCase)
-                ? "Game folder was already using the detected Steam install path."
-                : "Game folder reset to detected Steam install path.";
-            Log("INFO CK3 game folder reset to automatic detection.");
-        }
-
-        private void ResetSettingsPathToDefault()
-        {
-            string oldPath = ck3Docs;
-            ck3Docs = Ck3PathUtilities.DefaultSettingsFolder();
-            settingsPathOverrideActive = false;
-            RefreshDerivedPaths();
-            SaveAppConfig();
-            UpdatePathStatusIndicators();
-            statusLabel.Text = String.Equals(oldPath, ck3Docs, StringComparison.OrdinalIgnoreCase)
-                ? "Settings/saves folder was already using the default Documents location."
-                : "Settings/saves folder reset to default Documents location.";
-            Log("INFO CK3 settings/saves folder reset to default Documents location.");
         }
 
         private void RefreshStabilizerRoot()
@@ -227,7 +198,7 @@ namespace CK3MPS
                     File.Delete(path);
         }
 
-        private void SetPortableMode(bool enabled)
+        private async Task SetPortableModeAsync(bool enabled)
         {
             if (portableMode == enabled && String.Equals(stabilizerRoot, RuntimeModeUtilities.ResolveStabilizerRoot(nonPortableStabilizerRoot, portableStabilizerRoot, enabled), StringComparison.OrdinalIgnoreCase))
                 return;
@@ -235,20 +206,40 @@ namespace CK3MPS
             string oldRoot = stabilizerRoot;
             string oldLiveLogPath = liveLogFilePath;
 
-            portableMode = enabled;
-            RefreshStabilizerRoot();
-            string newRoot = stabilizerRoot;
+            portableModeChangeInProgress = true;
+            portableModeBox.Enabled = false;
+            try
+            {
+                portableMode = enabled;
+                RefreshStabilizerRoot();
+                string newRoot = stabilizerRoot;
+                statusLabel.Text = "Moving CK3MPS state for portable mode...";
 
-            MoveStabilizerRootContents(oldRoot, newRoot);
-            RelinkLiveLogPath(oldRoot, newRoot, oldLiveLogPath);
-            SaveAppConfig();
+                await Task.Run(delegate { MoveStabilizerRootContents(oldRoot, newRoot); });
 
-            statusLabel.Text = enabled
-                ? "Portable mode enabled. CK3MPS state was moved next to the exe."
-                : "Portable mode disabled. CK3MPS state was moved back to Documents.";
-            Log("INFO Portable mode " + (enabled ? "enabled" : "disabled") + ". State root: " + newRoot);
-            LogVerbose("Portable mode migration: " + oldRoot + " -> " + newRoot);
-            LogVerbose("Settings file: " + AppConfigFile());
+                RelinkLiveLogPath(oldRoot, newRoot, oldLiveLogPath);
+                SaveAppConfig();
+
+                statusLabel.Text = enabled
+                    ? "Portable mode enabled. CK3MPS state was moved next to the exe."
+                    : "Portable mode disabled. CK3MPS state was moved back to Documents.";
+                Log("INFO Portable mode " + (enabled ? "enabled" : "disabled") + ". State root: " + newRoot);
+                LogVerbose("Portable mode migration: " + oldRoot + " -> " + newRoot);
+                LogVerbose("Settings file: " + AppConfigFile());
+            }
+            catch
+            {
+                portableMode = !enabled;
+                RefreshStabilizerRoot();
+                UpdateSettingsUi();
+                statusLabel.Text = "Portable mode change failed.";
+                throw;
+            }
+            finally
+            {
+                portableModeChangeInProgress = false;
+                portableModeBox.Enabled = true;
+            }
         }
 
         private void MoveStabilizerRootContents(string sourceRoot, string targetRoot)

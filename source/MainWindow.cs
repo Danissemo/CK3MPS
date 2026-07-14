@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -518,11 +519,19 @@ namespace CK3MPS
             portableModeBox.Text = "Portable mode";
             portableModeBox.Location = new Point(18, 56);
             portableModeBox.Size = new Size(180, 24);
-            portableModeBox.CheckedChanged += delegate
+            portableModeBox.CheckedChanged += async delegate
             {
-                if (updatingSettingsUi)
+                if (updatingSettingsUi || portableModeChangeInProgress)
                     return;
-                SetPortableMode(portableModeBox.Checked);
+                try
+                {
+                    await SetPortableModeAsync(portableModeBox.Checked);
+                }
+                catch (Exception ex)
+                {
+                    Log("ERROR Portable mode change failed: " + ex.Message);
+                    MessageBox.Show(ex.Message, "CK3MPS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
             advancedPage.Controls.Add(portableModeBox);
 

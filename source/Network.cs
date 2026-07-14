@@ -457,18 +457,49 @@ namespace CK3MPS
             firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Inbound\""));
             firewallBefore.AppendLine(RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Outbound\""));
             RecordSystemSnapshot("Firewall rules before CK3MPS firewall step", "netsh advfirewall firewall show CK3MPS/legacy CK3 rules", firewallBefore.ToString());
-            string[] rules = new[]
-            {
-                "advfirewall firewall delete rule name=\"CK3 Stabilizer - CK3 Inbound\"",
-                "advfirewall firewall delete rule name=\"CK3 Stabilizer - CK3 Outbound\"",
-                "advfirewall firewall delete rule name=\"CK3MPS - CK3 Inbound\"",
-                "advfirewall firewall delete rule name=\"CK3MPS - CK3 Outbound\"",
-                "advfirewall firewall add rule name=\"CK3MPS - CK3 Inbound\" dir=in action=allow program=" + quotedExe + " enable=yes profile=any",
-                "advfirewall firewall add rule name=\"CK3MPS - CK3 Outbound\" dir=out action=allow program=" + quotedExe + " enable=yes profile=any"
-            };
+            EnsureFirewallRuleMatches("CK3MPS - CK3 Inbound", "in", quotedExe);
+            EnsureFirewallRuleMatches("CK3MPS - CK3 Outbound", "out", quotedExe);
+            DeleteFirewallRuleIfPresent("CK3 Stabilizer - CK3 Inbound");
+            DeleteFirewallRuleIfPresent("CK3 Stabilizer - CK3 Outbound");
+        }
 
-            foreach (string args in rules)
-                RunCommand("netsh.exe", args, true);
+        private void EnsureFirewallRuleMatches(string ruleName, string direction, string quotedExe)
+        {
+            string current = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"" + ruleName + "\"");
+            if (FirewallRuleOutputLooksPresent(current) && FirewallRuleMatches(current, quotedExe, direction))
+            {
+                Log("OK   Firewall rule already matches: " + ruleName);
+                return;
+            }
+
+            if (FirewallRuleOutputLooksPresent(current))
+            {
+                RunCommand("netsh.exe", "advfirewall firewall delete rule name=\"" + ruleName + "\"", true);
+                Log("INFO Firewall rule refreshed: " + ruleName);
+            }
+
+            RunCommand("netsh.exe", "advfirewall firewall add rule name=\"" + ruleName + "\" dir=" + direction + " action=allow program=" + quotedExe + " enable=yes profile=any", true);
+        }
+
+        private void DeleteFirewallRuleIfPresent(string ruleName)
+        {
+            string current = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"" + ruleName + "\"");
+            if (!FirewallRuleOutputLooksPresent(current))
+                return;
+            RunCommand("netsh.exe", "advfirewall firewall delete rule name=\"" + ruleName + "\"", true);
+        }
+
+        private bool FirewallRuleMatches(string output, string quotedExe, string direction)
+        {
+            if (!FirewallRuleOutputLooksPresent(output))
+                return false;
+
+            string normalizedExe = quotedExe.Trim('"');
+            return output.IndexOf(normalizedExe, StringComparison.OrdinalIgnoreCase) >= 0
+                && output.IndexOf("Direction:", StringComparison.OrdinalIgnoreCase) >= 0
+                && output.IndexOf(direction.Equals("in", StringComparison.OrdinalIgnoreCase) ? "In" : "Out", StringComparison.OrdinalIgnoreCase) >= 0
+                && output.IndexOf("Action:", StringComparison.OrdinalIgnoreCase) >= 0
+                && output.IndexOf("Allow", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void CheckOverlaysAndVpn()

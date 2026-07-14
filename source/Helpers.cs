@@ -398,13 +398,6 @@ namespace CK3MPS
             return info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") + " | " + FileSizeOrMissing(path) + " | " + FileHashOrMissing(path);
         }
 
-        private void ResetChecks()
-        {
-            for (int i = 0; i < steps.Items.Count; i++)
-                SetStepChecked(i, false);
-            RefreshAllGroupStates();
-        }
-
         private void ApplyPreset(string preset)
         {
             if (String.IsNullOrEmpty(preset) || steps.Items.Count == 0)
@@ -519,8 +512,6 @@ namespace CK3MPS
             previewButton.Enabled = !busy;
             openGamePathButton.Enabled = !busy;
             openSettingsPathButton.Enabled = !busy;
-            resetGamePathButton.Enabled = !busy;
-            resetSettingsPathButton.Enabled = !busy;
             updateButton.Enabled = !busy;
             gamePathBrowseButton.Enabled = !busy;
             settingsPathBrowseButton.Enabled = !busy;
@@ -529,6 +520,7 @@ namespace CK3MPS
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
             graphicsProfileBox.Enabled = !busy;
+            portableModeBox.Enabled = !busy && !portableModeChangeInProgress;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
 

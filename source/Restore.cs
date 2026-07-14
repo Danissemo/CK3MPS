@@ -196,6 +196,54 @@ namespace CK3MPS
             return "(missing)";
         }
 
+        private bool FileContentsEqual(string left, string right)
+        {
+            if (!File.Exists(left) || !File.Exists(right))
+                return false;
+
+            FileInfo leftInfo = new FileInfo(left);
+            FileInfo rightInfo = new FileInfo(right);
+            if (leftInfo.Length != rightInfo.Length)
+                return false;
+
+            return String.Equals(FileHashOrMissing(left), FileHashOrMissing(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool DirectoryContentsEqual(string left, string right)
+        {
+            if (!Directory.Exists(left) || !Directory.Exists(right))
+                return false;
+
+            string[] leftEntries = Directory.GetFileSystemEntries(left, "*", SearchOption.AllDirectories);
+            string[] rightEntries = Directory.GetFileSystemEntries(right, "*", SearchOption.AllDirectories);
+            if (leftEntries.Length != rightEntries.Length)
+                return false;
+
+            Dictionary<string, string> rightMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in rightEntries)
+            {
+                string relative = path.Substring(right.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                rightMap[relative] = path;
+            }
+
+            foreach (string path in leftEntries)
+            {
+                string relative = path.Substring(left.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string other;
+                if (!rightMap.TryGetValue(relative, out other))
+                    return false;
+
+                bool leftFile = File.Exists(path);
+                bool rightFile = File.Exists(other);
+                if (leftFile != rightFile)
+                    return false;
+                if (leftFile && !FileContentsEqual(path, other))
+                    return false;
+            }
+
+            return true;
+        }
+
         private List<RestoreEntry> ReadRestoreEntries()
         {
             List<RestoreEntry> entries = new List<RestoreEntry>();
@@ -838,14 +886,16 @@ namespace CK3MPS
             if (IsSteamLocalConfigEntry(entry))
             {
                 bool changed = RemoveSteamLaunchOptionsOverride();
-                RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam LaunchOptions override for CK3.", beforeNow, NullText(ExtractSteamLaunchOptions()), changed ? "restored_default" : "already_default");
+                if (changed)
+                    RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam LaunchOptions override for CK3.", beforeNow, NullText(ExtractSteamLaunchOptions()), "restored_default");
                 return;
             }
 
             if (IsSteamSharedConfigEntry(entry))
             {
                 bool changed = RemoveSteamCloudOverride();
-                RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam Cloud override for CK3.", beforeNow, SteamCloudDisabledOrUnknownQuiet() ? "cloud override removed/unknown" : "cloud flag visible", changed ? "restored_default" : "already_default");
+                if (changed)
+                    RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam Cloud override for CK3.", beforeNow, SteamCloudDisabledOrUnknownQuiet() ? "cloud override removed/unknown" : "cloud flag visible", "restored_default");
                 return;
             }
 
@@ -857,8 +907,9 @@ namespace CK3MPS
                 ParseRegistryRestorePath(entry.SourcePath, out root, out subKey, out name);
                 using (RegistryKey key = root.OpenSubKey(subKey, true))
                 {
-                    if (key != null)
-                        key.DeleteValue(name, false);
+                    if (key == null || key.GetValue(name, null) == null)
+                        return;
+                    key.DeleteValue(name, false);
                 }
                 RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restored registry value: " + entry.SourcePath, beforeNow, "(missing/default)", "restored_default");
                 return;
@@ -874,6 +925,8 @@ namespace CK3MPS
                 BackupForRestore(entry.SourcePath, "Pre-default-restore backup of current directory: " + entry.SourcePath);
                 Directory.Delete(entry.SourcePath, true);
             }
+            else
+                return;
 
             RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed CK3/Launcher override so owner can recreate defaults: " + entry.SourcePath, beforeNow, "(missing/default)", "restored_default");
         }
@@ -886,6 +939,8 @@ namespace CK3MPS
             string dir = Path.GetDirectoryName(entry.SourcePath);
             if (!String.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
+            if (File.Exists(entry.SourcePath) && FileContentsEqual(entry.SourcePath, entry.BackupPath))
+                return;
             if (File.Exists(entry.SourcePath))
                 BackupForRestore(entry.SourcePath, "Pre-restore backup of current file: " + entry.SourcePath);
             File.Copy(entry.BackupPath, entry.SourcePath, true);
@@ -895,10 +950,7 @@ namespace CK3MPS
         private void RestoreCreatedFileEntry(RestoreEntry entry)
         {
             if (!File.Exists(entry.SourcePath))
-            {
-                RecordRestoreEntry("restore_action", entry.SourcePath, "", "Created file was already missing: " + entry.SourcePath, entry.Before, "(missing)", "restored");
                 return;
-            }
 
             BackupForRestore(entry.SourcePath, "Pre-restore backup of created file before deleting it: " + entry.SourcePath);
             File.Delete(entry.SourcePath);
@@ -910,6 +962,8 @@ namespace CK3MPS
             if (!Directory.Exists(entry.BackupPath))
                 throw new DirectoryNotFoundException("Backup directory is missing: " + entry.BackupPath);
 
+            if (Directory.Exists(entry.SourcePath) && DirectoryContentsEqual(entry.SourcePath, entry.BackupPath))
+                return;
             if (Directory.Exists(entry.SourcePath))
             {
                 BackupForRestore(entry.SourcePath, "Pre-restore backup of current directory: " + entry.SourcePath);
@@ -927,6 +981,9 @@ namespace CK3MPS
             ParseRegistryRestorePath(entry.SourcePath, out root, out subKey, out name);
 
             string beforeNow = ReadRegistryRestoreValue(entry.SourcePath);
+            string targetValue = entry.Before == "(missing)" || String.IsNullOrEmpty(entry.Before) ? "(missing)" : entry.Before;
+            if (String.Equals(beforeNow, targetValue, StringComparison.Ordinal))
+                return;
             if (entry.Before == "(missing)" || String.IsNullOrEmpty(entry.Before))
             {
                 using (RegistryKey key = root.OpenSubKey(subKey, true))
