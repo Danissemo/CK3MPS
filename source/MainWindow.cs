@@ -173,15 +173,25 @@ namespace CK3MPS
             checklistPanel.Location = new Point(12, 52);
             checklistPanel.Size = new Size(446, 372);
             checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
-            checklistPanel.AutoScroll = true;
             checklistPanel.BorderStyle = BorderStyle.FixedSingle;
+            checklistPanel.TabStop = true;
+            checklistPanel.MouseWheel += delegate(object sender, MouseEventArgs e) { ScrollChecklistWheel(e.Delta); };
 
             checklistContentPanel.Location = new Point(0, 0);
             checklistContentPanel.Size = new Size(426, 372);
             checklistContentPanel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             checklistPanel.Controls.Add(checklistContentPanel);
 
-            checklistPanel.Resize += delegate { ResizeChecklistRows(); };
+            checklistScrollBar.Width = SystemInformation.VerticalScrollBarWidth;
+            checklistScrollBar.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            checklistScrollBar.Scroll += delegate { UpdateChecklistScrollPosition(); };
+            checklistPanel.Controls.Add(checklistScrollBar);
+
+            checklistPanel.Resize += delegate
+            {
+                ResizeChecklistRows();
+                LayoutChecklistViewport();
+            };
             mainPage.Controls.Add(checklistPanel);
 
             ConfigureLogView(logBox);

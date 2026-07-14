@@ -75,6 +75,11 @@ namespace CK3MPS
             group.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             group.Header.Controls.Add(group.TitleLabel);
 
+            HookChecklistWheel(group.Header);
+            HookChecklistWheel(group.ToggleButton);
+            HookChecklistWheel(group.CheckBox);
+            HookChecklistWheel(group.TitleLabel);
+
             checklistContentPanel.Controls.Add(group.Header);
 
             foreach (int index in indices)
@@ -103,6 +108,7 @@ namespace CK3MPS
                     row.TitleLabel.Width = Math.Max(100, width - row.TitleLabel.Left - 8);
                 }
             }
+            LayoutChecklistViewport();
             RelayoutChecklistGroups();
         }
 
@@ -123,9 +129,10 @@ namespace CK3MPS
                 y += 4;
             }
 
-            int contentHeight = Math.Max(checklistPanel.ClientSize.Height, y + 4);
-            checklistContentPanel.Size = new Size(ChecklistContentWidth(), contentHeight);
-            checklistPanel.AutoScrollMinSize = new Size(checklistContentPanel.Width + 4, contentHeight);
+            int contentHeight = Math.Max(0, y + 4);
+            checklistContentPanel.Size = new Size(ChecklistContentWidth(), Math.Max(checklistPanel.ClientSize.Height, contentHeight));
+            SyncChecklistScrollBar(contentHeight);
+            UpdateChecklistScrollPosition();
         }
 
         private StepRowUi CreateStepRow(int index)
@@ -172,6 +179,11 @@ namespace CK3MPS
             row.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             stepToolTip.SetToolTip(row.TitleLabel, row.HelpText);
             row.RowPanel.Controls.Add(row.TitleLabel);
+
+            HookChecklistWheel(row.RowPanel);
+            HookChecklistWheel(row.CheckBox);
+            HookChecklistWheel(row.HelpButton);
+            HookChecklistWheel(row.TitleLabel);
 
             return row;
         }
@@ -228,10 +240,65 @@ namespace CK3MPS
 
         private int ChecklistContentWidth()
         {
-            int width = checklistPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8;
+            int width = checklistPanel.ClientSize.Width - checklistScrollBar.Width - 6;
             if (width < 300)
                 width = checklistPanel.ClientSize.Width - 8;
             return Math.Max(300, width);
+        }
+
+        private void LayoutChecklistViewport()
+        {
+            int scrollbarWidth = checklistScrollBar.Width;
+            checklistScrollBar.Location = new Point(Math.Max(0, checklistPanel.ClientSize.Width - scrollbarWidth - 1), 1);
+            checklistScrollBar.Height = Math.Max(0, checklistPanel.ClientSize.Height - 2);
+        }
+
+        private void SyncChecklistScrollBar(int contentHeight)
+        {
+            int viewportHeight = Math.Max(1, checklistPanel.ClientSize.Height - 2);
+            int maxValue = Math.Max(0, contentHeight - viewportHeight);
+
+            checklistScrollBar.Minimum = 0;
+            checklistScrollBar.SmallChange = 24;
+            checklistScrollBar.LargeChange = viewportHeight;
+            checklistScrollBar.Maximum = maxValue + checklistScrollBar.LargeChange - 1;
+            checklistScrollBar.Enabled = maxValue > 0;
+
+            if (!checklistScrollBar.Enabled)
+            {
+                checklistScrollBar.Value = 0;
+                return;
+            }
+
+            if (checklistScrollBar.Value > maxValue)
+                checklistScrollBar.Value = maxValue;
+        }
+
+        private void UpdateChecklistScrollPosition()
+        {
+            checklistContentPanel.Location = new Point(0, -checklistScrollBar.Value);
+        }
+
+        private void ScrollChecklistWheel(int delta)
+        {
+            if (!checklistScrollBar.Enabled || delta == 0)
+                return;
+
+            int step = 84;
+            int next = checklistScrollBar.Value - Math.Sign(delta) * step;
+            int maxValue = Math.Max(checklistScrollBar.Minimum, checklistScrollBar.Maximum - checklistScrollBar.LargeChange + 1);
+            if (next < checklistScrollBar.Minimum)
+                next = checklistScrollBar.Minimum;
+            if (next > maxValue)
+                next = maxValue;
+
+            checklistScrollBar.Value = next;
+            UpdateChecklistScrollPosition();
+        }
+
+        private void HookChecklistWheel(Control control)
+        {
+            control.MouseWheel += delegate(object sender, MouseEventArgs e) { ScrollChecklistWheel(e.Delta); };
         }
 
         private string StepTitle(int index)
