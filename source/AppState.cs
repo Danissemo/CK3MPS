@@ -17,7 +17,7 @@ namespace CK3MPS
     internal sealed partial class MainForm : Form
     {
         private const string AppVersion = "v0.1-beta";
-        private const int ExpectedStepCount = 28;
+        private const int ExpectedStepCount = 29;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private readonly CheckedListBox steps = new CheckedListBox();

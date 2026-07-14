@@ -43,95 +43,98 @@ namespace CK3MPS
                     CheckBasePathsReadOnly();
                     break;
                 case 1:
-                    CheckQuarantineReadOnly();
+                    CheckWindowsRestorePointReadOnly();
                     break;
                 case 2:
+                    CheckQuarantineReadOnly();
+                    break;
+                case 3:
                     Log("[INFO] DNS cache flush is a write action, so Check only does not run it.");
                     Check("Network ping baseline", NetworkBaselineOk());
                     break;
-                case 3:
+                case 4:
                     RunNetworkDiagnostics();
                     break;
-                case 4:
+                case 5:
                     CheckFirewallRulesReadOnly();
                     break;
-                case 5:
+                case 6:
                     CheckWindowsGameNetworkProfileReadOnly();
                     break;
-                case 6:
+                case 7:
                     CheckPowerAdapterProfileReadOnly();
                     break;
-                case 7:
+                case 8:
                     CheckOverlaysAndVpn();
                     Check("Core Windows network services healthy", RequiredWindowsNetworkServicesOk());
                     Check("Windows power plan is not Power Saver", !PowerSaverPlanActive());
                     break;
-                case 8:
+                case 9:
                     CheckOnlineServices();
                     break;
-                case 9:
+                case 10:
                     CheckSteamAndLauncherBackupSources();
                     break;
-                case 10:
+                case 11:
                     CheckSteamSettingsReadOnly();
                     break;
-                case 11:
+                case 12:
                     CheckParadoxLauncherReadOnly();
                     break;
-                case 12:
+                case 13:
                     CheckLauncherRuntimeHygiene();
                     break;
-                case 13:
+                case 14:
                     Check("No active mods in dlc_load.json", NoActiveMods());
                     Check("No disabled DLCs in dlc_load.json", NoDisabledDlcs());
                     Check("dlc_load.json has no UTF-8 BOM", !HasUtf8Bom(Path.Combine(ck3Docs, "dlc_load.json")));
                     break;
-                case 14:
+                case 15:
                     Check("Core stable pdx_settings.txt", StableCriticalSettingsOk());
                     LogStableSettingsDetail();
                     Check("pdx_settings.txt has no UTF-8 BOM", !HasUtf8Bom(Path.Combine(ck3Docs, "pdx_settings.txt")));
                     break;
-                case 15:
+                case 16:
                     Check("Runtime verification report exists", File.Exists(StabilizerFile("ck3_stabilizer_runtime_verification.txt")));
                     CheckRuntimeProfileReadOnly();
                     Check("Settings guard report exists", File.Exists(StabilizerFile("ck3_stabilizer_settings_guard.txt")));
                     break;
-                case 16:
+                case 17:
                     Check("Stable game-rule profile exists", File.Exists(StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt")));
                     break;
-                case 17:
+                case 18:
                     CheckPlayerStateReadOnly();
                     break;
-                case 18:
+                case 19:
                     CheckReportsCleanReadOnly();
                     break;
-                case 19:
+                case 20:
                     Check("CK3 and launcher caches clean or regenerated after cleanup", CacheFoldersClean());
                     break;
-                case 20:
+                case 21:
                     Check("No local .mod descriptors", CountFiles(Path.Combine(ck3Docs, "mod"), "*.mod") == 0);
                     break;
-                case 21:
+                case 22:
                     CheckSuspectBinariesReadOnly();
                     break;
-                case 22:
+                case 23:
                     CheckSaveHygiene();
                     Check("Active continue is not autosave/recovery/desync-like", !ActiveContinueSaveNameSuspicious());
                     Check("Active continue save version matches installed CK3", ActiveSaveVersionOk());
                     break;
-                case 23:
+                case 24:
                     CheckCk3DocumentsCleanupReadOnly();
                     break;
-                case 24:
+                case 25:
                     CheckLatestOosReportReadOnly();
                     break;
-                case 25:
+                case 26:
                     CheckOosEvidencePackReadOnly();
                     break;
-                case 26:
+                case 27:
                     Check("OOS prevention protocol exists", File.Exists(StabilizerFile("ck3_stabilizer_oos_protocol.txt")));
                     break;
-                case 27:
+                case 28:
                     Check("MP parity manifest exists", File.Exists(StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt")));
                     Check("MP parity manifest contains required comparison fields", ParityManifestComplete());
                     Check("OOS risk score report exists", File.Exists(StabilizerFile("ck3_stabilizer_oos_risk_score.txt")));

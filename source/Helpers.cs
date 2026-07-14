@@ -403,12 +403,12 @@ namespace CK3MPS
 
             SetAllSteps(false);
             SetStepChecked(0, true);
-            SetStepChecked(1, true);
+            SetStepChecked(2, true);
 
             switch (preset)
             {
                 case "Minimum":
-                    SetPresetSteps(new[] { 9, 10, 13, 14, 15, 16, 23, 25, 26, 27 });
+                    SetPresetSteps(new[] { 1, 10, 11, 14, 15, 16, 17, 24, 26, 27, 28 });
                     break;
 
                 case "Recommended":
@@ -420,15 +420,15 @@ namespace CK3MPS
                     break;
 
                 case "Clean profile only":
-                    SetPresetSteps(new[] { 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 });
+                    SetPresetSteps(new[] { 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 });
                     break;
 
                 case "Network only":
-                    SetPresetSteps(new[] { 2, 3, 4, 5, 6, 7, 8, 25, 26, 27 });
+                    SetPresetSteps(new[] { 3, 4, 5, 6, 7, 8, 9, 26, 27, 28 });
                     break;
 
                 case "Diagnostic only":
-                    SetPresetSteps(new[] { 3, 7, 8, 12, 22, 23, 24, 25, 26, 27 });
+                    SetPresetSteps(new[] { 4, 8, 9, 13, 23, 24, 25, 26, 27, 28 });
                     break;
             }
 
@@ -443,11 +443,11 @@ namespace CK3MPS
             // local .mod descriptor quarantine, and broad CK3 Documents cleanup.
             SetPresetSteps(new[]
             {
-                2, 3,
-                7, 8,
-                9, 10, 11, 12,
-                13, 14, 15, 16, 17, 18, 19,
-                21, 24, 25, 26, 27
+                1, 3, 4,
+                8, 9,
+                10, 11, 12, 13,
+                14, 15, 16, 17, 18, 19, 20,
+                22, 25, 26, 27, 28
             });
 
             statusLabel.Text = "Preset selected: Recommended. Applies backed-up CK3/Launcher fixes, but skips Windows tuning, save movement, .mod quarantine and broad folder cleanup.";
@@ -491,7 +491,7 @@ namespace CK3MPS
 
             if (hasAnySelection && !IsStepChecked(0))
                 count++;
-            if (hasAnySelection && !IsStepChecked(1))
+            if (hasAnySelection && !IsStepChecked(2))
                 count++;
             return count;
         }

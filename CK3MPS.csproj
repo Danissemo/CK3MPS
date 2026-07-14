@@ -48,6 +48,7 @@
     <Compile Include="source\Reports.cs" />
     <Compile Include="source\Readiness.cs" />
     <Compile Include="source\Helpers.cs" />
+    <Compile Include="source\SystemRestore.cs" />
     <Compile Include="source\Updates.cs" />
     <Compile Include="source\Utilities.cs" />
   </ItemGroup>
