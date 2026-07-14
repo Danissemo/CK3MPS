@@ -13,13 +13,7 @@ namespace CK3MPS
             foreach (string line in preview.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
                 if (!String.IsNullOrWhiteSpace(line))
                     Log("INFO " + line);
-
-            DialogResult result = MessageBox.Show(
-                preview + "\r\n\r\nContinue and apply these selected actions?",
-                "CK3MPS preview",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Information);
-            return result == DialogResult.Yes;
+            return ShowPreviewDialog(preview, true) == DialogResult.Yes;
         }
 
         private void ShowStabilizationPreview(bool writeToLogOnly)
@@ -34,7 +28,63 @@ namespace CK3MPS
                 return;
             }
 
-            MessageBox.Show(preview, "CK3MPS preview", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowPreviewDialog(preview, false);
+        }
+
+        private DialogResult ShowPreviewDialog(string preview, bool confirm)
+        {
+            using (Form dialog = new Form())
+            using (TextBox previewBox = new TextBox())
+            using (Button actionButton = new Button())
+            using (Button cancelButton = new Button())
+            {
+                dialog.Text = "CK3MPS preview";
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.Size = new System.Drawing.Size(860, 720);
+                dialog.MinimumSize = new System.Drawing.Size(700, 540);
+                dialog.MaximizeBox = true;
+                dialog.MinimizeBox = false;
+                dialog.ShowIcon = false;
+                dialog.Font = this.Font;
+
+                previewBox.Location = new System.Drawing.Point(12, 12);
+                previewBox.Size = new System.Drawing.Size(dialog.ClientSize.Width - 24, dialog.ClientSize.Height - 72);
+                previewBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                previewBox.Multiline = true;
+                previewBox.ReadOnly = true;
+                previewBox.ScrollBars = ScrollBars.Both;
+                previewBox.WordWrap = false;
+                previewBox.Font = new System.Drawing.Font("Consolas", 9F);
+                previewBox.Text = confirm
+                    ? preview + "\r\n\r\nContinue and apply these selected actions?"
+                    : preview;
+                dialog.Controls.Add(previewBox);
+
+                actionButton.Text = confirm ? "Continue" : "OK";
+                actionButton.Size = new System.Drawing.Size(110, 32);
+                actionButton.Location = new System.Drawing.Point(dialog.ClientSize.Width - 122, dialog.ClientSize.Height - 44);
+                actionButton.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+                actionButton.DialogResult = confirm ? DialogResult.Yes : DialogResult.OK;
+                dialog.Controls.Add(actionButton);
+
+                if (confirm)
+                {
+                    cancelButton.Text = "Cancel";
+                    cancelButton.Size = new System.Drawing.Size(110, 32);
+                    cancelButton.Location = new System.Drawing.Point(actionButton.Left - 118, actionButton.Top);
+                    cancelButton.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+                    cancelButton.DialogResult = DialogResult.No;
+                    dialog.Controls.Add(cancelButton);
+                    dialog.CancelButton = cancelButton;
+                }
+                else
+                {
+                    dialog.CancelButton = actionButton;
+                }
+
+                dialog.AcceptButton = actionButton;
+                return dialog.ShowDialog(this);
+            }
         }
 
         private string BuildStabilizationPreview()

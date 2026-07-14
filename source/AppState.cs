@@ -77,6 +77,7 @@ namespace CK3MPS
         private readonly ProgressBar updateDownloadProgress = new ProgressBar();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
+        private bool updatingSettingsUi;
 
         private string ck3Docs;
         private readonly string stabilizerRoot;

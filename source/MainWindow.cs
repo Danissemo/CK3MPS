@@ -458,6 +458,8 @@ namespace CK3MPS
             updateOnStartupBox.Size = new Size(260, 24);
             updateOnStartupBox.CheckedChanged += delegate
             {
+                if (updatingSettingsUi)
+                    return;
                 updateCheckOnStartup = updateOnStartupBox.Checked;
                 SaveAppConfig();
             };
@@ -468,6 +470,8 @@ namespace CK3MPS
             portableModeBox.Size = new Size(180, 24);
             portableModeBox.CheckedChanged += delegate
             {
+                if (updatingSettingsUi)
+                    return;
                 portableMode = portableModeBox.Checked;
                 SaveAppConfig();
             };
@@ -485,6 +489,8 @@ namespace CK3MPS
             logVerbosityBox.Size = new Size(130, 24);
             logVerbosityBox.SelectedIndexChanged += delegate
             {
+                if (updatingSettingsUi)
+                    return;
                 if (logVerbosityBox.SelectedItem != null)
                 {
                     logVerbosity = Convert.ToString(logVerbosityBox.SelectedItem);

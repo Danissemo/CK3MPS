@@ -61,6 +61,16 @@ namespace CK3MPS
             return Path.Combine(stabilizerRoot, "settings.ini");
         }
 
+        private string PortableAppConfigFile()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CK3MPS.settings.ini");
+        }
+
+        private string NonPortableAppConfigFile()
+        {
+            return Path.Combine(stabilizerRoot, "settings.ini");
+        }
+
         private string LegacyPathOverridesFile()
         {
             return Path.Combine(stabilizerRoot, "paths.ini");
@@ -71,7 +81,11 @@ namespace CK3MPS
             try
             {
                 LoadLegacyPathOverrides();
-                LoadConfigFile(AppConfigFile());
+                string portablePath = PortableAppConfigFile();
+                if (File.Exists(portablePath))
+                    LoadConfigFile(portablePath);
+                else
+                    LoadConfigFile(NonPortableAppConfigFile());
             }
             catch
             {
@@ -153,7 +167,12 @@ namespace CK3MPS
         private void SaveAppConfig()
         {
             EnsureStabilizerRoot();
-            File.WriteAllLines(AppConfigFile(), new[]
+            string targetPath = AppConfigFile();
+            string otherPath = String.Equals(targetPath, PortableAppConfigFile(), StringComparison.OrdinalIgnoreCase)
+                ? NonPortableAppConfigFile()
+                : PortableAppConfigFile();
+
+            File.WriteAllLines(targetPath, new[]
             {
                 "ck3Docs=" + ck3Docs,
                 "ck3Install=" + ck3Install,
@@ -161,15 +180,26 @@ namespace CK3MPS
                 "portableMode=" + portableMode,
                 "logVerbosity=" + logVerbosity
             }, Encoding.UTF8);
+
+            if (File.Exists(otherPath))
+                File.Delete(otherPath);
         }
 
         private void UpdateSettingsUi()
         {
-            updateOnStartupBox.Checked = updateCheckOnStartup;
-            portableModeBox.Checked = portableMode;
-            if (!logVerbosityBox.Items.Contains(logVerbosity))
-                logVerbosity = "Normal";
-            logVerbosityBox.SelectedItem = logVerbosity;
+            updatingSettingsUi = true;
+            try
+            {
+                updateOnStartupBox.Checked = updateCheckOnStartup;
+                portableModeBox.Checked = portableMode;
+                if (!logVerbosityBox.Items.Contains(logVerbosity))
+                    logVerbosity = "Normal";
+                logVerbosityBox.SelectedItem = logVerbosity;
+            }
+            finally
+            {
+                updatingSettingsUi = false;
+            }
         }
 
         private bool GameFolderValid()

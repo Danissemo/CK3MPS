@@ -66,12 +66,21 @@ namespace CK3MPS
                     return;
                 }
 
-                if (!VersionUtilities.IsNewerRelease(release.TagName, AppVersion))
+                int comparison = VersionUtilities.CompareReleaseTags(release.TagName, AppVersion);
+                if (comparison <= 0)
                 {
                     if (manual)
                     {
-                        Log("OK   CK3MPS is up to date. Current: " + AppVersion + ", latest: " + release.TagName + ".");
-                        MessageBox.Show("CK3MPS is already up to date.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName, "CK3MPS updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        if (comparison < 0)
+                        {
+                            Log("OK   Current build is newer than the latest published GitHub release. Current: " + AppVersion + ", latest published: " + release.TagName + ".");
+                            MessageBox.Show("This CK3MPS build is newer than the latest published GitHub release.\r\n\r\nCurrent build: " + AppVersion + "\r\nLatest published release: " + release.TagName, "CK3MPS updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            Log("OK   CK3MPS is up to date. Current: " + AppVersion + ", latest: " + release.TagName + ".");
+                            MessageBox.Show("CK3MPS is already up to date.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName, "CK3MPS updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
                     }
                     return;
                 }

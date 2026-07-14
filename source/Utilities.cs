@@ -77,19 +77,24 @@ namespace CK3MPS
 
     internal static class VersionUtilities
     {
-        public static bool IsNewerRelease(string latestTag, string currentTag)
+        public static int CompareReleaseTags(string leftTag, string rightTag)
         {
-            int[] latest = VersionParts(latestTag);
-            int[] current = VersionParts(currentTag);
-            for (int i = 0; i < latest.Length; i++)
+            int[] left = VersionParts(leftTag);
+            int[] right = VersionParts(rightTag);
+            for (int i = 0; i < left.Length; i++)
             {
-                if (latest[i] > current[i])
-                    return true;
-                if (latest[i] < current[i])
-                    return false;
+                if (left[i] > right[i])
+                    return 1;
+                if (left[i] < right[i])
+                    return -1;
             }
 
-            return false;
+            return 0;
+        }
+
+        public static bool IsNewerRelease(string latestTag, string currentTag)
+        {
+            return CompareReleaseTags(latestTag, currentTag) > 0;
         }
 
         public static int[] VersionParts(string tag)
