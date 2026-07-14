@@ -62,23 +62,20 @@ namespace CK3MPS
             Controls.Add(statusLabel);
 
             stabilizeButton.Text = "Stabilize CK3";
-            stabilizeButton.Location = new Point(20, 642);
             stabilizeButton.Size = new Size(150, 34);
-            stabilizeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            stabilizeButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             stabilizeButton.Click += delegate { RunStabilize(); };
-            Controls.Add(stabilizeButton);
+            mainPage.Controls.Add(stabilizeButton);
 
             checkButton.Text = "Check only";
-            checkButton.Location = new Point(184, 642);
             checkButton.Size = new Size(130, 34);
-            checkButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            checkButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             checkButton.Click += delegate { RunCheckOnly(); };
-            Controls.Add(checkButton);
+            mainPage.Controls.Add(checkButton);
 
             openFolderButton.Text = "Open quarantine";
-            openFolderButton.Location = new Point(328, 642);
             openFolderButton.Size = new Size(150, 34);
-            openFolderButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            openFolderButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             openFolderButton.Click += delegate
             {
                 if (!String.IsNullOrEmpty(lastQuarantine) && Directory.Exists(lastQuarantine))
@@ -86,7 +83,7 @@ namespace CK3MPS
                 else if (Directory.Exists(ck3Docs))
                     Process.Start("explorer.exe", ck3Docs);
             };
-            Controls.Add(openFolderButton);
+            mainPage.Controls.Add(openFolderButton);
         }
 
         private void BuildMainTab()
@@ -203,7 +200,8 @@ namespace CK3MPS
             int checklistWidth = 446;
             int labelY = 56;
             int logTop = 78;
-            int availableHeight = Math.Max(240, mainPage.ClientSize.Height - top - bottomMargin);
+            int actionButtonTop = mainPage.ClientSize.Height - 46;
+            int availableHeight = Math.Max(200, actionButtonTop - top - bottomMargin);
 
             checklistPanel.Location = new Point(leftMargin, top);
             checklistPanel.Size = new Size(checklistWidth, availableHeight);
@@ -211,7 +209,11 @@ namespace CK3MPS
             liveLogLabel.Location = new Point(checklistPanel.Right + gap, labelY);
 
             logBox.Location = new Point(checklistPanel.Right + gap, logTop);
-            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(220, mainPage.ClientSize.Height - logTop - bottomMargin));
+            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(180, actionButtonTop - logTop - bottomMargin));
+
+            stabilizeButton.Location = new Point(leftMargin, actionButtonTop);
+            checkButton.Location = new Point(stabilizeButton.Right + gap, actionButtonTop);
+            openFolderButton.Location = new Point(checkButton.Right + gap, actionButtonTop);
         }
 
         private void BuildPathsTab()
