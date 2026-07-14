@@ -521,7 +521,11 @@ namespace CK3MPS
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
             graphicsProfileBox.Enabled = !busy;
+            deleteLatestRestorePointButton.Enabled = !busy;
             deleteRestorePointsButton.Enabled = !busy;
+            deleteAllRestorePointsButton.Enabled = !busy;
+            clearOtherLogsButton.Enabled = !busy;
+            clearQuarantineButton.Enabled = !busy;
             restoreSelectAllBox.Enabled = !busy;
             portableModeBox.Enabled = !busy && !portableModeChangeInProgress;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
@@ -601,6 +605,95 @@ namespace CK3MPS
             RefreshHistoryView();
             statusLabel.Text = "Deleted CK3MPS reports: files=" + deletedFiles + ", folders=" + deletedDirs + ".";
             Log("OK   Deleted CK3MPS reports: files=" + deletedFiles + ", folders=" + deletedDirs + ".");
+        }
+
+        private void ClearOtherLogs()
+        {
+            EnsureStabilizerRoot();
+            DialogResult result = MessageBox.Show(
+                "Delete other CK3MPS log files, including live logs?\r\n\r\nReports, restore manifests, and quarantine backups are not deleted here.",
+                "CK3MPS logs",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            int deletedFiles = 0;
+            int deletedDirs = 0;
+
+            HashSet<string> keep = new HashSet<string>(KnownReportFiles(), StringComparer.OrdinalIgnoreCase);
+            keep.Add(RestoreManifestFile());
+
+            string[] directLogFiles = new[]
+            {
+                liveLogFilePath
+            };
+            foreach (string file in directLogFiles)
+            {
+                if (!String.IsNullOrEmpty(file) && File.Exists(file))
+                {
+                    File.Delete(file);
+                    deletedFiles++;
+                }
+            }
+
+            foreach (string file in Directory.GetFiles(stabilizerRoot, "*.*", SearchOption.TopDirectoryOnly))
+            {
+                string extension = Path.GetExtension(file);
+                if (!String.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase)
+                    && !String.Equals(extension, ".log", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (keep.Contains(file))
+                    continue;
+                File.Delete(file);
+                deletedFiles++;
+            }
+
+            string liveLogsDir = LiveLogsFolder();
+            if (Directory.Exists(liveLogsDir))
+            {
+                foreach (string file in Directory.GetFiles(liveLogsDir, "*.txt", SearchOption.TopDirectoryOnly))
+                {
+                    File.Delete(file);
+                    deletedFiles++;
+                }
+                if (Directory.GetFileSystemEntries(liveLogsDir).Length == 0)
+                {
+                    Directory.Delete(liveLogsDir, false);
+                    deletedDirs++;
+                }
+            }
+
+            liveLogFilePath = "";
+            InitializeLiveLogFile();
+            Log("INFO Live log restarted after cleanup.");
+            statusLabel.Text = "Deleted other logs: files=" + deletedFiles + ", folders=" + deletedDirs + ".";
+            Log("OK   Deleted other logs: files=" + deletedFiles + ", folders=" + deletedDirs + ".");
+        }
+
+        private void ClearQuarantineFiles()
+        {
+            EnsureStabilizerRoot();
+            string root = Path.Combine(stabilizerRoot, "quarantine");
+            if (!Directory.Exists(root))
+            {
+                MessageBox.Show("No quarantine folder was found.", "CK3MPS quarantine", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                "Delete all files inside CK3MPS quarantine?\r\n\r\nThis removes restore manifests, rollback backups, archived reports, quarantined files, and other quarantine contents.",
+                "CK3MPS quarantine",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            Directory.Delete(root, true);
+            lastQuarantine = "";
+            RefreshRestoreList();
+            statusLabel.Text = "Deleted CK3MPS quarantine files.";
+            Log("OK   Deleted CK3MPS quarantine files: " + root);
         }
 
         private void EnsureStabilizerRoot()

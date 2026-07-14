@@ -46,7 +46,11 @@ namespace CK3MPS
         private readonly Button refreshHistoryButton = new Button();
         private readonly Button clearReportsButton = new Button();
         private readonly Button updateButton = new Button();
+        private readonly Button deleteLatestRestorePointButton = new Button();
         private readonly Button deleteRestorePointsButton = new Button();
+        private readonly Button deleteAllRestorePointsButton = new Button();
+        private readonly Button clearOtherLogsButton = new Button();
+        private readonly Button clearQuarantineButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
         private readonly Button previewButton = new Button();
@@ -205,6 +209,7 @@ namespace CK3MPS
             MoveStabilizerRootContents(portableMode ? nonPortableStabilizerRoot : portableStabilizerRoot, stabilizerRoot);
 
             BuildUi();
+            ConfigureStepToolTipBehavior();
             UpdateSettingsUi();
             UpdatePathStatusIndicators();
             EnsureStabilizerRoot();

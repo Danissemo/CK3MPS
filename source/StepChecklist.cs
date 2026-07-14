@@ -6,6 +6,14 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
+        private void ConfigureStepToolTipBehavior()
+        {
+            stepToolTip.InitialDelay = 120;
+            stepToolTip.ReshowDelay = 40;
+            stepToolTip.AutoPopDelay = 2500;
+            stepToolTip.ShowAlways = false;
+        }
+
         private void BuildChecklistGroups()
         {
             updatingChecklistUi = true;
@@ -170,6 +178,7 @@ namespace CK3MPS
             row.HelpButton.BackColor = Color.FromArgb(240, 242, 245);
             row.HelpButton.ForeColor = Color.FromArgb(50, 65, 85);
             stepToolTip.SetToolTip(row.HelpButton, row.HelpText);
+            row.HelpButton.MouseLeave += delegate { stepToolTip.Hide(row.HelpButton); };
             row.RowPanel.Controls.Add(row.HelpButton);
 
             row.TitleLabel.Text = row.Title;

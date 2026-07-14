@@ -581,11 +581,35 @@ namespace CK3MPS
             updateButton.Click += delegate { CheckForUpdatesManual(); };
             advancedPage.Controls.Add(updateButton);
 
+            deleteLatestRestorePointButton.Text = "Delete latest CK3MPS restore point";
+            deleteLatestRestorePointButton.Location = new Point(18, 182);
+            deleteLatestRestorePointButton.Size = new Size(250, 34);
+            deleteLatestRestorePointButton.Click += delegate { DeleteLatestCk3MpsRestorePoint(); };
+            advancedPage.Controls.Add(deleteLatestRestorePointButton);
+
             deleteRestorePointsButton.Text = "Delete CK3MPS restore points";
-            deleteRestorePointsButton.Location = new Point(18, 182);
+            deleteRestorePointsButton.Location = new Point(18, 222);
             deleteRestorePointsButton.Size = new Size(220, 34);
             deleteRestorePointsButton.Click += delegate { DeleteCk3MpsRestorePoints(); };
             advancedPage.Controls.Add(deleteRestorePointsButton);
+
+            deleteAllRestorePointsButton.Text = "Delete all Windows restore points";
+            deleteAllRestorePointsButton.Location = new Point(18, 262);
+            deleteAllRestorePointsButton.Size = new Size(230, 34);
+            deleteAllRestorePointsButton.Click += delegate { DeleteAllWindowsRestorePoints(); };
+            advancedPage.Controls.Add(deleteAllRestorePointsButton);
+
+            clearOtherLogsButton.Text = "Delete other logs";
+            clearOtherLogsButton.Location = new Point(18, 316);
+            clearOtherLogsButton.Size = new Size(180, 34);
+            clearOtherLogsButton.Click += delegate { ClearOtherLogs(); };
+            advancedPage.Controls.Add(clearOtherLogsButton);
+
+            clearQuarantineButton.Text = "Delete quarantine files";
+            clearQuarantineButton.Location = new Point(18, 356);
+            clearQuarantineButton.Size = new Size(180, 34);
+            clearQuarantineButton.Click += delegate { ClearQuarantineFiles(); };
+            advancedPage.Controls.Add(clearQuarantineButton);
 
             updateDownloadProgress.Location = new Point(164, 142);
             updateDownloadProgress.Size = new Size(280, 22);
@@ -612,8 +636,21 @@ namespace CK3MPS
             updateDownloadProgress.Location = new Point(progressLeft, topButton + 6);
             updateDownloadProgress.Size = new Size(progressWidth, 22);
 
-            deleteRestorePointsButton.Location = new Point(left, topButton + 46);
-            deleteRestorePointsButton.Size = new Size(Math.Max(220, Math.Min(280, advancedPage.ClientSize.Width - left - rightPadding)), 34);
+            int actionWidth = Math.Max(220, Math.Min(320, advancedPage.ClientSize.Width - left - rightPadding));
+            deleteLatestRestorePointButton.Location = new Point(left, topButton + 46);
+            deleteLatestRestorePointButton.Size = new Size(actionWidth, 34);
+
+            deleteRestorePointsButton.Location = new Point(left, topButton + 86);
+            deleteRestorePointsButton.Size = new Size(actionWidth, 34);
+
+            deleteAllRestorePointsButton.Location = new Point(left, topButton + 126);
+            deleteAllRestorePointsButton.Size = new Size(actionWidth, 34);
+
+            clearOtherLogsButton.Location = new Point(left, topButton + 180);
+            clearOtherLogsButton.Size = new Size(actionWidth, 34);
+
+            clearQuarantineButton.Location = new Point(left, topButton + 220);
+            clearQuarantineButton.Size = new Size(actionWidth, 34);
         }
 
         private void FillSteps()
