@@ -1,4 +1,8 @@
-﻿$ErrorActionPreference = "Stop"
+param(
+    [switch]$UpdateReleaseArtifacts
+)
+
+$ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
@@ -62,13 +66,16 @@ if ($MSBuild) {
 }
 
 $Hash = Get-FileHash $OutExe -Algorithm SHA256
-New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
-Copy-Item -LiteralPath $OutExe -Destination $ReleaseExe -Force
-$ReleaseChecksum = Join-Path $ReleaseDir "CK3MPS.exe.sha256"
-Set-Content -LiteralPath $ReleaseChecksum -Value ($Hash.Hash.ToLowerInvariant() + "  CK3MPS.exe") -Encoding ascii
 Write-Host "Built: $OutExe"
-Write-Host "Release exe: $ReleaseExe"
-Write-Host "Release checksum: $ReleaseChecksum"
 Write-Host "SHA256: $($Hash.Hash)"
 
-
+if ($UpdateReleaseArtifacts) {
+    New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
+    Copy-Item -LiteralPath $OutExe -Destination $ReleaseExe -Force
+    $ReleaseChecksum = Join-Path $ReleaseDir "CK3MPS.exe.sha256"
+    Set-Content -LiteralPath $ReleaseChecksum -Value ($Hash.Hash.ToLowerInvariant() + "  CK3MPS.exe") -Encoding ascii
+    Write-Host "Release exe: $ReleaseExe"
+    Write-Host "Release checksum: $ReleaseChecksum"
+} else {
+    Write-Host "Release artifacts unchanged. Local builds do not update the release folder."
+}
