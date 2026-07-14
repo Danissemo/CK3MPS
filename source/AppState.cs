@@ -63,7 +63,7 @@ namespace CK3MPS
         private readonly Label pathDetailsLabel = new Label();
         private readonly TextBox historyBox = new TextBox();
         private readonly ComboBox restoreRunBox = new ComboBox();
-        private readonly ListBox restoreListBox = new ListBox();
+        private readonly CheckedListBox restoreListBox = new CheckedListBox();
         private readonly TextBox restoreDetailsBox = new TextBox();
         private readonly Button restoreSelectedButton = new Button();
         private readonly Button restoreDefaultButton = new Button();
@@ -71,6 +71,9 @@ namespace CK3MPS
         private readonly Button refreshRestoreButton = new Button();
         private readonly Button openQuarantineButton = new Button();
         private readonly Label restoreRunLabel = new Label();
+        private readonly Label restoreSortLabel = new Label();
+        private readonly ComboBox restoreSortBox = new ComboBox();
+        private readonly ComboBox restoreSortDirectionBox = new ComboBox();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
         private readonly CheckBox portableModeBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();
@@ -100,6 +103,7 @@ namespace CK3MPS
         private bool gamePathOverrideActive;
         private bool settingsPathOverrideActive;
         private string liveLogFilePath;
+        private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private sealed class StepGroupUi
         {
@@ -208,6 +212,8 @@ namespace CK3MPS
             graphicsProfileBox.SelectedItem = "Stability Low";
             if (graphicsProfileBox.SelectedItem == null && graphicsProfileBox.Items.Count > 0)
                 graphicsProfileBox.SelectedIndex = 0;
+            restoreSortBox.SelectedItem = "Created";
+            restoreSortDirectionBox.SelectedItem = "Newest first";
             LogSection("Detected paths");
             Log((Directory.Exists(ck3Docs) ? "OK   " : "FAIL ") + "CK3 settings folder: " + ck3Docs);
             Log("Steam: " + NullText(steamRoot));

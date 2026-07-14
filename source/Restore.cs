@@ -283,6 +283,7 @@ namespace CK3MPS
 
         private void RefreshRestoreListOnly()
         {
+            CaptureCheckedRestoreEntryIds();
             restoreListBox.Items.Clear();
             string selectedRun = Convert.ToString(restoreRunBox.SelectedItem);
             List<RestoreEntry> visibleEntries = new List<RestoreEntry>();
@@ -292,9 +293,15 @@ namespace CK3MPS
                     continue;
                 visibleEntries.Add(entry);
             }
-            visibleEntries.Sort(CompareRestoreEntriesNewestFirst);
+            visibleEntries.Sort(CompareRestoreEntries);
             foreach (RestoreEntry entry in visibleEntries)
+            {
                 restoreListBox.Items.Add(entry);
+                if (checkedRestoreEntryIds.Contains(entry.Id))
+                    restoreListBox.SetItemChecked(restoreListBox.Items.Count - 1, true);
+            }
+
+            SyncCheckedRestoreEntryIds();
 
             if (restoreListBox.Items.Count > 0)
                 restoreListBox.SelectedIndex = 0;
@@ -304,9 +311,9 @@ namespace CK3MPS
 
         private void ShowSelectedRestoreDetails()
         {
-            if (restoreListBox.SelectedItems.Count > 1)
+            if (checkedRestoreEntryIds.Count > 1)
             {
-                ShowMultiSelectionRestoreDetails();
+                ShowMultiSelectionRestoreDetails(checkedRestoreEntryIds.Count);
                 return;
             }
 
@@ -364,21 +371,16 @@ namespace CK3MPS
             restoreDetailsBox.Text = sb.ToString();
         }
 
-        private void ShowMultiSelectionRestoreDetails()
+        private void ShowMultiSelectionRestoreDetails(int selectedCount)
         {
-            int selectedCount = restoreListBox.SelectedItems.Count;
             int registryCount = 0;
             int fileCount = 0;
             int folderCount = 0;
             int infoCount = 0;
             int defaultSupportedCount = 0;
 
-            foreach (object item in restoreListBox.SelectedItems)
+            foreach (RestoreEntry entry in GetCheckedRestoreEntries())
             {
-                RestoreEntry entry = item as RestoreEntry;
-                if (entry == null)
-                    continue;
-
                 if (entry.Kind == "registry")
                     registryCount++;
                 else if (entry.Kind == "file" || entry.Kind == "moved_file" || entry.Kind == "created_file")
@@ -402,16 +404,50 @@ namespace CK3MPS
             sb.AppendLine("- Informational entries: " + infoCount);
             sb.AppendLine();
             sb.AppendLine("Delete selected:");
-            sb.AppendLine("Removes all selected entries from the Restore list and deletes unused backup files/folders when possible.");
+            sb.AppendLine("Removes all checked entries from the Restore list and deletes unused backup files/folders when possible.");
             sb.AppendLine();
             sb.AppendLine("Restore selected / Restore default:");
-            sb.AppendLine("Use a single selected item for restore actions. Bulk restore is intentionally disabled to avoid accidental mass rollback.");
+            sb.AppendLine("Checked entries are used for bulk restore actions. Highlight any one item to inspect its detailed before/after snapshot.");
             sb.AppendLine();
             sb.AppendLine("Default restore support among selected: " + defaultSupportedCount + " of " + selectedCount);
             restoreDetailsBox.Text = sb.ToString();
         }
 
-        private static int CompareRestoreEntriesNewestFirst(RestoreEntry left, RestoreEntry right)
+        private int CompareRestoreEntries(RestoreEntry left, RestoreEntry right)
+        {
+            string sortField = Convert.ToString(restoreSortBox.SelectedItem) ?? "Created";
+            bool newestFirst = !String.Equals(Convert.ToString(restoreSortDirectionBox.SelectedItem), "Oldest first", StringComparison.OrdinalIgnoreCase);
+            int cmp;
+            switch (sortField)
+            {
+                case "Run":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(NullText(left.RunId), NullText(right.RunId));
+                    break;
+                case "Status":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(RestoreStatusText(left), RestoreStatusText(right));
+                    break;
+                case "Type":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(RestoreActionCaption(left), RestoreActionCaption(right));
+                    break;
+                case "Description":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(NullText(left.Description), NullText(right.Description));
+                    break;
+                case "Original path":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(NullText(left.SourcePath), NullText(right.SourcePath));
+                    break;
+                case "Backup path":
+                    cmp = StringComparer.OrdinalIgnoreCase.Compare(NullText(left.BackupPath), NullText(right.BackupPath));
+                    break;
+                default:
+                    cmp = CompareRestoreCreated(left, right);
+                    break;
+            }
+            if (cmp == 0)
+                cmp = CompareRestoreCreated(left, right);
+            return newestFirst ? -cmp : cmp;
+        }
+
+        private static int CompareRestoreCreated(RestoreEntry left, RestoreEntry right)
         {
             DateTime a;
             DateTime b;
@@ -419,11 +455,11 @@ namespace CK3MPS
             bool bOk = DateTime.TryParse(right.Created, out b);
             if (aOk && bOk)
             {
-                int cmp = b.CompareTo(a);
+                int cmp = a.CompareTo(b);
                 if (cmp != 0)
                     return cmp;
             }
-            return StringComparer.OrdinalIgnoreCase.Compare(right.Id, left.Id);
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Id, right.Id);
         }
 
         private string BuildListDisplayText(RestoreEntry entry)
@@ -571,28 +607,34 @@ namespace CK3MPS
 
         private void RestoreSelectedItem()
         {
-            RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
-            if (entry == null)
+            List<RestoreEntry> entries = GetTargetRestoreEntries();
+            if (entries.Count == 0)
                 return;
 
-            DialogResult result = MessageBox.Show("Restore this item?\r\n\r\n" + entry.Description + "\r\n\r\nTarget:\r\n" + entry.SourcePath, "CK3MPS restore", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            string targetText = entries.Count == 1
+                ? entries[0].Description + "\r\n\r\nTarget:\r\n" + entries[0].SourcePath
+                : "Restore " + entries.Count + " checked items to their recorded previous state?";
+            DialogResult result = MessageBox.Show("Restore selected item(s)?\r\n\r\n" + targetText, "CK3MPS restore", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (result != DialogResult.Yes)
                 return;
 
             try
             {
-                if (entry.Kind == "file" || entry.Kind == "moved_file")
-                    RestoreFileEntry(entry);
-                else if (entry.Kind == "created_file")
-                    RestoreCreatedFileEntry(entry);
-                else if (entry.Kind == "directory" || entry.Kind == "moved_directory")
-                    RestoreDirectoryEntry(entry);
-                else if (entry.Kind == "registry")
-                    RestoreRegistryEntry(entry);
-                else
-                    throw new InvalidOperationException("This restore entry is informational. Use the details text or Windows restore point for this item.");
+                foreach (RestoreEntry entry in entries)
+                {
+                    if (entry.Kind == "file" || entry.Kind == "moved_file")
+                        RestoreFileEntry(entry);
+                    else if (entry.Kind == "created_file")
+                        RestoreCreatedFileEntry(entry);
+                    else if (entry.Kind == "directory" || entry.Kind == "moved_directory")
+                        RestoreDirectoryEntry(entry);
+                    else if (entry.Kind == "registry")
+                        RestoreRegistryEntry(entry);
+                    else
+                        throw new InvalidOperationException("This restore entry is informational. Use the details text or Windows restore point for this item.");
 
-                Log("OK   Restored: " + entry.Description);
+                    Log("OK   Restored: " + entry.Description);
+                }
                 RefreshRestoreList();
             }
             catch (Exception ex)
@@ -604,18 +646,21 @@ namespace CK3MPS
 
         private void RestoreSelectedItemToDefault()
         {
-            RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
-            if (entry == null)
+            List<RestoreEntry> entries = GetTargetRestoreEntries();
+            if (entries.Count == 0)
                 return;
 
-            if (!DefaultRestoreSupported(entry))
-            {
-                MessageBox.Show("Default restore is not supported for this item. Use Restore selected to restore the recorded previous value.", "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            foreach (RestoreEntry entry in entries)
+                if (!DefaultRestoreSupported(entry))
+                {
+                    MessageBox.Show("Default restore is not supported for one or more selected items. Use Restore selected to restore the recorded previous value.", "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
 
             DialogResult result = MessageBox.Show(
-                "Reset this item to game/launcher/Windows default behavior?\r\n\r\n" + entry.SourcePath + "\r\n\r\nCK3MPS will back up the current value first, then remove the override/file so the owner can recreate defaults.",
+                entries.Count == 1
+                    ? "Reset this item to game/launcher/Windows default behavior?\r\n\r\n" + entries[0].SourcePath + "\r\n\r\nCK3MPS will back up the current value first, then remove the override/file so the owner can recreate defaults."
+                    : "Reset " + entries.Count + " checked items to game/launcher/Windows default behavior?\r\n\r\nCK3MPS will back up current values first, then remove the overrides/files so the owner can recreate defaults.",
                 "CK3MPS default restore",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
@@ -624,8 +669,11 @@ namespace CK3MPS
 
             try
             {
-                RestoreDefaultEntry(entry);
-                Log("OK   Restored default behavior: " + entry.Description);
+                foreach (RestoreEntry entry in entries)
+                {
+                    RestoreDefaultEntry(entry);
+                    Log("OK   Restored default behavior: " + entry.Description);
+                }
                 RefreshRestoreList();
             }
             catch (Exception ex)
@@ -637,14 +685,7 @@ namespace CK3MPS
 
         private void DeleteSelectedRestoreEntries()
         {
-            List<RestoreEntry> selectedEntries = new List<RestoreEntry>();
-            foreach (object item in restoreListBox.SelectedItems)
-            {
-                RestoreEntry entry = item as RestoreEntry;
-                if (entry != null)
-                    selectedEntries.Add(entry);
-            }
-
+            List<RestoreEntry> selectedEntries = GetTargetRestoreEntries();
             if (selectedEntries.Count == 0)
                 return;
 
@@ -674,6 +715,44 @@ namespace CK3MPS
                 Log("ERROR Delete restore entry failed: " + ex.Message);
                 MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private List<RestoreEntry> GetCheckedRestoreEntries()
+        {
+            List<RestoreEntry> entries = new List<RestoreEntry>();
+            foreach (object item in restoreListBox.CheckedItems)
+            {
+                RestoreEntry entry = item as RestoreEntry;
+                if (entry != null)
+                    entries.Add(entry);
+            }
+            return entries;
+        }
+
+        private List<RestoreEntry> GetTargetRestoreEntries()
+        {
+            List<RestoreEntry> checkedEntries = GetCheckedRestoreEntries();
+            if (checkedEntries.Count > 0)
+                return checkedEntries;
+
+            RestoreEntry selected = restoreListBox.SelectedItem as RestoreEntry;
+            if (selected == null)
+                return new List<RestoreEntry>();
+            return new List<RestoreEntry> { selected };
+        }
+
+        private void CaptureCheckedRestoreEntryIds()
+        {
+            checkedRestoreEntryIds.Clear();
+            foreach (RestoreEntry entry in GetCheckedRestoreEntries())
+                checkedRestoreEntryIds.Add(entry.Id);
+        }
+
+        private void SyncCheckedRestoreEntryIds()
+        {
+            checkedRestoreEntryIds.Clear();
+            foreach (RestoreEntry entry in GetCheckedRestoreEntries())
+                checkedRestoreEntryIds.Add(entry.Id);
         }
 
         private void DeleteRestoreEntries(IEnumerable<string> entryIds)

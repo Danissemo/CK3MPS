@@ -414,9 +414,36 @@ namespace CK3MPS
             };
             restorePage.Controls.Add(restoreRunBox);
 
+            restoreSortLabel.Text = "Sort:";
+            restoreSortLabel.AutoSize = true;
+            restorePage.Controls.Add(restoreSortLabel);
+
+            restoreSortBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            restoreSortBox.Items.AddRange(new object[] { "Created", "Run", "Status", "Type", "Description", "Original path", "Backup path" });
+            restoreSortBox.SelectedIndexChanged += delegate
+            {
+                if (!updatingRestoreUi)
+                    RefreshRestoreListOnly();
+            };
+            restorePage.Controls.Add(restoreSortBox);
+
+            restoreSortDirectionBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            restoreSortDirectionBox.Items.AddRange(new object[] { "Newest first", "Oldest first" });
+            restoreSortDirectionBox.SelectedIndexChanged += delegate
+            {
+                if (!updatingRestoreUi)
+                    RefreshRestoreListOnly();
+            };
+            restorePage.Controls.Add(restoreSortDirectionBox);
+
             restoreListBox.HorizontalScrollbar = true;
-            restoreListBox.SelectionMode = SelectionMode.MultiExtended;
+            restoreListBox.CheckOnClick = true;
+            restoreListBox.IntegralHeight = false;
             restoreListBox.SelectedIndexChanged += delegate { ShowSelectedRestoreDetails(); };
+            restoreListBox.ItemCheck += delegate(object sender, ItemCheckEventArgs e)
+            {
+                BeginInvoke((MethodInvoker)delegate { SyncCheckedRestoreEntryIds(); ShowSelectedRestoreDetails(); });
+            };
             restorePage.Controls.Add(restoreListBox);
 
             restoreDetailsBox.Multiline = true;
@@ -460,9 +487,20 @@ namespace CK3MPS
             restoreRunLabel.Location = new Point(openQuarantineButton.Right + 18, top + 9);
 
             int runBoxLeft = restoreRunLabel.Right + smallGap;
-            int runBoxWidth = Math.Max(150, restorePage.ClientSize.Width - runBoxLeft - rightPadding);
+            int runBoxWidth = 160;
             restoreRunBox.Location = new Point(runBoxLeft, top + 5);
             restoreRunBox.Size = new Size(runBoxWidth, 24);
+
+            restoreSortLabel.Location = new Point(restoreRunBox.Right + 14, top + 9);
+
+            int sortBoxLeft = restoreSortLabel.Right + smallGap;
+            restoreSortBox.Location = new Point(sortBoxLeft, top + 5);
+            restoreSortBox.Size = new Size(150, 24);
+
+            int directionLeft = restoreSortBox.Right + smallGap;
+            int directionWidth = Math.Max(120, restorePage.ClientSize.Width - directionLeft - rightPadding);
+            restoreSortDirectionBox.Location = new Point(directionLeft, top + 5);
+            restoreSortDirectionBox.Size = new Size(directionWidth, 24);
 
             int listWidth = Math.Max(300, restorePage.ClientSize.Width - left - rightPadding - gap - detailsMinWidth);
             restoreListBox.Location = new Point(left, listTop);
