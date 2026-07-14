@@ -426,6 +426,7 @@ namespace CK3MPS
             restorePage.Controls.Add(restoreRunBox);
 
             restoreListBox.HorizontalScrollbar = true;
+            restoreListBox.SelectionMode = SelectionMode.MultiExtended;
             restoreListBox.SelectedIndexChanged += delegate { ShowSelectedRestoreDetails(); };
             restorePage.Controls.Add(restoreListBox);
 

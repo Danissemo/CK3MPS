@@ -304,6 +304,12 @@ namespace CK3MPS
 
         private void ShowSelectedRestoreDetails()
         {
+            if (restoreListBox.SelectedItems.Count > 1)
+            {
+                ShowMultiSelectionRestoreDetails();
+                return;
+            }
+
             RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
             if (entry == null)
             {
@@ -355,6 +361,53 @@ namespace CK3MPS
                 sb.AppendLine("Compact diff:");
                 sb.AppendLine(diffSummary);
             }
+            restoreDetailsBox.Text = sb.ToString();
+        }
+
+        private void ShowMultiSelectionRestoreDetails()
+        {
+            int selectedCount = restoreListBox.SelectedItems.Count;
+            int registryCount = 0;
+            int fileCount = 0;
+            int folderCount = 0;
+            int infoCount = 0;
+            int defaultSupportedCount = 0;
+
+            foreach (object item in restoreListBox.SelectedItems)
+            {
+                RestoreEntry entry = item as RestoreEntry;
+                if (entry == null)
+                    continue;
+
+                if (entry.Kind == "registry")
+                    registryCount++;
+                else if (entry.Kind == "file" || entry.Kind == "moved_file" || entry.Kind == "created_file")
+                    fileCount++;
+                else if (entry.Kind == "directory" || entry.Kind == "moved_directory")
+                    folderCount++;
+                else
+                    infoCount++;
+
+                if (DefaultRestoreSupported(entry))
+                    defaultSupportedCount++;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Selected restore entries: " + selectedCount);
+            sb.AppendLine();
+            sb.AppendLine("Contains:");
+            sb.AppendLine("- Registry values: " + registryCount);
+            sb.AppendLine("- Files: " + fileCount);
+            sb.AppendLine("- Folders: " + folderCount);
+            sb.AppendLine("- Informational entries: " + infoCount);
+            sb.AppendLine();
+            sb.AppendLine("Delete selected:");
+            sb.AppendLine("Removes all selected entries from the Restore list and deletes unused backup files/folders when possible.");
+            sb.AppendLine();
+            sb.AppendLine("Restore selected / Restore default:");
+            sb.AppendLine("Use a single selected item for restore actions. Bulk restore is intentionally disabled to avoid accidental mass rollback.");
+            sb.AppendLine();
+            sb.AppendLine("Default restore support among selected: " + defaultSupportedCount + " of " + selectedCount);
             restoreDetailsBox.Text = sb.ToString();
         }
 
@@ -584,14 +637,23 @@ namespace CK3MPS
 
         private void DeleteSelectedRestoreEntries()
         {
-            RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
-            if (entry == null)
+            List<RestoreEntry> selectedEntries = new List<RestoreEntry>();
+            foreach (object item in restoreListBox.SelectedItems)
+            {
+                RestoreEntry entry = item as RestoreEntry;
+                if (entry != null)
+                    selectedEntries.Add(entry);
+            }
+
+            if (selectedEntries.Count == 0)
                 return;
 
             DialogResult result = MessageBox.Show(
-                "Delete this restore record from CK3MPS?\r\n\r\n"
-                + entry.Description
-                + "\r\n\r\nThis removes the entry from the Restore list. If its backup file is no longer used by other entries, CK3MPS will delete that backup too.",
+                selectedEntries.Count == 1
+                    ? "Delete this restore record from CK3MPS?\r\n\r\n"
+                        + selectedEntries[0].Description
+                        + "\r\n\r\nThis removes the entry from the Restore list. If its backup file is no longer used by other entries, CK3MPS will delete that backup too."
+                    : "Delete " + selectedEntries.Count + " selected restore records from CK3MPS?\r\n\r\nThis removes the selected entries from the Restore list. If a backup file/folder is no longer used by other entries, CK3MPS will delete it too.",
                 "CK3MPS restore",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
@@ -600,8 +662,11 @@ namespace CK3MPS
 
             try
             {
-                DeleteRestoreEntries(new[] { entry.Id });
-                Log("OK   Deleted restore entry: " + entry.Description);
+                List<string> ids = new List<string>();
+                foreach (RestoreEntry entry in selectedEntries)
+                    ids.Add(entry.Id);
+                DeleteRestoreEntries(ids);
+                Log("OK   Deleted restore entr" + (selectedEntries.Count == 1 ? "y" : "ies") + ": " + selectedEntries.Count);
                 RefreshRestoreList();
             }
             catch (Exception ex)
