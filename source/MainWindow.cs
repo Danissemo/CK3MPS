@@ -466,7 +466,8 @@ namespace CK3MPS
             int smallGap = 8;
             int rightPadding = 16;
             int detailsMinWidth = 360;
-            int listTop = 66;
+            int filterTop = top + buttonHeight + 12;
+            int listTop = filterTop + 34;
             int bottomPadding = 16;
 
             refreshRestoreButton.Location = new Point(left, top);
@@ -484,22 +485,22 @@ namespace CK3MPS
             openQuarantineButton.Location = new Point(deleteRestoreButton.Right + gap, top);
             openQuarantineButton.Size = new Size(138, buttonHeight);
 
-            restoreRunLabel.Location = new Point(openQuarantineButton.Right + 18, top + 9);
+            restoreRunLabel.Location = new Point(left, filterTop + 5);
 
             int runBoxLeft = restoreRunLabel.Right + smallGap;
             int runBoxWidth = 160;
-            restoreRunBox.Location = new Point(runBoxLeft, top + 5);
+            restoreRunBox.Location = new Point(runBoxLeft, filterTop);
             restoreRunBox.Size = new Size(runBoxWidth, 24);
 
-            restoreSortLabel.Location = new Point(restoreRunBox.Right + 14, top + 9);
+            restoreSortLabel.Location = new Point(restoreRunBox.Right + 18, filterTop + 5);
 
             int sortBoxLeft = restoreSortLabel.Right + smallGap;
-            restoreSortBox.Location = new Point(sortBoxLeft, top + 5);
+            restoreSortBox.Location = new Point(sortBoxLeft, filterTop);
             restoreSortBox.Size = new Size(150, 24);
 
             int directionLeft = restoreSortBox.Right + smallGap;
-            int directionWidth = Math.Max(120, restorePage.ClientSize.Width - directionLeft - rightPadding);
-            restoreSortDirectionBox.Location = new Point(directionLeft, top + 5);
+            int directionWidth = Math.Max(140, restorePage.ClientSize.Width - directionLeft - rightPadding);
+            restoreSortDirectionBox.Location = new Point(directionLeft, filterTop);
             restoreSortDirectionBox.Size = new Size(directionWidth, 24);
 
             int listWidth = Math.Max(300, restorePage.ClientSize.Width - left - rightPadding - gap - detailsMinWidth);
