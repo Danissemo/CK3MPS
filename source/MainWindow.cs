@@ -530,8 +530,28 @@ namespace CK3MPS
 
             updateDownloadProgress.Location = new Point(164, 142);
             updateDownloadProgress.Size = new Size(280, 22);
-            updateDownloadProgress.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             advancedPage.Controls.Add(updateDownloadProgress);
+
+            advancedPage.Resize += delegate { LayoutAdvancedTabControls(); };
+            LayoutAdvancedTabControls();
+        }
+
+        private void LayoutAdvancedTabControls()
+        {
+            const int left = 18;
+            const int topButton = 136;
+            const int buttonWidth = 130;
+            const int gap = 16;
+            const int rightPadding = 18;
+            const int progressMinWidth = 180;
+
+            updateButton.Location = new Point(left, topButton);
+            updateButton.Size = new Size(buttonWidth, 34);
+
+            int progressLeft = updateButton.Right + gap;
+            int progressWidth = Math.Max(progressMinWidth, advancedPage.ClientSize.Width - progressLeft - rightPadding);
+            updateDownloadProgress.Location = new Point(progressLeft, topButton + 6);
+            updateDownloadProgress.Size = new Size(progressWidth, 22);
         }
 
         private void FillSteps()
