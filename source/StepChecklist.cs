@@ -21,7 +21,7 @@ namespace CK3MPS
 
                 AddStepGroup("Safety", new[] { 0, 1, 2 });
                 AddStepGroup("Windows & Network", new[] { 3, 4, 5, 6, 7, 8, 9 });
-                AddStepGroup("Steam & Launcher", new[] { 10, 11, 12, 13 });
+                AddStepGroup("Launch configuration", new[] { 10, 11, 12, 13 });
                 AddStepGroup("CK3 Profile", new[] { 14, 15, 16, 17 });
                 AddStepGroup("User State, Cache & Files", new[] { 18, 19, 20, 21, 22, 23, 24 });
                 AddStepGroup("OOS Reports & MP Readiness", new[] { 25, 26, 27, 28 });
