@@ -282,6 +282,59 @@ namespace CK3MPS
 
             Log("Steam Desktop Theatre/VR settings are global UI options; not changed automatically.");
         }
+
+        private bool RemoveSteamLaunchOptionsOverride()
+        {
+            if (String.IsNullOrEmpty(localConfig) || !File.Exists(localConfig))
+                return false;
+
+            string text = File.ReadAllText(localConfig, Encoding.UTF8);
+            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
+            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
+            if (appIndex < 0)
+                return false;
+
+            int open = text.IndexOf('{', appIndex);
+            int close = FindMatchingBrace(text, open);
+            if (open < 0 || close < 0)
+                return false;
+
+            string block = text.Substring(open + 1, close - open - 1);
+            string updated = Regex.Replace(block, "\\r?\\n\\s*\"LaunchOptions\"\\s+\"[^\"]*\"", "", RegexOptions.IgnoreCase);
+            if (updated == block)
+                return false;
+
+            BackupForRestore(localConfig, "Pre-default-restore backup of Steam localconfig launch options override: " + localConfig);
+            text = text.Substring(0, open + 1) + updated + text.Substring(close);
+            File.WriteAllText(localConfig, text, Encoding.UTF8);
+            return true;
+        }
+
+        private bool RemoveSteamCloudOverride()
+        {
+            if (String.IsNullOrEmpty(sharedConfig) || !File.Exists(sharedConfig))
+                return false;
+
+            string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
+            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
+            if (appIndex < 0)
+                return false;
+
+            int open = text.IndexOf('{', appIndex);
+            int close = FindMatchingBrace(text, open);
+            if (open < 0 || close < 0)
+                return false;
+
+            string block = text.Substring(open + 1, close - open - 1);
+            string updated = Regex.Replace(block, "\\r?\\n\\s*\"cloudenabled\"\\s+\"[^\"]*\"", "", RegexOptions.IgnoreCase);
+            if (updated == block)
+                return false;
+
+            BackupForRestore(sharedConfig, "Pre-default-restore backup of Steam sharedconfig cloud override: " + sharedConfig);
+            text = text.Substring(0, open + 1) + updated + text.Substring(close);
+            File.WriteAllText(sharedConfig, text, Encoding.UTF8);
+            return true;
+        }
     }
 }
 

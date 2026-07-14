@@ -21,6 +21,8 @@ internal static class UtilityTests
     {
         Assert(RestoreManifestUtilities.EscapeTsv("a\tb\r\nc") == "a b  c", "restore manifest escapes tabs and new lines");
         Assert(RestoreManifestUtilities.InferRunIdFromCreated("2026-07-14 15:04:05") == "20260714_150405", "restore manifest infers run id from legacy timestamp");
+        Assert(RestoreManifestUtilities.RunIdFromManifestParts(new[] { "1", "2026-07-14 15:04:05", "file", "a", "b", "c", "d", "e", "active" }, "2026-07-14 15:04:05") == "20260714_150405", "legacy restore manifest without run_id gets inferred run id");
+        Assert(RestoreManifestUtilities.RunIdFromManifestParts(new[] { "1", "2026-07-14 15:04:05", "file", "a", "b", "c", "d", "e", "active", "20260714_150500" }, "2026-07-14 15:04:05") == "20260714_150500", "new restore manifest keeps explicit run id");
 
         string root = Path.Combine(Path.GetTempPath(), "CK3MPS-restore-rules");
         string ck3Docs = Path.Combine(root, "Documents", "Paradox Interactive", "Crusader Kings III");

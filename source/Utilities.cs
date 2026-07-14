@@ -142,6 +142,13 @@ namespace CK3MPS
             return "legacy";
         }
 
+        public static string RunIdFromManifestParts(string[] parts, string created)
+        {
+            return parts != null && parts.Length > 9 && !String.IsNullOrEmpty(parts[9])
+                ? parts[9]
+                : InferRunIdFromCreated(created);
+        }
+
         public static bool IsOwnedByCk3OrParadoxLauncher(string path, string ck3Docs, string localLauncher, string roamingLauncher)
         {
             if (String.IsNullOrEmpty(path))

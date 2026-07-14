@@ -220,7 +220,7 @@ namespace CK3MPS
                     Before = parts[6],
                     After = parts[7],
                     Status = parts[8],
-                    RunId = parts.Length > 9 && !String.IsNullOrEmpty(parts[9]) ? parts[9] : RestoreManifestUtilities.InferRunIdFromCreated(parts[1])
+                    RunId = RestoreManifestUtilities.RunIdFromManifestParts(parts, parts[1])
                 });
             }
             ApplyRestoreStatusOverlay(entries);
@@ -315,6 +315,13 @@ namespace CK3MPS
             sb.AppendLine("Current now:");
             sb.AppendLine(DescribeRestoreCurrentState(entry));
             sb.AppendLine();
+            string diffSummary = BuildRestoreDiffSummary(entry);
+            if (!String.IsNullOrEmpty(diffSummary))
+            {
+                sb.AppendLine("Diff:");
+                sb.AppendLine(diffSummary);
+                sb.AppendLine();
+            }
             sb.AppendLine("Status:");
             sb.AppendLine(entry.Status);
             sb.AppendLine();
@@ -330,6 +337,62 @@ namespace CK3MPS
             if (entry.Kind == "system_snapshot" || entry.Kind == "snapshot")
                 return "Informational snapshot. See backup/quarantine path.";
             return DescribePath(entry.SourcePath);
+        }
+
+        private string BuildRestoreDiffSummary(RestoreEntry entry)
+        {
+            if (entry.Kind == "registry")
+                return entry.Before + " -> " + ReadRegistryRestoreValue(entry.SourcePath);
+            if ((entry.Kind == "file" || entry.Kind == "moved_file" || entry.Kind == "created_file") && File.Exists(entry.BackupPath) && File.Exists(entry.SourcePath))
+                return DiffTextFiles(entry.BackupPath, entry.SourcePath);
+            return "";
+        }
+
+        private string DiffTextFiles(string beforePath, string afterPath)
+        {
+            try
+            {
+                FileInfo beforeInfo = new FileInfo(beforePath);
+                FileInfo afterInfo = new FileInfo(afterPath);
+                if (beforeInfo.Length > 65536 || afterInfo.Length > 65536)
+                    return "Binary/large file change. Before=" + beforeInfo.Length + " bytes, after=" + afterInfo.Length + " bytes.";
+
+                string beforeText = File.ReadAllText(beforePath, Encoding.UTF8);
+                string afterText = File.ReadAllText(afterPath, Encoding.UTF8);
+                if (beforeText == afterText)
+                    return "No textual difference detected.";
+
+                string[] beforeLines = beforeText.Replace("\r\n", "\n").Split('\n');
+                string[] afterLines = afterText.Replace("\r\n", "\n").Split('\n');
+                StringBuilder sb = new StringBuilder();
+                int shown = 0;
+                int max = Math.Max(beforeLines.Length, afterLines.Length);
+                for (int i = 0; i < max && shown < 12; i++)
+                {
+                    string left = i < beforeLines.Length ? beforeLines[i] : "(missing)";
+                    string right = i < afterLines.Length ? afterLines[i] : "(missing)";
+                    if (String.Equals(left, right, StringComparison.Ordinal))
+                        continue;
+                    sb.AppendLine("- " + TrimDiffLine(left));
+                    sb.AppendLine("+ " + TrimDiffLine(right));
+                    shown++;
+                }
+                if (shown == 0)
+                    return "Text changed, but compact diff could not isolate differing lines.";
+                return sb.ToString().TrimEnd();
+            }
+            catch (Exception ex)
+            {
+                return "Diff unavailable: " + ex.Message;
+            }
+        }
+
+        private string TrimDiffLine(string line)
+        {
+            string text = (line ?? "").Trim();
+            if (text.Length <= 180)
+                return text;
+            return text.Substring(0, 177) + "...";
         }
 
         private void RestoreSelectedItem()
@@ -402,9 +465,23 @@ namespace CK3MPS
         {
             if (entry.Kind == "registry")
                 return true;
+            if (IsSteamLocalConfigEntry(entry) || IsSteamSharedConfigEntry(entry))
+                return true;
             if (entry.Kind == "file" || entry.Kind == "created_file" || entry.Kind == "moved_file" || entry.Kind == "directory" || entry.Kind == "moved_directory")
                 return IsOwnedByCk3OrParadoxLauncher(entry.SourcePath);
             return false;
+        }
+
+        private bool IsSteamLocalConfigEntry(RestoreEntry entry)
+        {
+            return !String.IsNullOrEmpty(localConfig)
+                && String.Equals(entry.SourcePath, localConfig, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsSteamSharedConfigEntry(RestoreEntry entry)
+        {
+            return !String.IsNullOrEmpty(sharedConfig)
+                && String.Equals(entry.SourcePath, sharedConfig, StringComparison.OrdinalIgnoreCase);
         }
 
         private bool IsOwnedByCk3OrParadoxLauncher(string path)
@@ -421,6 +498,20 @@ namespace CK3MPS
         private void RestoreDefaultEntry(RestoreEntry entry)
         {
             string beforeNow = DescribeRestoreCurrentState(entry);
+            if (IsSteamLocalConfigEntry(entry))
+            {
+                bool changed = RemoveSteamLaunchOptionsOverride();
+                RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam LaunchOptions override for CK3.", beforeNow, NullText(ExtractSteamLaunchOptions()), changed ? "restored_default" : "already_default");
+                return;
+            }
+
+            if (IsSteamSharedConfigEntry(entry))
+            {
+                bool changed = RemoveSteamCloudOverride();
+                RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed Steam Cloud override for CK3.", beforeNow, SteamCloudDisabledOrUnknownQuiet() ? "cloud override removed/unknown" : "cloud flag visible", changed ? "restored_default" : "already_default");
+                return;
+            }
+
             if (entry.Kind == "registry")
             {
                 RegistryKey root;
