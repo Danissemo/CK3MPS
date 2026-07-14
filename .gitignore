@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+release/*.zip
+
+# Local development backups and generated packages
+.dev-backup/
+source.zip
+*.zip
+
+# User/local runtime artifacts
+*.log
+*.tmp
+*.user
+*.suo
+.vs/
+
+# Stabilizer reports should stay on the user's machine, not in git.
+check.txt
+cleanup.txt
+report.txt
+state.txt
+mp_parity.txt
+protocol.txt
+quarantine/
