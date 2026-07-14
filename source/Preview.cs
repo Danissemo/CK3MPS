@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace CK3MPS
 {
@@ -566,28 +567,42 @@ namespace CK3MPS
                     details.Add("Delete legacy `CK3 Stabilizer - CK3 Inbound/Outbound` rules when they still exist.");
                     break;
                 case 6:
-                    details.Add("Set `HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR\\AppCaptureEnabled = 0`.");
-                    details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_Enabled = 0`.");
-                    details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_FSEBehaviorMode = 2`.");
-                    details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_HonorUserFSEBehaviorMode = 1`.");
-                    details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_DXGIHonorFSEWindowsCompatible = 1`.");
-                    details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_EFSEFeatureFlags = 0`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0))
+                        details.Add("Set `HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR\\AppCaptureEnabled = 0`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_Enabled", 0))
+                        details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_Enabled = 0`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2))
+                        details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_FSEBehaviorMode = 2`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_HonorUserFSEBehaviorMode", 1))
+                        details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_HonorUserFSEBehaviorMode = 1`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_DXGIHonorFSEWindowsCompatible", 1))
+                        details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_DXGIHonorFSEWindowsCompatible = 1`.");
+                    if (!RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_EFSEFeatureFlags", 0))
+                        details.Add("Set `HKCU\\System\\GameConfigStore\\GameDVR_EFSEFeatureFlags = 0`.");
                     if (File.Exists(ck3Exe))
                     {
-                        details.Add("Set `HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences[" + ck3Exe + "] = GpuPreference=2;`.");
-                        details.Add("Set `HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers[" + ck3Exe + "] = ~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE`.");
+                        if (!RegistryStringContains(Registry.CurrentUser, @"Software\Microsoft\DirectX\UserGpuPreferences", ck3Exe, "GpuPreference=2"))
+                            details.Add("Set `HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences[" + ck3Exe + "] = GpuPreference=2;`.");
+                        if (!RegistryStringContains(Registry.CurrentUser, @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", ck3Exe, "DISABLEDXMAXIMIZEDWINDOWEDMODE"))
+                            details.Add("Set `HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers[" + ck3Exe + "] = ~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE`.");
                     }
                     if (IsAdministrator())
                     {
-                        details.Add("Set `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\NetworkThrottlingIndex = 0xffffffff`.");
-                        details.Add("Set `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\SystemResponsiveness = 10`.");
+                        if (!RegistryDwordEquals(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "NetworkThrottlingIndex", unchecked((int)0xffffffff)))
+                            details.Add("Set `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\NetworkThrottlingIndex = 0xffffffff`.");
+                        if (!RegistryDwordEquals(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", 10))
+                            details.Add("Set `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\SystemResponsiveness = 10`.");
                     }
-                    details.Add("Apply conservative TCP globals: `rss=enabled autotuninglevel=normal ecncapability=disabled timestamps=disabled`.");
+                    if (TcpGlobalSettingsNeedUpdate())
+                        details.Add("Set TCP globals to `rss=enabled autotuninglevel=normal ecncapability=disabled timestamps=disabled`.");
                     break;
                 case 7:
-                    details.Add("Set `powercfg /setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0`.");
-                    details.Add("Set `powercfg /setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0`.");
-                    details.Add("Apply the current power scheme again with `powercfg /setactive SCHEME_CURRENT`.");
+                    if (PciExpressAspmNeedsUpdate())
+                        details.Add("Set `powercfg /setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0`.");
+                    if (PowerIdleAdapterNeedsUpdate())
+                        details.Add("Set `powercfg /setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0`.");
+                    if (PciExpressAspmNeedsUpdate() || PowerIdleAdapterNeedsUpdate())
+                        details.Add("Apply the current power scheme again with `powercfg /setactive SCHEME_CURRENT`.");
                     break;
                 case 8:
                     details.Add("Scan overlay, VPN and related background processes and log findings only.");

@@ -784,6 +784,12 @@ namespace CK3MPS
             LogAdaptiveNetworkPlan(profile);
             RecordSystemSnapshot("TCP global settings before CK3MPS network profile", "netsh interface tcp show global", RunCommandQuiet("netsh.exe", "interface tcp show global"));
 
+            if (!TcpGlobalSettingsNeedUpdate())
+            {
+                Log("OK   TCP global profile already matches: rss=enabled autotuninglevel=normal ecncapability=disabled timestamps=disabled.");
+                return;
+            }
+
             if (profile.HasPppoe || profile.HasIpv6OnlyOrDsLiteSignal)
             {
                 RunCommand("netsh.exe", "interface tcp set global rss=enabled autotuninglevel=normal ecncapability=disabled timestamps=disabled", true);
@@ -829,7 +835,8 @@ namespace CK3MPS
                 && RegistryDwordEquals(Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_Enabled", 0)
                 && File.Exists(ck3Exe)
                 && RegistryStringContains(Registry.CurrentUser, @"Software\Microsoft\DirectX\UserGpuPreferences", ck3Exe, "GpuPreference=2")
-                && RegistryStringContains(Registry.CurrentUser, @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", ck3Exe, "DISABLEDXMAXIMIZEDWINDOWEDMODE");
+                && RegistryStringContains(Registry.CurrentUser, @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", ck3Exe, "DISABLEDXMAXIMIZEDWINDOWEDMODE")
+                && !TcpGlobalSettingsNeedUpdate();
 
             if (!IsAdministrator())
                 return userProfile;
@@ -843,9 +850,27 @@ namespace CK3MPS
             NetworkRouteProfile profile = AnalyzeNetworkRouteProfile(false);
             RecordSystemSnapshot("Power scheme before CK3MPS adapter profile", "powercfg /getactivescheme", RunCommandQuiet("powercfg.exe", "/getactivescheme"));
             RecordSystemSnapshot("PCI Express power settings before CK3MPS adapter profile", "powercfg /query SCHEME_CURRENT SUB_PCIEXPRESS ASPM", RunCommandQuiet("powercfg.exe", "/query SCHEME_CURRENT SUB_PCIEXPRESS ASPM"));
-            RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0", true);
-            RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0", true);
-            RunCommand("powercfg.exe", "/setactive SCHEME_CURRENT", true);
+            bool changed = false;
+            if (PciExpressAspmNeedsUpdate())
+            {
+                RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT SUB_PCIEXPRESS ASPM 0", true);
+                changed = true;
+            }
+            else
+                Log("OK   PCI Express ASPM AC value already set to 0.");
+
+            if (PowerIdleAdapterNeedsUpdate())
+            {
+                RunCommand("powercfg.exe", "/setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0", true);
+                changed = true;
+            }
+            else
+                Log("OK   Adapter idle power AC value already set to 0.");
+
+            if (changed)
+                RunCommand("powercfg.exe", "/setactive SCHEME_CURRENT", true);
+            else
+                Log("OK   Current power scheme already has the selected CK3MPS adapter values.");
 
             if (profile.HasPppoe)
                 Log("INFO PPPoE adapter profile: power stability applied, provider MTU/offload settings left unchanged.");
@@ -873,7 +898,52 @@ namespace CK3MPS
         private bool PowerAdapterProfileOk()
         {
             string scheme = RunCommandQuiet("powercfg.exe", "/getactivescheme");
-            return !String.IsNullOrEmpty(scheme) && HasAnyActiveNetworkRoute();
+            return !String.IsNullOrEmpty(scheme) && HasAnyActiveNetworkRoute() && !PciExpressAspmNeedsUpdate() && !PowerIdleAdapterNeedsUpdate();
+        }
+
+        private bool TcpGlobalSettingsNeedUpdate()
+        {
+            string output = RunCommandQuiet("netsh.exe", "interface tcp show global");
+            if (String.IsNullOrEmpty(output))
+                return true;
+
+            return output.IndexOf("Receive-Side Scaling State", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("enabled", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("Receive Window Auto-Tuning Level", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("normal", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("ECN Capability", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("disabled", StringComparison.OrdinalIgnoreCase) < 0
+                || output.IndexOf("RFC 1323 Timestamps", StringComparison.OrdinalIgnoreCase) < 0
+                || CountCaseInsensitive(output, "disabled") < 2;
+        }
+
+        private int CountCaseInsensitive(string text, string needle)
+        {
+            if (String.IsNullOrEmpty(text) || String.IsNullOrEmpty(needle))
+                return 0;
+
+            int count = 0;
+            int index = 0;
+            while (true)
+            {
+                index = text.IndexOf(needle, index, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                    return count;
+                count++;
+                index += needle.Length;
+            }
+        }
+
+        private bool PciExpressAspmNeedsUpdate()
+        {
+            string output = RunCommandQuiet("powercfg.exe", "/query SCHEME_CURRENT SUB_PCIEXPRESS ASPM");
+            return String.IsNullOrEmpty(output) || output.IndexOf("0x00000000", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private bool PowerIdleAdapterNeedsUpdate()
+        {
+            string output = RunCommandQuiet("powercfg.exe", "/query SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a");
+            return String.IsNullOrEmpty(output) || output.IndexOf("0x00000000", StringComparison.OrdinalIgnoreCase) < 0;
         }
 
         private bool HasAnyActiveNetworkRoute()
