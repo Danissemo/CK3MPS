@@ -35,7 +35,6 @@ namespace CK3MPS
             Controls.Add(subtitle);
 
             mainTabs.Location = new Point(16, 74);
-            mainTabs.Size = new Size(924, 488);
             mainTabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             mainTabs.TabPages.Add(mainPage);
             mainTabs.TabPages.Add(pathsPage);
@@ -49,17 +48,8 @@ namespace CK3MPS
             BuildReportsTab();
             BuildRestoreTab();
             BuildAdvancedTab();
-
-            progress.Location = new Point(20, 574);
-            progress.Size = new Size(920, 24);
-            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            Controls.Add(progress);
-
-            statusLabel.Location = new Point(20, 604);
-            statusLabel.Size = new Size(920, 28);
-            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            statusLabel.Text = "Ready.";
-            Controls.Add(statusLabel);
+            Resize += delegate { LayoutRootControls(); };
+            LayoutRootControls();
 
             stabilizeButton.Text = "Stabilize CK3";
             stabilizeButton.Size = new Size(150, 34);
@@ -84,6 +74,11 @@ namespace CK3MPS
                     Process.Start("explorer.exe", ck3Docs);
             };
             mainPage.Controls.Add(openFolderButton);
+        }
+
+        private void LayoutRootControls()
+        {
+            mainTabs.Size = new Size(ClientSize.Width - 32, Math.Max(520, ClientSize.Height - mainTabs.Top - 16));
         }
 
         private void BuildMainTab()
@@ -188,6 +183,13 @@ namespace CK3MPS
             ConfigureLogView(logBox);
             mainPage.Controls.Add(logBox);
 
+            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            mainPage.Controls.Add(progress);
+
+            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            statusLabel.Text = "Ready.";
+            mainPage.Controls.Add(statusLabel);
+
             LayoutMainTabControls();
         }
 
@@ -201,7 +203,9 @@ namespace CK3MPS
             int labelY = 56;
             int logTop = 78;
             int actionButtonTop = mainPage.ClientSize.Height - 46;
-            int availableHeight = Math.Max(200, actionButtonTop - top - bottomMargin);
+            int statusTop = actionButtonTop - 34;
+            int progressTop = statusTop - 28;
+            int availableHeight = Math.Max(170, progressTop - top - bottomMargin);
 
             checklistPanel.Location = new Point(leftMargin, top);
             checklistPanel.Size = new Size(checklistWidth, availableHeight);
@@ -209,7 +213,13 @@ namespace CK3MPS
             liveLogLabel.Location = new Point(checklistPanel.Right + gap, labelY);
 
             logBox.Location = new Point(checklistPanel.Right + gap, logTop);
-            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(180, actionButtonTop - logTop - bottomMargin));
+            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(150, progressTop - logTop - bottomMargin));
+
+            progress.Location = new Point(leftMargin, progressTop);
+            progress.Size = new Size(mainPage.ClientSize.Width - (leftMargin * 2), 22);
+
+            statusLabel.Location = new Point(leftMargin, statusTop);
+            statusLabel.Size = new Size(mainPage.ClientSize.Width - (leftMargin * 2), 24);
 
             stabilizeButton.Location = new Point(leftMargin, actionButtonTop);
             checkButton.Location = new Point(stabilizeButton.Right + gap, actionButtonTop);
