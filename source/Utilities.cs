@@ -155,10 +155,42 @@ namespace CK3MPS
         {
             if (String.IsNullOrEmpty(path))
                 return false;
+            if (IsUserGameDataPath(path, ck3Docs))
+                return false;
             if (!String.IsNullOrEmpty(ck3Docs) && path.StartsWith(ck3Docs, StringComparison.OrdinalIgnoreCase))
                 return true;
             return (!String.IsNullOrEmpty(localLauncher) && path.StartsWith(localLauncher, StringComparison.OrdinalIgnoreCase))
                 || (!String.IsNullOrEmpty(roamingLauncher) && path.StartsWith(roamingLauncher, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static bool IsUserGameDataPath(string path, string ck3Docs)
+        {
+            if (String.IsNullOrEmpty(path) || String.IsNullOrEmpty(ck3Docs))
+                return false;
+
+            string normalizedPath = Ck3PathUtilities.NormalizeDirectoryPath(path);
+            string normalizedDocs = Ck3PathUtilities.NormalizeDirectoryPath(ck3Docs);
+            if (String.IsNullOrEmpty(normalizedPath) || String.IsNullOrEmpty(normalizedDocs))
+                return false;
+            if (!normalizedPath.StartsWith(normalizedDocs, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string relative = normalizedPath.Substring(normalizedDocs.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (relative.Length == 0)
+                return false;
+
+            string[] parts = relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return false;
+
+            if (String.Equals(parts[0], "save games", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (String.Equals(parts[0], "mod", StringComparison.OrdinalIgnoreCase) && normalizedPath.EndsWith(".mod", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (normalizedPath.EndsWith(".ck3", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return false;
         }
 
         public static string SerializeRegistryValue(object value, RegistryValueKind kind)

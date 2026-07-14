@@ -31,6 +31,9 @@ internal static class UtilityTests
         string roamingLauncher = Path.Combine(root, "Roaming", "Paradox Interactive", "launcher-v2");
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows CK3 Documents files");
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(localLauncher, "Cache"), ck3Docs, localLauncher, roamingLauncher), "default restore allows launcher local cache");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "save games"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks save games folder deletion");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "save games", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks save file deletion");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "mod", "example.mod"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks mod descriptor deletion");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(root, "Steam", "userdata", "localconfig.vdf"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks Steam config deletion");
     }
 
