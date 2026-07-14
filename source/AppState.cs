@@ -101,6 +101,7 @@ namespace CK3MPS
         private string logVerbosity = "Normal";
         private bool gamePathOverrideActive;
         private bool settingsPathOverrideActive;
+        private string liveLogFilePath;
 
         private sealed class StepGroupUi
         {
@@ -196,6 +197,7 @@ namespace CK3MPS
             UpdateSettingsUi();
             UpdatePathStatusIndicators();
             EnsureStabilizerRoot();
+            InitializeLiveLogFile();
             MigrateLegacyStabilizerState();
             MoveLegacyStabilizerArtifacts();
             settingsGuardTimer.Interval = 10000;
@@ -213,6 +215,7 @@ namespace CK3MPS
             Log("Steam: " + NullText(steamRoot));
             Log((!String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install) ? "OK   " : "WARN ") + "CK3 game folder: " + NullText(ck3Install));
             Log("Launch options file: " + NullText(localConfig));
+            Log("FILE Live log: " + NullText(liveLogFilePath));
             Shown += delegate
             {
                 RefreshHistoryView();

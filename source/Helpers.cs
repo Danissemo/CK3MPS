@@ -713,6 +713,7 @@ namespace CK3MPS
         {
             AppendLogLineTo(logBox, text, color);
             AppendLogLineTo(logTabBox, text, color);
+            AppendLiveLogLine(text);
         }
 
         private static void AppendLogLineTo(RichTextBox box, string text, Color color)
@@ -730,6 +731,47 @@ namespace CK3MPS
         {
             logBox.Clear();
             logTabBox.Clear();
+        }
+
+        private string LiveLogsFolder()
+        {
+            EnsureStabilizerRoot();
+            return Path.Combine(stabilizerRoot, "LiveLogs");
+        }
+
+        private void InitializeLiveLogFile()
+        {
+            try
+            {
+                string folder = LiveLogsFolder();
+                Directory.CreateDirectory(folder);
+                liveLogFilePath = Path.Combine(folder, "live_log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("CK3MPS live log");
+                sb.AppendLine("Started: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                sb.AppendLine("App version: " + AppVersion);
+                sb.AppendLine();
+                File.WriteAllText(liveLogFilePath, sb.ToString(), Utf8NoBom);
+            }
+            catch
+            {
+                liveLogFilePath = "";
+            }
+        }
+
+        private void AppendLiveLogLine(string text)
+        {
+            try
+            {
+                if (String.IsNullOrEmpty(liveLogFilePath))
+                    return;
+                File.AppendAllText(liveLogFilePath, (text ?? "") + Environment.NewLine, Utf8NoBom);
+            }
+            catch
+            {
+                // Live log file must never break the UI log path.
+            }
         }
 
         private Color LogColorForLine(string formatted, string original)
