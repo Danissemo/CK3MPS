@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Win32;
 
 namespace CK3MPS
 {
@@ -157,6 +159,171 @@ namespace CK3MPS
                 return true;
             return (!String.IsNullOrEmpty(localLauncher) && path.StartsWith(localLauncher, StringComparison.OrdinalIgnoreCase))
                 || (!String.IsNullOrEmpty(roamingLauncher) && path.StartsWith(roamingLauncher, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static string SerializeRegistryValue(object value, RegistryValueKind kind)
+        {
+            if (value == null)
+                return "(missing)";
+
+            if (kind == RegistryValueKind.DWord || kind == RegistryValueKind.QWord)
+                return kind + ":" + Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (kind == RegistryValueKind.MultiString)
+                return kind + ":" + JoinEscaped(value as string[] ?? new[] { Convert.ToString(value) ?? "" });
+            if (kind == RegistryValueKind.Binary || kind == RegistryValueKind.None)
+                return kind + ":hex:" + BytesToHex(value as byte[] ?? new byte[0]);
+
+            return kind + ":" + EscapeRegistryText(Convert.ToString(value) ?? "");
+        }
+
+        public static object ParseSerializedRegistryValue(string value, RegistryValueKind kind)
+        {
+            if (kind == RegistryValueKind.DWord)
+                return Int32.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (kind == RegistryValueKind.QWord)
+                return Int64.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (kind == RegistryValueKind.MultiString)
+                return SplitEscaped(value);
+            if (kind == RegistryValueKind.Binary || kind == RegistryValueKind.None)
+            {
+                string payload = value ?? "";
+                if (payload.StartsWith("hex:", StringComparison.OrdinalIgnoreCase))
+                    payload = payload.Substring(4);
+                return HexToBytes(payload);
+            }
+
+            return UnescapeRegistryText(value ?? "");
+        }
+
+        private static string EscapeRegistryText(string value)
+        {
+            return (value ?? "")
+                .Replace("\\", "\\\\")
+                .Replace(";", "\\;")
+                .Replace("\r", "\\r")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
+        }
+
+        private static string UnescapeRegistryText(string value)
+        {
+            if (String.IsNullOrEmpty(value))
+                return "";
+
+            StringBuilder sb = new StringBuilder(value.Length);
+            bool escape = false;
+            foreach (char ch in value)
+            {
+                if (escape)
+                {
+                    switch (ch)
+                    {
+                        case 'r': sb.Append('\r'); break;
+                        case 'n': sb.Append('\n'); break;
+                        case 't': sb.Append('\t'); break;
+                        case ';': sb.Append(';'); break;
+                        case '\\': sb.Append('\\'); break;
+                        default: sb.Append(ch); break;
+                    }
+                    escape = false;
+                }
+                else if (ch == '\\')
+                {
+                    escape = true;
+                }
+                else
+                {
+                    sb.Append(ch);
+                }
+            }
+
+            if (escape)
+                sb.Append('\\');
+            return sb.ToString();
+        }
+
+        private static string JoinEscaped(string[] values)
+        {
+            if (values == null || values.Length == 0)
+                return "";
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (i > 0)
+                    sb.Append(';');
+                sb.Append(EscapeRegistryText(values[i] ?? ""));
+            }
+            return sb.ToString();
+        }
+
+        private static string[] SplitEscaped(string value)
+        {
+            if (String.IsNullOrEmpty(value))
+                return new string[0];
+
+            System.Collections.Generic.List<string> items = new System.Collections.Generic.List<string>();
+            StringBuilder current = new StringBuilder();
+            bool escape = false;
+            foreach (char ch in value)
+            {
+                if (escape)
+                {
+                    switch (ch)
+                    {
+                        case 'r': current.Append('\r'); break;
+                        case 'n': current.Append('\n'); break;
+                        case 't': current.Append('\t'); break;
+                        case ';': current.Append(';'); break;
+                        case '\\': current.Append('\\'); break;
+                        default: current.Append(ch); break;
+                    }
+                    escape = false;
+                }
+                else if (ch == '\\')
+                {
+                    escape = true;
+                }
+                else if (ch == ';')
+                {
+                    items.Add(current.ToString());
+                    current.Length = 0;
+                }
+                else
+                {
+                    current.Append(ch);
+                }
+            }
+
+            if (escape)
+                current.Append('\\');
+            items.Add(current.ToString());
+            return items.ToArray();
+        }
+
+        private static string BytesToHex(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return "";
+
+            StringBuilder sb = new StringBuilder(bytes.Length * 2);
+            foreach (byte b in bytes)
+                sb.Append(b.ToString("x2"));
+            return sb.ToString();
+        }
+
+        private static byte[] HexToBytes(string value)
+        {
+            string text = value ?? "";
+            if (text.Length == 0)
+                return new byte[0];
+            if ((text.Length % 2) != 0)
+                throw new FormatException("Hex registry value length is invalid.");
+
+            byte[] bytes = new byte[text.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+                bytes[i] = Convert.ToByte(text.Substring(i * 2, 2), 16);
+            return bytes;
         }
     }
 }

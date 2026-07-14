@@ -12,6 +12,7 @@ internal static class UtilityTests
         TestPathNormalizationAndValidation();
         TestRecommendedPresetSafety();
         TestRestoreManifestRules();
+        TestRegistryValueSerialization();
 
         if (failures > 0)
             Environment.Exit(1);
@@ -31,6 +32,22 @@ internal static class UtilityTests
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows CK3 Documents files");
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(localLauncher, "Cache"), ck3Docs, localLauncher, roamingLauncher), "default restore allows launcher local cache");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(root, "Steam", "userdata", "localconfig.vdf"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks Steam config deletion");
+    }
+
+    private static void TestRegistryValueSerialization()
+    {
+        string serializedString = RestoreManifestUtilities.SerializeRegistryValue("line1;\r\nline2\\tail", Microsoft.Win32.RegistryValueKind.String);
+        Assert(serializedString == "String:line1\\;\\r\\nline2\\\\tail", "registry string snapshot escapes control characters");
+        Assert((string)RestoreManifestUtilities.ParseSerializedRegistryValue("line1\\;\\r\\nline2\\\\tail", Microsoft.Win32.RegistryValueKind.String) == "line1;\r\nline2\\tail", "registry string snapshot restores escaped value");
+
+        string serializedMulti = RestoreManifestUtilities.SerializeRegistryValue(new[] { "alpha", "semi;colon", "line\r\nbreak", "slash\\tail" }, Microsoft.Win32.RegistryValueKind.MultiString);
+        Assert(serializedMulti == "MultiString:alpha;semi\\;colon;line\\r\\nbreak;slash\\\\tail", "registry multistring snapshot stores escaped entries");
+        string[] restoredMulti = (string[])RestoreManifestUtilities.ParseSerializedRegistryValue("alpha;semi\\;colon;line\\r\\nbreak;slash\\\\tail", Microsoft.Win32.RegistryValueKind.MultiString);
+        Assert(restoredMulti.Length == 4
+            && restoredMulti[0] == "alpha"
+            && restoredMulti[1] == "semi;colon"
+            && restoredMulti[2] == "line\r\nbreak"
+            && restoredMulti[3] == "slash\\tail", "registry multistring snapshot restores all entries");
     }
 
     private static void TestRecommendedPresetSafety()

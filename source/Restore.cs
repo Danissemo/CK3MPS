@@ -133,7 +133,7 @@ namespace CK3MPS
                         object value = key.GetValue(name, null);
                         RegistryValueKind kind = value == null ? RegistryValueKind.Unknown : key.GetValueKind(name);
                         if (value != null)
-                            before = kind + ":" + Convert.ToString(value);
+                            before = RestoreManifestUtilities.SerializeRegistryValue(value, kind);
                     }
                 }
                 RecordRestoreEntry("registry", source, "", description, before, after, "");
@@ -622,13 +622,7 @@ namespace CK3MPS
 
         private object ParseRegistryValue(string value, RegistryValueKind kind)
         {
-            if (kind == RegistryValueKind.DWord)
-                return Int32.Parse(value);
-            if (kind == RegistryValueKind.QWord)
-                return Int64.Parse(value);
-            if (kind == RegistryValueKind.MultiString)
-                return value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-            return value;
+            return RestoreManifestUtilities.ParseSerializedRegistryValue(value, kind);
         }
 
         private string ReadRegistryRestoreValue(string path)
@@ -646,7 +640,7 @@ namespace CK3MPS
                     object value = key.GetValue(name, null);
                     if (value == null)
                         return "(missing)";
-                    return key.GetValueKind(name) + ":" + Convert.ToString(value);
+                    return RestoreManifestUtilities.SerializeRegistryValue(value, key.GetValueKind(name));
                 }
             }
             catch (Exception ex)
