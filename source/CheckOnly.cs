@@ -253,6 +253,7 @@ namespace CK3MPS
         {
             EnsureStabilizerRoot();
             lastQuarantine = Path.Combine(stabilizerRoot, "quarantine");
+            currentRestoreRunId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             Directory.CreateDirectory(lastQuarantine);
             Directory.CreateDirectory(Path.Combine(lastQuarantine, "user_state"));
             Directory.CreateDirectory(Path.Combine(lastQuarantine, "reports"));

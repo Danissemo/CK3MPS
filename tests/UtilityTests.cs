@@ -10,9 +10,39 @@ internal static class UtilityTests
     {
         TestVersionComparison();
         TestPathNormalizationAndValidation();
+        TestRecommendedPresetSafety();
+        TestRestoreManifestRules();
 
         if (failures > 0)
             Environment.Exit(1);
+    }
+
+    private static void TestRestoreManifestRules()
+    {
+        Assert(RestoreManifestUtilities.EscapeTsv("a\tb\r\nc") == "a b  c", "restore manifest escapes tabs and new lines");
+        Assert(RestoreManifestUtilities.InferRunIdFromCreated("2026-07-14 15:04:05") == "20260714_150405", "restore manifest infers run id from legacy timestamp");
+
+        string root = Path.Combine(Path.GetTempPath(), "CK3MPS-restore-rules");
+        string ck3Docs = Path.Combine(root, "Documents", "Paradox Interactive", "Crusader Kings III");
+        string localLauncher = Path.Combine(root, "Local", "Paradox Interactive", "launcher-v2");
+        string roamingLauncher = Path.Combine(root, "Roaming", "Paradox Interactive", "launcher-v2");
+        Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows CK3 Documents files");
+        Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(localLauncher, "Cache"), ck3Docs, localLauncher, roamingLauncher), "default restore allows launcher local cache");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(root, "Steam", "userdata", "localconfig.vdf"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks Steam config deletion");
+    }
+
+    private static void TestRecommendedPresetSafety()
+    {
+        int[] recommended = PresetUtilities.RecommendedStepIndices();
+        Assert(PresetUtilities.ContainsStep(recommended, 11), "recommended keeps Steam launch option stabilization");
+        Assert(PresetUtilities.ContainsStep(recommended, 14), "recommended keeps no-mod dlc_load stabilization");
+        Assert(PresetUtilities.ContainsStep(recommended, 15), "recommended keeps pdx_settings stabilization");
+        Assert(!PresetUtilities.ContainsStep(recommended, 5), "recommended skips firewall rule changes");
+        Assert(!PresetUtilities.ContainsStep(recommended, 6), "recommended skips Windows registry game/network tuning");
+        Assert(!PresetUtilities.ContainsStep(recommended, 7), "recommended skips powercfg adapter tuning");
+        Assert(!PresetUtilities.ContainsStep(recommended, 21), "recommended skips local mod descriptor quarantine");
+        Assert(!PresetUtilities.ContainsStep(recommended, 23), "recommended skips save hygiene quarantine");
+        Assert(!PresetUtilities.ContainsStep(recommended, 24), "recommended skips broad CK3 Documents cleanup");
     }
 
     private static void TestVersionComparison()

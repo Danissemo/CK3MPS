@@ -140,10 +140,16 @@ namespace CK3MPS
             };
             mainPage.Controls.Add(selectNoneButton);
 
+            previewButton.Text = "Preview";
+            previewButton.Location = new Point(406, 12);
+            previewButton.Size = new Size(84, 28);
+            previewButton.Click += delegate { ShowStabilizationPreview(false); };
+            mainPage.Controls.Add(previewButton);
+
             var graphicsLabel = new Label();
             graphicsLabel.Text = "Graphics:";
             graphicsLabel.AutoSize = true;
-            graphicsLabel.Location = new Point(420, 18);
+            graphicsLabel.Location = new Point(512, 18);
             mainPage.Controls.Add(graphicsLabel);
 
             graphicsProfileBox.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -154,7 +160,7 @@ namespace CK3MPS
                 "Quality",
                 "Keep current"
             });
-            graphicsProfileBox.Location = new Point(486, 14);
+            graphicsProfileBox.Location = new Point(578, 14);
             graphicsProfileBox.Size = new Size(140, 24);
             mainPage.Controls.Add(graphicsProfileBox);
 
@@ -224,12 +230,41 @@ namespace CK3MPS
             resetPathsButton.Click += delegate { ResetPathsToAutoDetect(); };
             pathsPage.Controls.Add(resetPathsButton);
 
+            openGamePathButton.Text = "Open game";
+            openGamePathButton.Location = new Point(278, 100);
+            openGamePathButton.Size = new Size(100, 32);
+            openGamePathButton.Click += delegate { OpenPathIfExists(ck3Install); };
+            pathsPage.Controls.Add(openGamePathButton);
+
+            openSettingsPathButton.Text = "Open settings";
+            openSettingsPathButton.Location = new Point(390, 100);
+            openSettingsPathButton.Size = new Size(112, 32);
+            openSettingsPathButton.Click += delegate { OpenPathIfExists(ck3Docs); };
+            pathsPage.Controls.Add(openSettingsPathButton);
+
+            resetGamePathButton.Text = "Reset game";
+            resetGamePathButton.Location = new Point(514, 100);
+            resetGamePathButton.Size = new Size(100, 32);
+            resetGamePathButton.Click += delegate { ResetGamePathToAutoDetect(); };
+            pathsPage.Controls.Add(resetGamePathButton);
+
+            resetSettingsPathButton.Text = "Reset settings";
+            resetSettingsPathButton.Location = new Point(626, 100);
+            resetSettingsPathButton.Size = new Size(112, 32);
+            resetSettingsPathButton.Click += delegate { ResetSettingsPathToDefault(); };
+            pathsPage.Controls.Add(resetSettingsPathButton);
+
             var pathsHint = new Label();
             pathsHint.Text = "Game folder must contain binaries\\ck3.exe. Settings/saves should be the Crusader Kings III folder under Documents.";
             pathsHint.Location = new Point(124, 148);
             pathsHint.Size = new Size(720, 44);
             pathsHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             pathsPage.Controls.Add(pathsHint);
+
+            pathDetailsLabel.Location = new Point(124, 198);
+            pathDetailsLabel.Size = new Size(760, 120);
+            pathDetailsLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            pathsPage.Controls.Add(pathDetailsLabel);
         }
 
         private void BuildLogTab()
@@ -293,8 +328,14 @@ namespace CK3MPS
             restoreSelectedButton.Click += delegate { RestoreSelectedItem(); };
             restorePage.Controls.Add(restoreSelectedButton);
 
+            restoreDefaultButton.Text = "Restore default";
+            restoreDefaultButton.Location = new Point(284, 18);
+            restoreDefaultButton.Size = new Size(140, 34);
+            restoreDefaultButton.Click += delegate { RestoreSelectedItemToDefault(); };
+            restorePage.Controls.Add(restoreDefaultButton);
+
             openQuarantineButton.Text = "Open quarantine";
-            openQuarantineButton.Location = new Point(284, 18);
+            openQuarantineButton.Location = new Point(438, 18);
             openQuarantineButton.Size = new Size(140, 34);
             openQuarantineButton.Click += delegate
             {
@@ -303,6 +344,23 @@ namespace CK3MPS
                     Process.Start("explorer.exe", dir);
             };
             restorePage.Controls.Add(openQuarantineButton);
+
+            var restoreRunLabel = new Label();
+            restoreRunLabel.Text = "Run:";
+            restoreRunLabel.AutoSize = true;
+            restoreRunLabel.Location = new Point(594, 27);
+            restorePage.Controls.Add(restoreRunLabel);
+
+            restoreRunBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            restoreRunBox.Location = new Point(632, 22);
+            restoreRunBox.Size = new Size(252, 24);
+            restoreRunBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            restoreRunBox.SelectedIndexChanged += delegate
+            {
+                if (!updatingRestoreUi)
+                    RefreshRestoreListOnly();
+            };
+            restorePage.Controls.Add(restoreRunBox);
 
             restoreListBox.Location = new Point(16, 66);
             restoreListBox.Size = new Size(410, 370);
@@ -459,6 +517,14 @@ namespace CK3MPS
                     return;
                 }
 
+                if (!ConfirmStabilizationPreview())
+                {
+                    statusLabel.Text = "Stopped: preview was not confirmed.";
+                    Log("INFO Stabilize stopped before changes: preview was not confirmed.");
+                    AppendRunHistory("stabilize", "stopped_preview_not_confirmed");
+                    return;
+                }
+
                 RunOptionalStep(0, "Safety: creating Windows restore point", CreateWindowsRestorePoint, false);
                 RunOptionalStep(1, "Safety: checking paths", CheckBasePaths, true);
                 RunOptionalStep(2, "Safety: creating quarantine", CreateQuarantine, true);
@@ -531,6 +597,7 @@ namespace CK3MPS
             {
                 LogSection("Check only started");
                 Log("Mode: read-only scan of every checklist item. No files or settings will be changed.");
+                ShowStabilizationPreview(true);
                 if (!ValidateBeforeRun())
                 {
                     statusLabel.Text = "Check stopped: fix folder paths first.";

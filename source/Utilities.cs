@@ -103,4 +103,53 @@ namespace CK3MPS
             return parts;
         }
     }
+
+    internal static class PresetUtilities
+    {
+        public static int[] RecommendedStepIndices()
+        {
+            return new[]
+            {
+                0, 3, 4,
+                8, 9,
+                10, 11, 12, 13,
+                14, 15, 16, 17, 18, 19, 20,
+                22, 25, 26, 27, 28
+            };
+        }
+
+        public static bool ContainsStep(int[] steps, int index)
+        {
+            foreach (int step in steps)
+                if (step == index)
+                    return true;
+            return false;
+        }
+    }
+
+    internal static class RestoreManifestUtilities
+    {
+        public static string EscapeTsv(string value)
+        {
+            return (value ?? "").Replace("\t", " ").Replace("\r", " ").Replace("\n", " ");
+        }
+
+        public static string InferRunIdFromCreated(string created)
+        {
+            DateTime parsed;
+            if (DateTime.TryParse(created, out parsed))
+                return parsed.ToString("yyyyMMdd_HHmmss");
+            return "legacy";
+        }
+
+        public static bool IsOwnedByCk3OrParadoxLauncher(string path, string ck3Docs, string localLauncher, string roamingLauncher)
+        {
+            if (String.IsNullOrEmpty(path))
+                return false;
+            if (!String.IsNullOrEmpty(ck3Docs) && path.StartsWith(ck3Docs, StringComparison.OrdinalIgnoreCase))
+                return true;
+            return (!String.IsNullOrEmpty(localLauncher) && path.StartsWith(localLauncher, StringComparison.OrdinalIgnoreCase))
+                || (!String.IsNullOrEmpty(roamingLauncher) && path.StartsWith(roamingLauncher, StringComparison.OrdinalIgnoreCase));
+        }
+    }
 }

@@ -34,6 +34,26 @@ namespace CK3MPS
             Log("INFO Paths reset to automatic detection.");
         }
 
+        private void ResetGamePathToAutoDetect()
+        {
+            steamRoot = DetectSteamRoot();
+            appManifest = DetectManifest();
+            ck3Install = DetectInstallPath();
+            RefreshDerivedPaths();
+            SaveAppConfig();
+            UpdatePathStatusIndicators();
+            Log("INFO CK3 game folder reset to automatic detection.");
+        }
+
+        private void ResetSettingsPathToDefault()
+        {
+            ck3Docs = Ck3PathUtilities.DefaultSettingsFolder();
+            RefreshDerivedPaths();
+            SaveAppConfig();
+            UpdatePathStatusIndicators();
+            Log("INFO CK3 settings/saves folder reset to default Documents location.");
+        }
+
         private string AppConfigFile()
         {
             if (portableMode)

@@ -46,17 +46,25 @@ namespace CK3MPS
         private readonly Button updateButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
+        private readonly Button previewButton = new Button();
         private readonly TextBox gamePathBox = new TextBox();
         private readonly TextBox settingsPathBox = new TextBox();
         private readonly Button gamePathBrowseButton = new Button();
         private readonly Button settingsPathBrowseButton = new Button();
+        private readonly Button openGamePathButton = new Button();
+        private readonly Button openSettingsPathButton = new Button();
+        private readonly Button resetGamePathButton = new Button();
+        private readonly Button resetSettingsPathButton = new Button();
         private readonly Button resetPathsButton = new Button();
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
+        private readonly Label pathDetailsLabel = new Label();
         private readonly TextBox historyBox = new TextBox();
+        private readonly ComboBox restoreRunBox = new ComboBox();
         private readonly ListBox restoreListBox = new ListBox();
         private readonly TextBox restoreDetailsBox = new TextBox();
         private readonly Button restoreSelectedButton = new Button();
+        private readonly Button restoreDefaultButton = new Button();
         private readonly Button refreshRestoreButton = new Button();
         private readonly Button openQuarantineButton = new Button();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
@@ -76,6 +84,8 @@ namespace CK3MPS
         private string sharedConfig;
 
         private string lastQuarantine;
+        private string currentRestoreRunId;
+        private bool updatingRestoreUi;
         private DateTime lastSettingsGuardRepairUtc = DateTime.MinValue;
         private bool settingsGuardActive;
         private int lastReadinessFailures;

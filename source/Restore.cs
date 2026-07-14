@@ -21,10 +21,12 @@ namespace CK3MPS
             public string After;
             public string Created;
             public string Status;
+            public string RunId;
 
             public override string ToString()
             {
-                return Created + " | " + Kind + " | " + Description;
+                string status = String.IsNullOrEmpty(Status) ? "active" : Status;
+                return RunId + " | " + status + " | " + Created + " | " + Kind + " | " + Description;
             }
         }
 
@@ -52,7 +54,7 @@ namespace CK3MPS
             Directory.CreateDirectory(RestoreBackupRoot());
             string manifest = RestoreManifestFile();
             if (!File.Exists(manifest))
-                File.WriteAllText(manifest, "id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\r\n", Encoding.UTF8);
+                File.WriteAllText(manifest, "id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\trun_id\r\n", Encoding.UTF8);
 
             CapturePreChangeSnapshot();
             RefreshRestoreList();
@@ -166,25 +168,23 @@ namespace CK3MPS
                 return;
             if (!File.Exists(manifest))
                 InitializeRestoreManifest();
+            if (String.IsNullOrEmpty(currentRestoreRunId))
+                currentRestoreRunId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
             string line = String.Join("\t", new[]
             {
                 Guid.NewGuid().ToString("N"),
                 DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                Tsv(kind),
-                Tsv(source),
-                Tsv(backup),
-                Tsv(description),
-                Tsv(before),
-                Tsv(after),
-                Tsv(status)
+                RestoreManifestUtilities.EscapeTsv(kind),
+                RestoreManifestUtilities.EscapeTsv(source),
+                RestoreManifestUtilities.EscapeTsv(backup),
+                RestoreManifestUtilities.EscapeTsv(description),
+                RestoreManifestUtilities.EscapeTsv(before),
+                RestoreManifestUtilities.EscapeTsv(after),
+                RestoreManifestUtilities.EscapeTsv(status),
+                RestoreManifestUtilities.EscapeTsv(currentRestoreRunId)
             });
             File.AppendAllText(manifest, line + Environment.NewLine, Encoding.UTF8);
-        }
-
-        private string Tsv(string value)
-        {
-            return (value ?? "").Replace("\t", " ").Replace("\r", " ").Replace("\n", " ");
         }
 
         private string DescribePath(string path)
@@ -219,17 +219,74 @@ namespace CK3MPS
                     Description = parts[5],
                     Before = parts[6],
                     After = parts[7],
-                    Status = parts[8]
+                    Status = parts[8],
+                    RunId = parts.Length > 9 && !String.IsNullOrEmpty(parts[9]) ? parts[9] : RestoreManifestUtilities.InferRunIdFromCreated(parts[1])
                 });
             }
+            ApplyRestoreStatusOverlay(entries);
             return entries;
+        }
+
+        private void ApplyRestoreStatusOverlay(List<RestoreEntry> entries)
+        {
+            Dictionary<string, bool> restored = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (RestoreEntry entry in entries)
+            {
+                if (entry.Kind == "restore_action" || entry.Kind == "default_restore")
+                    restored[entry.SourcePath] = true;
+            }
+
+            foreach (RestoreEntry entry in entries)
+            {
+                if (String.IsNullOrEmpty(entry.Status) && restored.ContainsKey(entry.SourcePath) && entry.Kind != "restore_action" && entry.Kind != "default_restore")
+                    entry.Status = "restored";
+                else if (String.IsNullOrEmpty(entry.Status) && entry.Kind != "snapshot" && entry.Kind != "system_snapshot")
+                    entry.Status = "active";
+            }
         }
 
         private void RefreshRestoreList()
         {
+            RefreshRestoreRuns();
+            RefreshRestoreListOnly();
+        }
+
+        private void RefreshRestoreRuns()
+        {
+            List<RestoreEntry> entries = ReadRestoreEntries();
+            string selected = Convert.ToString(restoreRunBox.SelectedItem);
+            if (String.IsNullOrEmpty(selected))
+                selected = "All runs";
+
+            updatingRestoreUi = true;
+            try
+            {
+                restoreRunBox.Items.Clear();
+                restoreRunBox.Items.Add("All runs");
+                SortedDictionary<string, bool> runs = new SortedDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                foreach (RestoreEntry entry in entries)
+                    if (!String.IsNullOrEmpty(entry.RunId))
+                        runs[entry.RunId] = true;
+                foreach (string run in runs.Keys)
+                    restoreRunBox.Items.Add(run);
+                restoreRunBox.SelectedItem = restoreRunBox.Items.Contains(selected) ? selected : "All runs";
+            }
+            finally
+            {
+                updatingRestoreUi = false;
+            }
+        }
+
+        private void RefreshRestoreListOnly()
+        {
             restoreListBox.Items.Clear();
+            string selectedRun = Convert.ToString(restoreRunBox.SelectedItem);
             foreach (RestoreEntry entry in ReadRestoreEntries())
+            {
+                if (!String.IsNullOrEmpty(selectedRun) && selectedRun != "All runs" && !String.Equals(entry.RunId, selectedRun, StringComparison.OrdinalIgnoreCase))
+                    continue;
                 restoreListBox.Items.Add(entry);
+            }
             restoreDetailsBox.Text = restoreListBox.Items.Count == 0 ? "(no restore entries yet)" : "";
         }
 
@@ -260,6 +317,9 @@ namespace CK3MPS
             sb.AppendLine();
             sb.AppendLine("Status:");
             sb.AppendLine(entry.Status);
+            sb.AppendLine();
+            sb.AppendLine("Default restore:");
+            sb.AppendLine(DefaultRestoreSupported(entry) ? "Supported: CK3MPS will remove this override/file/value so the owner recreates defaults." : "Not supported for this item. Use recorded previous-value restore.");
             restoreDetailsBox.Text = sb.ToString();
         }
 
@@ -303,6 +363,91 @@ namespace CK3MPS
                 Log("ERROR Restore failed: " + ex.Message);
                 MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void RestoreSelectedItemToDefault()
+        {
+            RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
+            if (entry == null)
+                return;
+
+            if (!DefaultRestoreSupported(entry))
+            {
+                MessageBox.Show("Default restore is not supported for this item. Use Restore selected to restore the recorded previous value.", "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                "Reset this item to game/launcher/Windows default behavior?\r\n\r\n" + entry.SourcePath + "\r\n\r\nCK3MPS will back up the current value first, then remove the override/file so the owner can recreate defaults.",
+                "CK3MPS default restore",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            try
+            {
+                RestoreDefaultEntry(entry);
+                Log("OK   Restored default behavior: " + entry.Description);
+                RefreshRestoreList();
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR Default restore failed: " + ex.Message);
+                MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private bool DefaultRestoreSupported(RestoreEntry entry)
+        {
+            if (entry.Kind == "registry")
+                return true;
+            if (entry.Kind == "file" || entry.Kind == "created_file" || entry.Kind == "moved_file" || entry.Kind == "directory" || entry.Kind == "moved_directory")
+                return IsOwnedByCk3OrParadoxLauncher(entry.SourcePath);
+            return false;
+        }
+
+        private bool IsOwnedByCk3OrParadoxLauncher(string path)
+        {
+            if (String.IsNullOrEmpty(path))
+                return false;
+            if (!String.IsNullOrEmpty(ck3Docs) && path.StartsWith(ck3Docs, StringComparison.OrdinalIgnoreCase))
+                return true;
+            string localLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paradox Interactive", "launcher-v2");
+            string roamingLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Paradox Interactive", "launcher-v2");
+            return RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(path, ck3Docs, localLauncher, roamingLauncher);
+        }
+
+        private void RestoreDefaultEntry(RestoreEntry entry)
+        {
+            string beforeNow = DescribeRestoreCurrentState(entry);
+            if (entry.Kind == "registry")
+            {
+                RegistryKey root;
+                string subKey;
+                string name;
+                ParseRegistryRestorePath(entry.SourcePath, out root, out subKey, out name);
+                using (RegistryKey key = root.OpenSubKey(subKey, true))
+                {
+                    if (key != null)
+                        key.DeleteValue(name, false);
+                }
+                RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restored registry value: " + entry.SourcePath, beforeNow, "(missing/default)", "restored_default");
+                return;
+            }
+
+            if (File.Exists(entry.SourcePath))
+            {
+                BackupForRestore(entry.SourcePath, "Pre-default-restore backup of current file: " + entry.SourcePath);
+                File.Delete(entry.SourcePath);
+            }
+            else if (Directory.Exists(entry.SourcePath))
+            {
+                BackupForRestore(entry.SourcePath, "Pre-default-restore backup of current directory: " + entry.SourcePath);
+                Directory.Delete(entry.SourcePath, true);
+            }
+
+            RecordRestoreEntry("default_restore", entry.SourcePath, "", "Default restore: removed CK3/Launcher override so owner can recreate defaults: " + entry.SourcePath, beforeNow, "(missing/default)", "restored_default");
         }
 
         private void RestoreFileEntry(RestoreEntry entry)

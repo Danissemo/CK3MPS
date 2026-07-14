@@ -229,7 +229,7 @@ namespace CK3MPS
             }
             else
             {
-                Log("INFO No SHA256 checksum asset found for this release. Update will use downloaded file size validation only.");
+                throw new InvalidOperationException("No SHA256 checksum asset found for this release. Automatic update was stopped for safety.");
             }
 
             string script = Path.Combine(workDir, "apply-update.ps1");

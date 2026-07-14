@@ -451,14 +451,7 @@ namespace CK3MPS
             // Recommended keeps the important reversible CK3 multiplayer fixes, but avoids the
             // highest-risk actions: Windows firewall/registry/adapter tuning, save movement,
             // local .mod descriptor quarantine, and broad CK3 Documents cleanup.
-            SetPresetSteps(new[]
-            {
-                0, 3, 4,
-                8, 9,
-                10, 11, 12, 13,
-                14, 15, 16, 17, 18, 19, 20,
-                22, 25, 26, 27, 28
-            });
+            SetPresetSteps(PresetUtilities.RecommendedStepIndices());
 
             statusLabel.Text = "Preset selected: Recommended. Applies backed-up CK3/Launcher fixes, but skips Windows tuning, save movement, .mod quarantine and broad folder cleanup.";
         }
@@ -521,7 +514,13 @@ namespace CK3MPS
             refreshHistoryButton.Enabled = !busy;
             refreshRestoreButton.Enabled = !busy;
             restoreSelectedButton.Enabled = !busy;
+            restoreDefaultButton.Enabled = !busy;
             openQuarantineButton.Enabled = !busy;
+            previewButton.Enabled = !busy;
+            openGamePathButton.Enabled = !busy;
+            openSettingsPathButton.Enabled = !busy;
+            resetGamePathButton.Enabled = !busy;
+            resetSettingsPathButton.Enabled = !busy;
             updateButton.Enabled = !busy;
             gamePathBrowseButton.Enabled = !busy;
             settingsPathBrowseButton.Enabled = !busy;
@@ -765,6 +764,8 @@ namespace CK3MPS
             settingsPathBox.Text = NullText(ck3Docs);
             ApplyPathStatus(gamePathStatusLabel, gameExists, gameValid, ck3Install);
             ApplyPathStatus(settingsPathStatusLabel, settingsExists, settingsValid, ck3Docs);
+            pathDetailsLabel.Text = "Game: " + PathValidationReason(ck3Install, true) + Environment.NewLine
+                + "Settings/saves: " + PathValidationReason(ck3Docs, false);
         }
 
         private void ApplyPathStatus(Label label, bool exists, bool valid, string path)
@@ -773,6 +774,39 @@ namespace CK3MPS
             label.ForeColor = valid ? Color.FromArgb(0, 128, 64) : Color.FromArgb(192, 0, 0);
             label.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
             label.Tag = path;
+        }
+
+        private string PathValidationReason(string path, bool game)
+        {
+            if (String.IsNullOrEmpty(path))
+                return "(empty)";
+            if (!Directory.Exists(path))
+                return "folder is missing: " + path;
+
+            if (game)
+            {
+                string exe = Path.Combine(path, "binaries", "ck3.exe");
+                return File.Exists(exe)
+                    ? "valid, found binaries\\ck3.exe"
+                    : "wrong folder, missing binaries\\ck3.exe";
+            }
+
+            List<string> markers = new List<string>();
+            if (File.Exists(Path.Combine(path, "pdx_settings.txt"))) markers.Add("pdx_settings.txt");
+            if (File.Exists(Path.Combine(path, "dlc_load.json"))) markers.Add("dlc_load.json");
+            if (File.Exists(Path.Combine(path, "continue_game.json"))) markers.Add("continue_game.json");
+            if (File.Exists(Path.Combine(path, "launcher-v2.sqlite"))) markers.Add("launcher-v2.sqlite");
+            if (Directory.Exists(Path.Combine(path, "save games"))) markers.Add("save games");
+            if (Directory.Exists(Path.Combine(path, "logs"))) markers.Add("logs");
+            return markers.Count == 0
+                ? "wrong folder, no CK3 settings/save markers found"
+                : "valid, found " + String.Join(", ", markers.ToArray());
+        }
+
+        private void OpenPathIfExists(string path)
+        {
+            if (!String.IsNullOrEmpty(path) && Directory.Exists(path))
+                Process.Start("explorer.exe", path);
         }
 
         private void BrowseForGameFolder()
