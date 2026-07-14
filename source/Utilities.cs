@@ -387,4 +387,31 @@ namespace CK3MPS
             return String.IsNullOrEmpty(compact) ? "report.txt" : compact;
         }
     }
+
+    internal static class ChecksumUtilities
+    {
+        public static string ExtractExpectedSha256(string checksumText, string assetName)
+        {
+            string text = checksumText ?? "";
+            string wanted = Path.GetFileName(assetName ?? "");
+
+            if (!String.IsNullOrEmpty(wanted))
+            {
+                string escaped = Regex.Escape(wanted);
+                Match named = Regex.Match(text, "([A-Fa-f0-9]{64})\\s+[* ]?" + escaped, RegexOptions.IgnoreCase);
+                if (named.Success)
+                    return named.Groups[1].Value.ToLowerInvariant();
+
+                Match reversed = Regex.Match(text, escaped + "\\s+([A-Fa-f0-9]{64})", RegexOptions.IgnoreCase);
+                if (reversed.Success)
+                    return reversed.Groups[1].Value.ToLowerInvariant();
+            }
+
+            Match single = Regex.Match(text.Trim(), "^([A-Fa-f0-9]{64})\\s*$", RegexOptions.IgnoreCase);
+            if (single.Success)
+                return single.Groups[1].Value.ToLowerInvariant();
+
+            return "";
+        }
+    }
 }

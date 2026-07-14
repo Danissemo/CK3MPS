@@ -292,7 +292,7 @@ namespace CK3MPS
                 using (WebClient client = CreateGitHubWebClient())
                 {
                     string checksumText = await client.DownloadStringTaskAsync(new Uri(release.ChecksumUrl));
-                    VerifyDownloadedSha256(downloadPath, checksumText);
+                    VerifyDownloadedSha256(downloadPath, checksumText, release.AssetName);
                     Log("OK   Update SHA256 checksum verified.");
                 }
             }
@@ -319,13 +319,12 @@ namespace CK3MPS
             Application.Exit();
         }
 
-        private void VerifyDownloadedSha256(string path, string checksumText)
+        private void VerifyDownloadedSha256(string path, string checksumText, string assetName)
         {
-            Match match = Regex.Match(checksumText ?? "", "[A-Fa-f0-9]{64}");
-            if (!match.Success)
-                throw new InvalidOperationException("SHA256 checksum asset did not contain a 64-character hash.");
+            string expected = ChecksumUtilities.ExtractExpectedSha256(checksumText, assetName);
+            if (String.IsNullOrEmpty(expected))
+                throw new InvalidOperationException("SHA256 checksum asset did not contain a hash for " + NullText(assetName) + ".");
 
-            string expected = match.Value.ToLowerInvariant();
             string actual = Sha256File(path);
             if (!String.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("SHA256 mismatch. Expected " + expected + ", got " + actual + ".");

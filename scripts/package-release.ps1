@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $Root "release\CK3MPS.exe") -Destination $PackageDir
 Copy-Item -LiteralPath (Join-Path $Root "release\README.md") -Destination $PackageDir
-Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination $PackageDir
+Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination (Join-Path $PackageDir "REPO_README.md")
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination $PackageDir
 
 if (Test-Path $ZipPath) {

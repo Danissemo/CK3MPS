@@ -13,6 +13,7 @@ internal static class UtilityTests
         TestRecommendedPresetSafety();
         TestRestoreManifestRules();
         TestCompactReportNames();
+        TestChecksumExtraction();
         TestRegistryValueSerialization();
 
         if (failures > 0)
@@ -61,6 +62,16 @@ internal static class UtilityTests
         Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_latest_oos_summary.txt") == "latest_oos_summary.txt", "latest OOS summary keeps unique compact file name");
         Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_portable_notes.txt") == "portable_notes.txt", "portable notes keeps unique compact file name");
         Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_cache_cleanup.txt") == "cache_cleanup.txt", "cache cleanup keeps unique compact file name");
+    }
+
+    private static void TestChecksumExtraction()
+    {
+        string hashA = new string('A', 64).ToLowerInvariant();
+        string hashB = new string('B', 64).ToLowerInvariant();
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA, "CK3MPS-v0.2.zip") == hashA, "single-hash checksum asset is accepted");
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  CK3MPS-v0.2.zip\r\n" + hashB + "  CK3MPS.exe", "CK3MPS-v0.2.zip") == hashA, "named checksum line matches the requested asset");
+        Assert(ChecksumUtilities.ExtractExpectedSha256("CK3MPS.exe " + hashB + "\r\nCK3MPS-v0.2.zip " + hashA, "CK3MPS.exe") == hashB, "reversed checksum line matches the requested asset");
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  other-file.zip", "CK3MPS-v0.2.zip") == "", "foreign checksum line is rejected");
     }
 
     private static void TestRecommendedPresetSafety()
