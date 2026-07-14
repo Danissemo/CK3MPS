@@ -18,9 +18,9 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 
 ## Screenshots
 
-| Main window | Presets |
+| Main window | Restore |
 | --- | --- |
-| ![Main window](assets/screenshots/main-window.png) | ![Presets](assets/screenshots/presets.png) |
+| ![Main window](assets/screenshots/main-window.png) | ![Restore](assets/screenshots/restore.png) |
 
 | Check only | Generated report |
 | --- | --- |
@@ -32,7 +32,7 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 - Applies selected stability actions with visible progress and grouped checklist items.
 - Offers practical presets: Recommended, Maximum, clean profile, network-focused and diagnostic-only flows.
 - Archives OOS and crash evidence without filling the CK3 game folder with stabilizer logs.
-- Writes compact reports to `Documents\Paradox Interactive\CK3MPS`.
+- Writes compact reports, quarantine data, restore history and live logs to `Documents\Paradox Interactive\CK3MPS`, or to `CK3MPS_Data` next to the executable when **Portable mode** is enabled.
 - Keeps the release folder simple: the downloadable app is `release\CK3MPS.exe`.
 
 ## Safety
@@ -57,7 +57,7 @@ CK3MPS is built for local Windows machines and should be run intentionally.
 1. Close CK3 and Paradox Launcher.
 2. Run `CK3MPS.exe` as administrator.
 3. Select **Recommended** for a balanced MP setup, or **Maximum** for the broadest stabilization pass.
-4. Run **Apply Selected**.
+4. Run **Stabilize CK3**.
 5. Run **Check Only**.
 6. Start CK3 and re-check if you want to confirm settings persisted after launch.
 

@@ -2,16 +2,20 @@
 
 ## Unreleased
 
-- Added polished GitHub README with screenshots, badges, safety notes and release/package links.
-- Added GitHub issue templates, pull request template, build workflow, support, security and contribution notes.
-- Added repository social preview image and screenshot assets.
-- Added GitHub NuGet package helper script.
-- Updated application icon and repository social preview artwork.
+## v0.2
+
+- Added path validation indicators and manual game/settings folder selection with clearer status text.
+- Added live log persistence to `LiveLogs` and improved color-coded log readability.
+- Added GitHub release update detection plus checksum-verified in-app updater flow.
+- Added restore tab sorting, checkbox-based bulk actions, simpler restore UX, and bulk delete.
+- Added per-item restore details, safer default-restore rules, and non-destructive rollback coverage for CK3, launcher, and registry changes.
+- Added portable mode that moves the full CK3MPS state root next to the executable in `CK3MPS_Data`.
+- Added real three-level log verbosity behavior for `Quiet`, `Normal`, and `Verbose`.
+- Improved release packaging, checksums, and GitHub-facing documentation/screenshots for the v0.2 release.
 
 ## v0.1-beta
 
-First beta release.
-
+- First beta release.
 - Added CK3 multiplayer stabilization checklist.
 - Added presets for Recommended, Maximum, clean profile, network, and diagnostics.
 - Added CK3 settings stabilization and rollback guard.

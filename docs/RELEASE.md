@@ -14,7 +14,9 @@ Use this layout for GitHub Releases.
 
 ```text
 CK3MPS.exe
-CK3MPS-v0.1-beta.zip
+CK3MPS-v0.2.zip
+CK3MPS-v0.2.zip.sha256
+CK3MPS.exe.sha256
 ```
 
 ## Recommended Usage
@@ -37,5 +39,5 @@ Generate before publishing:
 
 ```powershell
 Get-FileHash release\CK3MPS.exe -Algorithm SHA256
-Get-FileHash ..\CK3MPS_exports\CK3MPS-v0.1-beta.zip -Algorithm SHA256
+Get-FileHash ..\CK3MPS_exports\CK3MPS-v0.2.zip -Algorithm SHA256
 ```

@@ -42,7 +42,7 @@ body:
         1. Close CK3.
         2. Run CK3MPS as admin.
         3. Select Recommended.
-        4. Click Apply Selected.
+        4. Click Stabilize CK3.
   - type: textarea
     id: report
     attributes:

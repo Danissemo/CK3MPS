@@ -13,6 +13,7 @@ $Version = [regex]::Match($VersionLine.Line, 'AppVersion = "([^"]+)"').Groups[1]
 $ReleaseRoot = Join-Path (Split-Path -Parent $Root) "CK3MPS_exports"
 $PackageDir = Join-Path $ReleaseRoot "CK3MPS-$Version"
 $ZipPath = Join-Path $ReleaseRoot "CK3MPS-$Version.zip"
+$ZipChecksumPath = Join-Path $ReleaseRoot "CK3MPS-$Version.zip.sha256"
 
 if (Test-Path $PackageDir) {
     Remove-Item -LiteralPath $PackageDir -Recurse -Force
@@ -30,7 +31,9 @@ if (Test-Path $ZipPath) {
 Compress-Archive -Path (Join-Path $PackageDir "*") -DestinationPath $ZipPath
 
 $Hash = Get-FileHash $ZipPath -Algorithm SHA256
+Set-Content -LiteralPath $ZipChecksumPath -Value ($Hash.Hash.ToLowerInvariant() + "  " + [System.IO.Path]::GetFileName($ZipPath)) -Encoding ascii
 Write-Host "Release package: $ZipPath"
+Write-Host "Release checksum: $ZipChecksumPath"
 Write-Host "SHA256: $($Hash.Hash)"
 
 Remove-Item -LiteralPath $PackageDir -Recurse -Force
