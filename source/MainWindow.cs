@@ -99,26 +99,62 @@ namespace CK3MPS
             graphicsProfileBox.Size = new Size(140, 24);
             Controls.Add(graphicsProfileBox);
 
-            gamePathStatusLabel.Location = new Point(650, 18);
-            gamePathStatusLabel.Size = new Size(290, 20);
+            var gamePathLabel = new Label();
+            gamePathLabel.Text = "Game folder:";
+            gamePathLabel.AutoSize = true;
+            gamePathLabel.Location = new Point(20, 112);
+            Controls.Add(gamePathLabel);
+
+            gamePathBox.Location = new Point(118, 108);
+            gamePathBox.Size = new Size(630, 24);
+            gamePathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            gamePathBox.ReadOnly = true;
+            Controls.Add(gamePathBox);
+
+            gamePathBrowseButton.Text = "Browse...";
+            gamePathBrowseButton.Location = new Point(758, 106);
+            gamePathBrowseButton.Size = new Size(84, 28);
+            gamePathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            gamePathBrowseButton.Click += delegate { BrowseForGameFolder(); };
+            Controls.Add(gamePathBrowseButton);
+
+            gamePathStatusLabel.Location = new Point(852, 111);
+            gamePathStatusLabel.Size = new Size(88, 20);
             gamePathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            gamePathStatusLabel.AutoEllipsis = true;
             Controls.Add(gamePathStatusLabel);
 
-            settingsPathStatusLabel.Location = new Point(650, 44);
-            settingsPathStatusLabel.Size = new Size(290, 20);
+            var settingsPathLabel = new Label();
+            settingsPathLabel.Text = "Settings/saves:";
+            settingsPathLabel.AutoSize = true;
+            settingsPathLabel.Location = new Point(20, 144);
+            Controls.Add(settingsPathLabel);
+
+            settingsPathBox.Location = new Point(118, 140);
+            settingsPathBox.Size = new Size(630, 24);
+            settingsPathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            settingsPathBox.ReadOnly = true;
+            Controls.Add(settingsPathBox);
+
+            settingsPathBrowseButton.Text = "Browse...";
+            settingsPathBrowseButton.Location = new Point(758, 138);
+            settingsPathBrowseButton.Size = new Size(84, 28);
+            settingsPathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            settingsPathBrowseButton.Click += delegate { BrowseForSettingsFolder(); };
+            Controls.Add(settingsPathBrowseButton);
+
+            settingsPathStatusLabel.Location = new Point(852, 143);
+            settingsPathStatusLabel.Size = new Size(88, 20);
             settingsPathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            settingsPathStatusLabel.AutoEllipsis = true;
             Controls.Add(settingsPathStatusLabel);
 
             steps.CheckOnClick = true;
-            steps.Location = new Point(20, 108);
-            steps.Size = new Size(430, 416);
+            steps.Location = new Point(20, 176);
+            steps.Size = new Size(430, 348);
             steps.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
             Controls.Add(steps);
 
-            logBox.Location = new Point(470, 108);
-            logBox.Size = new Size(470, 416);
+            logBox.Location = new Point(470, 176);
+            logBox.Size = new Size(470, 348);
             logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             logBox.Multiline = true;
             logBox.ScrollBars = RichTextBoxScrollBars.Both;

@@ -522,6 +522,8 @@ namespace CK3MPS
             openFolderButton.Enabled = !busy;
             openReportsButton.Enabled = !busy;
             updateButton.Enabled = !busy;
+            gamePathBrowseButton.Enabled = !busy;
+            settingsPathBrowseButton.Enabled = !busy;
             selectAllButton.Enabled = !busy;
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
@@ -742,16 +744,132 @@ namespace CK3MPS
             bool gameFound = !String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install);
             bool settingsFound = Directory.Exists(ck3Docs);
 
+            gamePathBox.Text = NullText(ck3Install);
+            settingsPathBox.Text = ck3Docs;
             ApplyPathStatus(gamePathStatusLabel, "Game folder", gameFound, ck3Install);
             ApplyPathStatus(settingsPathStatusLabel, "Settings folder", settingsFound, ck3Docs);
         }
 
         private void ApplyPathStatus(Label label, string name, bool found, string path)
         {
-            label.Text = name + ": " + (found ? "found" : "not found");
+            label.Text = found ? "found" : "not found";
             label.ForeColor = found ? Color.FromArgb(0, 128, 64) : Color.FromArgb(192, 0, 0);
             label.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
             label.Tag = path;
+        }
+
+        private void BrowseForGameFolder()
+        {
+            using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Choose the Crusader Kings III game install folder.";
+                dialog.SelectedPath = Directory.Exists(ck3Install) ? ck3Install : Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+                dialog.ShowNewFolderButton = false;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                ApplyGameFolder(dialog.SelectedPath);
+                SavePathOverrides();
+                UpdatePathStatusIndicators();
+                Log("OK   CK3 game folder selected manually: " + ck3Install);
+            }
+        }
+
+        private void BrowseForSettingsFolder()
+        {
+            using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Choose the Crusader Kings III settings and saves folder.";
+                dialog.SelectedPath = Directory.Exists(ck3Docs) ? ck3Docs : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                dialog.ShowNewFolderButton = false;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                ApplySettingsFolder(dialog.SelectedPath);
+                SavePathOverrides();
+                UpdatePathStatusIndicators();
+                Log("OK   CK3 settings/saves folder selected manually: " + ck3Docs);
+            }
+        }
+
+        private void ApplyGameFolder(string selectedPath)
+        {
+            string path = NormalizeDirectoryPath(selectedPath);
+            if (String.IsNullOrEmpty(path))
+                return;
+
+            if (File.Exists(Path.Combine(path, "ck3.exe")) && String.Equals(Path.GetFileName(path), "binaries", StringComparison.OrdinalIgnoreCase))
+                path = Directory.GetParent(path) != null ? Directory.GetParent(path).FullName : path;
+
+            ck3Install = path;
+            ck3Bin = Path.Combine(ck3Install, "binaries");
+        }
+
+        private void ApplySettingsFolder(string selectedPath)
+        {
+            string path = NormalizeDirectoryPath(selectedPath);
+            if (String.IsNullOrEmpty(path))
+                return;
+
+            if (String.Equals(Path.GetFileName(path), "save games", StringComparison.OrdinalIgnoreCase) && Directory.GetParent(path) != null)
+                path = Directory.GetParent(path).FullName;
+
+            ck3Docs = path;
+        }
+
+        private string NormalizeDirectoryPath(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path))
+                return "";
+            return Path.GetFullPath(path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        }
+
+        private string PathOverridesFile()
+        {
+            return Path.Combine(stabilizerRoot, "paths.ini");
+        }
+
+        private void LoadPathOverrides()
+        {
+            try
+            {
+                string path = PathOverridesFile();
+                if (!File.Exists(path))
+                    return;
+
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+                {
+                    int separator = line.IndexOf('=');
+                    if (separator <= 0)
+                        continue;
+
+                    string key = line.Substring(0, separator).Trim();
+                    string value = line.Substring(separator + 1).Trim();
+                    if (String.IsNullOrEmpty(value))
+                        continue;
+
+                    if (String.Equals(key, "ck3Docs", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                        ApplySettingsFolder(value);
+                    else if (String.Equals(key, "ck3Install", StringComparison.OrdinalIgnoreCase) && Directory.Exists(value))
+                        ApplyGameFolder(value);
+                }
+            }
+            catch
+            {
+                // Path overrides are optional; broken config should not block startup.
+            }
+        }
+
+        private void SavePathOverrides()
+        {
+            EnsureStabilizerRoot();
+            File.WriteAllLines(PathOverridesFile(), new[]
+            {
+                "ck3Docs=" + ck3Docs,
+                "ck3Install=" + ck3Install
+            }, Encoding.UTF8);
         }
 
         private string FormatLogLine(string message)

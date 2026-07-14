@@ -32,16 +32,20 @@ namespace CK3MPS
         private readonly Button updateButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
+        private readonly TextBox gamePathBox = new TextBox();
+        private readonly TextBox settingsPathBox = new TextBox();
+        private readonly Button gamePathBrowseButton = new Button();
+        private readonly Button settingsPathBrowseButton = new Button();
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
 
-        private readonly string ck3Docs;
+        private string ck3Docs;
         private readonly string stabilizerRoot;
         private readonly string steamRoot;
-        private readonly string ck3Install;
-        private readonly string ck3Bin;
+        private string ck3Install;
+        private string ck3Bin;
         private readonly string appManifest;
         private readonly string localConfig;
         private readonly string sharedConfig;
@@ -112,6 +116,7 @@ namespace CK3MPS
             steamRoot = DetectSteamRoot();
             appManifest = DetectManifest();
             ck3Install = DetectInstallPath();
+            LoadPathOverrides();
             ck3Bin = String.IsNullOrEmpty(ck3Install) ? "" : Path.Combine(ck3Install, "binaries");
             localConfig = DetectLocalConfig();
             sharedConfig = DetectSharedConfig();
