@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -10,6 +12,9 @@ namespace CK3MPS
     internal sealed partial class MainForm
     {
         private const string Ck3MpsRestorePointPrefix = "CK3MPS before changes ";
+
+        [DllImport("srclient.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern uint SRRemoveRestorePoint(int dwRPNum);
 
         private sealed class RestorePointListItem
         {
@@ -105,11 +110,43 @@ namespace CK3MPS
             return RunPowerShellScriptQuiet(script, 60000).Trim();
         }
 
-        private void RefreshRestorePointsList()
+        private async Task RefreshRestorePointsListAsync()
         {
+            if (restorePointsLoading)
+                return;
+
+            restorePointsLoading = true;
+            restorePointsListBox.Enabled = false;
+            deleteSelectedRestorePointsButton.Enabled = false;
             restorePointsListBox.Items.Clear();
-            foreach (RestorePointListItem item in ListRestorePointItems())
-                restorePointsListBox.Items.Add(item);
+            restorePointsListBox.Items.Add(new RestorePointListItem
+            {
+                SequenceNumber = "",
+                CreationTime = "",
+                Description = "Loading restore points...",
+                IsCk3Mps = false
+            });
+
+            try
+            {
+                List<RestorePointListItem> items = await Task.Run(delegate { return ListRestorePointItems(); });
+                restorePointsListBox.Items.Clear();
+                foreach (RestorePointListItem item in items)
+                    restorePointsListBox.Items.Add(item);
+                if (items.Count == 0)
+                    restorePointsListBox.Items.Add(new RestorePointListItem { Description = "No restore points found." });
+            }
+            catch (Exception ex)
+            {
+                restorePointsListBox.Items.Clear();
+                restorePointsListBox.Items.Add(new RestorePointListItem { Description = "Restore points could not be loaded: " + ex.Message });
+            }
+            finally
+            {
+                restorePointsLoading = false;
+                restorePointsListBox.Enabled = true;
+                deleteSelectedRestorePointsButton.Enabled = true;
+            }
         }
 
         private void DeleteSelectedRestorePoints()
@@ -144,7 +181,7 @@ namespace CK3MPS
                 return;
 
             DeleteRestorePointsBySequenceNumbers(sequenceNumbers.ToArray(), "Deleted selected restore points: " + sequenceNumbers.Count + ".");
-            RefreshRestorePointsList();
+            _ = RefreshRestorePointsListAsync();
         }
 
         private List<RestorePointListItem> ListRestorePointItems()
@@ -188,21 +225,21 @@ namespace CK3MPS
             if (valid.Count == 0)
                 return;
 
-            string joined = String.Join(",", valid.ToArray());
-            string script =
-                "$ErrorActionPreference = 'Stop'\r\n" +
-                "$ids = @(" + joined + ")\r\n" +
-                "$removed = 0\r\n" +
-                "foreach ($id in $ids) {\r\n" +
-                "  $result = ([WMIClass]'root/default:SystemRestore').RemoveRestorePoint([int]$id)\r\n" +
-                "  if ($result.ReturnValue -ne 0) { throw 'Failed to remove restore point sequence ' + $id + ' (code ' + $result.ReturnValue + ')' }\r\n" +
-                "  $removed++\r\n" +
-                "}\r\n" +
-                "Write-Output ('Removed restore points: ' + $removed)\r\n";
+            int removed = 0;
+            foreach (string idText in valid)
+            {
+                int id;
+                if (!Int32.TryParse(idText, out id))
+                    throw new InvalidOperationException("Restore point sequence number is invalid: " + idText);
 
-            RunPowerShellScriptLogged(script, 180000);
+                uint result = SRRemoveRestorePoint(id);
+                if (result != 0)
+                    throw new InvalidOperationException("Removing restore point " + id + " failed with code " + result + ".");
+                removed++;
+            }
+
             statusLabel.Text = successMessage;
-            Log("OK   " + successMessage);
+            Log("OK   " + successMessage + " Removed=" + removed + ".");
         }
 
         private void RepairWindowsRestorePointInfrastructure()

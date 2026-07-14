@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -102,6 +103,7 @@ namespace CK3MPS
         private string currentRestoreRunId;
         private bool updatingRestoreUi;
         private bool updatingRestoreSelectionUi;
+        private bool restorePointsLoading;
         private DateTime lastSettingsGuardRepairUtc = DateTime.MinValue;
         private bool settingsGuardActive;
         private int lastReadinessFailures;

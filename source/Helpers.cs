@@ -522,7 +522,7 @@ namespace CK3MPS
             presetBox.Enabled = !busy;
             graphicsProfileBox.Enabled = !busy;
             restorePointsListBox.Enabled = !busy;
-            deleteSelectedRestorePointsButton.Enabled = !busy;
+            deleteSelectedRestorePointsButton.Enabled = !busy && !restorePointsLoading;
             clearOtherLogsButton.Enabled = !busy;
             clearQuarantineButton.Enabled = !busy;
             restoreSelectAllBox.Enabled = !busy;

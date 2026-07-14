@@ -613,10 +613,10 @@ namespace CK3MPS
             updateDownloadProgress.Size = new Size(280, 22);
             advancedPage.Controls.Add(updateDownloadProgress);
 
-            mainTabs.SelectedIndexChanged += delegate
+            mainTabs.SelectedIndexChanged += async delegate
             {
                 if (mainTabs.SelectedTab == advancedPage)
-                    RefreshRestorePointsList();
+                    await RefreshRestorePointsListAsync();
             };
             advancedPage.Resize += delegate { LayoutAdvancedTabControls(); };
             LayoutAdvancedTabControls();
@@ -650,8 +650,11 @@ namespace CK3MPS
             int listWidth = Math.Max(320, listRight - left);
             restorePointsLabel.Location = new Point(left, topButton + 48);
             restorePointsListBox.Location = new Point(left, restorePointsLabel.Bottom + 6);
-            restorePointsListBox.Size = new Size(listWidth, Math.Max(220, advancedPage.ClientSize.Height - restorePointsListBox.Top - 70));
-            deleteSelectedRestorePointsButton.Location = new Point(left, restorePointsListBox.Bottom + 10);
+            int deleteButtonBottomPadding = 18;
+            int deleteButtonHeight = 34;
+            int listBottomGap = 10;
+            restorePointsListBox.Size = new Size(listWidth, Math.Max(180, advancedPage.ClientSize.Height - restorePointsListBox.Top - deleteButtonHeight - listBottomGap - deleteButtonBottomPadding));
+            deleteSelectedRestorePointsButton.Location = new Point(left, advancedPage.ClientSize.Height - deleteButtonHeight - deleteButtonBottomPadding);
             deleteSelectedRestorePointsButton.Size = new Size(Math.Min(260, listWidth), 34);
         }
 
