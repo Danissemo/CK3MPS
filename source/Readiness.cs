@@ -492,8 +492,8 @@ namespace CK3MPS
             lastReadinessFailures = 0;
             Log("Readiness check: ordered by the checklist.");
 
-            failed += CheckStepResult(0, Directory.Exists(ck3Docs) && !IsGameRunning() && VersionParityBaselineOk() && SteamUpdateComplete());
-            failed += CheckStepResult(1, WindowsRestorePointInfrastructureOk());
+            failed += CheckStepResult(0, WindowsRestorePointInfrastructureOk());
+            failed += CheckStepResult(1, Directory.Exists(ck3Docs) && !IsGameRunning() && VersionParityBaselineOk() && SteamUpdateComplete());
             failed += CheckStepResult(2, !String.IsNullOrEmpty(GetKnownQuarantine()) && Directory.Exists(GetKnownQuarantine()));
             failed += CheckStepResult(3, NetworkBaselineOk());
             failed += CheckStepResult(4, HasAnyActiveNetworkRoute() && NetworkBaselineOk());
@@ -543,7 +543,7 @@ namespace CK3MPS
 
         private int CheckStepResult(int index, bool ok)
         {
-            string name = index >= 0 && index < steps.Items.Count ? steps.Items[index].ToString() : "Step " + (index + 1);
+            string name = StepTitle(index);
             return Check(name, ok);
         }
 

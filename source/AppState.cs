@@ -21,6 +21,11 @@ namespace CK3MPS
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private readonly CheckedListBox steps = new CheckedListBox();
+        private readonly FlowLayoutPanel checklistPanel = new FlowLayoutPanel();
+        private readonly ToolTip stepToolTip = new ToolTip();
+        private readonly List<StepGroupUi> stepGroups = new List<StepGroupUi>();
+        private readonly List<StepRowUi> stepRows = new List<StepRowUi>();
+        private bool updatingChecklistUi;
         private readonly ProgressBar progress = new ProgressBar();
         private readonly RichTextBox logBox = new RichTextBox();
         private readonly TabControl mainTabs = new TabControl();
@@ -71,6 +76,35 @@ namespace CK3MPS
         private bool updateCheckOnStartup = true;
         private bool portableMode;
         private string logVerbosity = "Normal";
+
+        private sealed class StepGroupUi
+        {
+            public string Title;
+            public readonly int[] StepIndices;
+            public readonly Panel Header = new Panel();
+            public readonly CheckBox CheckBox = new CheckBox();
+            public readonly Button ToggleButton = new Button();
+            public readonly Label TitleLabel = new Label();
+            public readonly List<StepRowUi> Rows = new List<StepRowUi>();
+            public bool Expanded = true;
+
+            public StepGroupUi(string title, int[] stepIndices)
+            {
+                Title = title;
+                StepIndices = stepIndices;
+            }
+        }
+
+        private sealed class StepRowUi
+        {
+            public int Index;
+            public string Title;
+            public string HelpText;
+            public readonly Panel RowPanel = new Panel();
+            public readonly CheckBox CheckBox = new CheckBox();
+            public readonly Label TitleLabel = new Label();
+            public readonly Button HelpButton = new Button();
+        }
 
         private readonly string[] suspectBinaryFiles = new[]
         {

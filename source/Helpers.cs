@@ -393,7 +393,8 @@ namespace CK3MPS
         private void ResetChecks()
         {
             for (int i = 0; i < steps.Items.Count; i++)
-                steps.SetItemChecked(i, false);
+                SetStepChecked(i, false);
+            RefreshAllGroupStates();
         }
 
         private void ApplyPreset(string preset)
@@ -402,13 +403,13 @@ namespace CK3MPS
                 return;
 
             SetAllSteps(false);
-            SetStepChecked(0, true);
+            SetStepChecked(1, true);
             SetStepChecked(2, true);
 
             switch (preset)
             {
                 case "Minimum":
-                    SetPresetSteps(new[] { 1, 10, 11, 14, 15, 16, 17, 24, 26, 27, 28 });
+                    SetPresetSteps(new[] { 0, 10, 11, 14, 15, 16, 17, 24, 26, 27, 28 });
                     break;
 
                 case "Recommended":
@@ -420,11 +421,11 @@ namespace CK3MPS
                     break;
 
                 case "Clean profile only":
-                    SetPresetSteps(new[] { 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 });
+                    SetPresetSteps(new[] { 0, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 });
                     break;
 
                 case "Network only":
-                    SetPresetSteps(new[] { 3, 4, 5, 6, 7, 8, 9, 26, 27, 28 });
+                    SetPresetSteps(new[] { 0, 3, 4, 5, 6, 7, 8, 9, 26, 27, 28 });
                     break;
 
                 case "Diagnostic only":
@@ -432,6 +433,7 @@ namespace CK3MPS
                     break;
             }
 
+            RefreshAllGroupStates();
             if (!String.Equals(preset, "Recommended", StringComparison.Ordinal))
                 statusLabel.Text = "Preset selected: " + preset + ". You can still change checkboxes manually.";
         }
@@ -443,7 +445,7 @@ namespace CK3MPS
             // local .mod descriptor quarantine, and broad CK3 Documents cleanup.
             SetPresetSteps(new[]
             {
-                1, 3, 4,
+                0, 3, 4,
                 8, 9,
                 10, 11, 12, 13,
                 14, 15, 16, 17, 18, 19, 20,
@@ -463,12 +465,17 @@ namespace CK3MPS
         {
             for (int i = 0; i < steps.Items.Count; i++)
                 SetStepChecked(i, value);
+            RefreshAllGroupStates();
         }
 
         private void SetStepChecked(int index, bool value)
         {
             if (index >= 0 && index < steps.Items.Count)
+            {
                 steps.SetItemChecked(index, value);
+                if (index < stepRows.Count && stepRows[index] != null)
+                    stepRows[index].CheckBox.Checked = value;
+            }
         }
 
         private bool IsStepChecked(int index)
@@ -489,7 +496,7 @@ namespace CK3MPS
                 }
             }
 
-            if (hasAnySelection && !IsStepChecked(0))
+            if (hasAnySelection && !IsStepChecked(1))
                 count++;
             if (hasAnySelection && !IsStepChecked(2))
                 count++;

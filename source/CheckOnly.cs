@@ -23,7 +23,7 @@ namespace CK3MPS
 
             if (!alwaysRun && !IsStepChecked(index))
             {
-                Log("Skipped: " + steps.Items[index].ToString());
+                Log("Skipped: " + StepTitle(index));
                 return;
             }
 
@@ -32,7 +32,7 @@ namespace CK3MPS
 
         private void RunCheckStep(int index)
         {
-            string item = steps.Items[index].ToString();
+            string item = StepTitle(index);
             statusLabel.Text = "Checking: " + item;
             LogSection(item);
             Application.DoEvents();
@@ -40,10 +40,10 @@ namespace CK3MPS
             switch (index)
             {
                 case 0:
-                    CheckBasePathsReadOnly();
+                    CheckWindowsRestorePointReadOnly();
                     break;
                 case 1:
-                    CheckWindowsRestorePointReadOnly();
+                    CheckBasePathsReadOnly();
                     break;
                 case 2:
                     CheckQuarantineReadOnly();

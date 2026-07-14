@@ -156,11 +156,14 @@ namespace CK3MPS
             graphicsProfileBox.Size = new Size(140, 24);
             mainPage.Controls.Add(graphicsProfileBox);
 
-            steps.CheckOnClick = true;
-            steps.Location = new Point(12, 52);
-            steps.Size = new Size(888, 372);
-            steps.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            mainPage.Controls.Add(steps);
+            checklistPanel.Location = new Point(12, 52);
+            checklistPanel.Size = new Size(888, 372);
+            checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            checklistPanel.AutoScroll = true;
+            checklistPanel.FlowDirection = FlowDirection.TopDown;
+            checklistPanel.WrapContents = false;
+            checklistPanel.Resize += delegate { ResizeChecklistRows(); };
+            mainPage.Controls.Add(checklistPanel);
         }
 
         private void BuildPathsTab()
@@ -331,8 +334,8 @@ namespace CK3MPS
         private void FillSteps()
         {
             steps.Items.Clear();
-            steps.Items.Add("1. Safety: check CK3 folders and running processes");
-            steps.Items.Add("2. Safety: create Windows restore point");
+            steps.Items.Add("1. Safety: create Windows restore point");
+            steps.Items.Add("2. Safety: check CK3 folders and running processes");
             steps.Items.Add("3. Safety: create timestamped quarantine backup");
             steps.Items.Add("4. Windows network: flush DNS cache");
             steps.Items.Add("5. Windows network: diagnose adapters, routes, DNS, MTU and TCP/IP");
@@ -361,6 +364,7 @@ namespace CK3MPS
             steps.Items.Add("28. OOS protocol: write prevention rules");
             steps.Items.Add("29. MP parity: write player comparison manifest");
             progress.Maximum = steps.Items.Count;
+            BuildChecklistGroups();
         }
 
         private void ValidateStepConfiguration()
@@ -411,8 +415,8 @@ namespace CK3MPS
                     return;
                 }
 
-                RunOptionalStep(0, "Safety: checking paths", CheckBasePaths, true);
-                RunOptionalStep(1, "Safety: creating Windows restore point", CreateWindowsRestorePoint, false);
+                RunOptionalStep(0, "Safety: creating Windows restore point", CreateWindowsRestorePoint, false);
+                RunOptionalStep(1, "Safety: checking paths", CheckBasePaths, true);
                 RunOptionalStep(2, "Safety: creating quarantine", CreateQuarantine, true);
                 RunOptionalStep(3, "Windows network: flushing DNS cache", FlushDnsCache, false);
                 RunOptionalStep(4, "Windows network: diagnosing adapters and routes", RunNetworkDiagnostics, false);
