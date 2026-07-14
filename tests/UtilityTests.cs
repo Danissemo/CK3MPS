@@ -15,6 +15,7 @@ internal static class UtilityTests
         TestCompactReportNames();
         TestChecksumExtraction();
         TestRegistryValueSerialization();
+        TestRuntimeModeUtilities();
 
         if (failures > 0)
             Environment.Exit(1);
@@ -53,6 +54,19 @@ internal static class UtilityTests
             && restoredMulti[1] == "semi;colon"
             && restoredMulti[2] == "line\r\nbreak"
             && restoredMulti[3] == "slash\\tail", "registry multistring snapshot restores all entries");
+    }
+
+    private static void TestRuntimeModeUtilities()
+    {
+        Assert(RuntimeModeUtilities.ResolveStabilizerRoot(@"C:\Docs\CK3MPS", @"D:\Apps\CK3MPS_Data", false) == @"C:\Docs\CK3MPS", "non-portable mode keeps Documents state root");
+        Assert(RuntimeModeUtilities.ResolveStabilizerRoot(@"C:\Docs\CK3MPS", @"D:\Apps\CK3MPS_Data", true) == @"D:\Apps\CK3MPS_Data", "portable mode switches state root next to exe");
+        Assert(RuntimeModeUtilities.ShouldSuppressLogLine("Quiet", "INFO  | details"), "quiet suppresses info lines");
+        Assert(RuntimeModeUtilities.ShouldSuppressLogLine("Quiet", "FILE  | report.txt"), "quiet suppresses file lines");
+        Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Quiet", "WARN  | warning"), "quiet keeps warning lines");
+        Assert(RuntimeModeUtilities.ShouldSuppressLogLine("Normal", "VERBOSE| extra"), "normal suppresses verbose lines");
+        Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Normal", "INFO  | details"), "normal keeps info lines");
+        Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Verbose", "VERBOSE| extra"), "verbose keeps verbose lines");
+        Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Verbose", ""), "verbose keeps blank separator lines");
     }
 
     private static void TestCompactReportNames()

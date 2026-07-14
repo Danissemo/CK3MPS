@@ -534,8 +534,7 @@ namespace CK3MPS
             {
                 if (updatingSettingsUi)
                     return;
-                portableMode = portableModeBox.Checked;
-                SaveAppConfig();
+                SetPortableMode(portableModeBox.Checked);
             };
             advancedPage.Controls.Add(portableModeBox);
 

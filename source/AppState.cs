@@ -83,7 +83,9 @@ namespace CK3MPS
         private bool updatingSettingsUi;
 
         private string ck3Docs;
-        private readonly string stabilizerRoot;
+        private readonly string nonPortableStabilizerRoot;
+        private readonly string portableStabilizerRoot;
+        private string stabilizerRoot;
         private string steamRoot;
         private string ck3Install;
         private string ck3Bin;
@@ -191,9 +193,13 @@ namespace CK3MPS
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
             ck3Docs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "Crusader Kings III");
-            stabilizerRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "CK3MPS");
+            nonPortableStabilizerRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "CK3MPS");
+            portableStabilizerRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CK3MPS_Data");
+            stabilizerRoot = nonPortableStabilizerRoot;
             AutoDetectPaths();
             LoadAppConfig();
+            RefreshStabilizerRoot();
+            MoveStabilizerRootContents(portableMode ? nonPortableStabilizerRoot : portableStabilizerRoot, stabilizerRoot);
 
             BuildUi();
             UpdateSettingsUi();
@@ -202,6 +208,7 @@ namespace CK3MPS
             InitializeLiveLogFile();
             MigrateLegacyStabilizerState();
             MoveLegacyStabilizerArtifacts();
+            SaveAppConfig();
             settingsGuardTimer.Interval = 10000;
             settingsGuardTimer.Tick += delegate { RunSettingsGuardTick(); };
             FillSteps();
@@ -215,6 +222,9 @@ namespace CK3MPS
             restoreSortBox.SelectedItem = "Created";
             restoreSortDirectionBox.SelectedItem = "Newest first";
             LogSection("Detected paths");
+            LogVerbose("State root: " + stabilizerRoot);
+            LogVerbose("Portable mode: " + YesNo(portableMode));
+            LogVerbose("Settings file: " + AppConfigFile());
             Log((Directory.Exists(ck3Docs) ? "OK   " : "FAIL ") + "CK3 settings folder: " + ck3Docs);
             Log("Steam: " + NullText(steamRoot));
             Log((!String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install) ? "OK   " : "WARN ") + "CK3 game folder: " + NullText(ck3Install));

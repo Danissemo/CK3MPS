@@ -69,26 +69,34 @@ namespace CK3MPS
             Log("INFO CK3 settings/saves folder reset to default Documents location.");
         }
 
+        private void RefreshStabilizerRoot()
+        {
+            stabilizerRoot = RuntimeModeUtilities.ResolveStabilizerRoot(nonPortableStabilizerRoot, portableStabilizerRoot, portableMode);
+        }
+
         private string AppConfigFile()
         {
-            if (portableMode)
-                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CK3MPS.settings.ini");
             return Path.Combine(stabilizerRoot, "settings.ini");
         }
 
         private string PortableAppConfigFile()
+        {
+            return Path.Combine(portableStabilizerRoot, "settings.ini");
+        }
+
+        private string LegacyPortableAppConfigFile()
         {
             return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CK3MPS.settings.ini");
         }
 
         private string NonPortableAppConfigFile()
         {
-            return Path.Combine(stabilizerRoot, "settings.ini");
+            return Path.Combine(nonPortableStabilizerRoot, "settings.ini");
         }
 
         private string LegacyPathOverridesFile()
         {
-            return Path.Combine(stabilizerRoot, "paths.ini");
+            return Path.Combine(nonPortableStabilizerRoot, "paths.ini");
         }
 
         private void LoadAppConfig()
@@ -96,11 +104,13 @@ namespace CK3MPS
             try
             {
                 LoadLegacyPathOverrides();
-                string portablePath = PortableAppConfigFile();
-                if (File.Exists(portablePath))
-                    LoadConfigFile(portablePath);
+                if (File.Exists(PortableAppConfigFile()))
+                    LoadConfigFile(PortableAppConfigFile());
+                else if (File.Exists(LegacyPortableAppConfigFile()))
+                    LoadConfigFile(LegacyPortableAppConfigFile());
                 else
                     LoadConfigFile(NonPortableAppConfigFile());
+                RefreshStabilizerRoot();
             }
             catch
             {
@@ -193,11 +203,15 @@ namespace CK3MPS
 
         private void SaveAppConfig()
         {
+            RefreshStabilizerRoot();
             EnsureStabilizerRoot();
             string targetPath = AppConfigFile();
-            string otherPath = String.Equals(targetPath, PortableAppConfigFile(), StringComparison.OrdinalIgnoreCase)
-                ? NonPortableAppConfigFile()
-                : PortableAppConfigFile();
+            List<string> otherPaths = new List<string>
+            {
+                PortableAppConfigFile(),
+                NonPortableAppConfigFile(),
+                LegacyPortableAppConfigFile()
+            };
 
             File.WriteAllLines(targetPath, new[]
             {
@@ -208,8 +222,106 @@ namespace CK3MPS
                 "logVerbosity=" + logVerbosity
             }, Encoding.UTF8);
 
-            if (File.Exists(otherPath))
-                File.Delete(otherPath);
+            foreach (string path in otherPaths)
+                if (!String.Equals(path, targetPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+                    File.Delete(path);
+        }
+
+        private void SetPortableMode(bool enabled)
+        {
+            if (portableMode == enabled && String.Equals(stabilizerRoot, RuntimeModeUtilities.ResolveStabilizerRoot(nonPortableStabilizerRoot, portableStabilizerRoot, enabled), StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string oldRoot = stabilizerRoot;
+            string oldLiveLogPath = liveLogFilePath;
+
+            portableMode = enabled;
+            RefreshStabilizerRoot();
+            string newRoot = stabilizerRoot;
+
+            MoveStabilizerRootContents(oldRoot, newRoot);
+            RelinkLiveLogPath(oldRoot, newRoot, oldLiveLogPath);
+            SaveAppConfig();
+
+            statusLabel.Text = enabled
+                ? "Portable mode enabled. CK3MPS state was moved next to the exe."
+                : "Portable mode disabled. CK3MPS state was moved back to Documents.";
+            Log("INFO Portable mode " + (enabled ? "enabled" : "disabled") + ". State root: " + newRoot);
+            LogVerbose("Portable mode migration: " + oldRoot + " -> " + newRoot);
+            LogVerbose("Settings file: " + AppConfigFile());
+        }
+
+        private void MoveStabilizerRootContents(string sourceRoot, string targetRoot)
+        {
+            if (String.IsNullOrEmpty(sourceRoot) || String.IsNullOrEmpty(targetRoot)
+                || String.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase)
+                || !Directory.Exists(sourceRoot))
+                return;
+
+            Directory.CreateDirectory(targetRoot);
+
+            foreach (string file in Directory.GetFiles(sourceRoot, "*", SearchOption.TopDirectoryOnly))
+                MovePathWithMerge(file, Path.Combine(targetRoot, Path.GetFileName(file)));
+
+            foreach (string dir in Directory.GetDirectories(sourceRoot, "*", SearchOption.TopDirectoryOnly))
+                MovePathWithMerge(dir, Path.Combine(targetRoot, Path.GetFileName(dir)));
+
+            TryDeleteIfEmpty(sourceRoot);
+        }
+
+        private void MovePathWithMerge(string sourcePath, string targetPath)
+        {
+            if (File.Exists(sourcePath))
+            {
+                string targetDir = Path.GetDirectoryName(targetPath);
+                if (!String.IsNullOrEmpty(targetDir))
+                    Directory.CreateDirectory(targetDir);
+                File.Copy(sourcePath, targetPath, true);
+                File.Delete(sourcePath);
+                return;
+            }
+
+            if (!Directory.Exists(sourcePath))
+                return;
+
+            Directory.CreateDirectory(targetPath);
+            foreach (string file in Directory.GetFiles(sourcePath, "*", SearchOption.TopDirectoryOnly))
+                MovePathWithMerge(file, Path.Combine(targetPath, Path.GetFileName(file)));
+            foreach (string dir in Directory.GetDirectories(sourcePath, "*", SearchOption.TopDirectoryOnly))
+                MovePathWithMerge(dir, Path.Combine(targetPath, Path.GetFileName(dir)));
+            TryDeleteIfEmpty(sourcePath);
+        }
+
+        private void TryDeleteIfEmpty(string path)
+        {
+            if (!Directory.Exists(path))
+                return;
+
+            if (Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly).Length != 0)
+                return;
+            if (Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length != 0)
+                return;
+
+            Directory.Delete(path, false);
+        }
+
+        private void RelinkLiveLogPath(string oldRoot, string newRoot, string oldLiveLogPath)
+        {
+            if (!String.IsNullOrEmpty(oldLiveLogPath)
+                && !String.IsNullOrEmpty(oldRoot)
+                && !String.IsNullOrEmpty(newRoot)
+                && oldLiveLogPath.StartsWith(oldRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                string relative = oldLiveLogPath.Substring(oldRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string candidate = Path.Combine(newRoot, relative);
+                if (File.Exists(candidate))
+                {
+                    liveLogFilePath = candidate;
+                    return;
+                }
+            }
+
+            InitializeLiveLogFile();
         }
 
         private string BuildResetSummary(string oldGame, string newGame, string oldSettings, string newSettings, bool includeGame, bool includeSettings)

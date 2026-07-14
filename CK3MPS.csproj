@@ -54,6 +54,7 @@
     <Compile Include="source\SystemRestore.cs" />
     <Compile Include="source\Updates.cs" />
     <Compile Include="source\Utilities.cs" />
+    <Compile Include="source\RuntimeModeUtilities.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />

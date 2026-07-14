@@ -576,7 +576,7 @@ namespace CK3MPS
         {
             try
             {
-                string paradoxRoot = Directory.GetParent(stabilizerRoot).FullName;
+                string paradoxRoot = Directory.GetParent(nonPortableStabilizerRoot).FullName;
                 string legacyRoot = Path.Combine(paradoxRoot, "CK3Stabilizer");
                 if (!Directory.Exists(legacyRoot) || String.Equals(legacyRoot, stabilizerRoot, StringComparison.OrdinalIgnoreCase))
                     return;
@@ -647,7 +647,7 @@ namespace CK3MPS
                 foreach (string dir in Directory.GetDirectories(ck3Docs, "_ck3_stabilizer_quarantine_*", SearchOption.TopDirectoryOnly))
                     MoveLegacyArtifact(dir);
 
-                string paradoxRoot = Directory.GetParent(stabilizerRoot).FullName;
+                string paradoxRoot = Directory.GetParent(nonPortableStabilizerRoot).FullName;
                 foreach (string file in Directory.GetFiles(paradoxRoot, "ck3_stabilizer_*", SearchOption.TopDirectoryOnly))
                     MoveLegacyArtifact(file);
 
@@ -685,7 +685,8 @@ namespace CK3MPS
         {
             if (String.IsNullOrEmpty(message))
             {
-                AppendLogLine("", logBox.ForeColor);
+                if (!RuntimeModeUtilities.ShouldSuppressLogLine(logVerbosity, ""))
+                    AppendLogLine("", logBox.ForeColor);
                 return;
             }
 
@@ -701,12 +702,13 @@ namespace CK3MPS
 
         private bool ShouldSuppressLogLine(string formatted)
         {
-            if (!String.Equals(logVerbosity, "Quiet", StringComparison.OrdinalIgnoreCase))
-                return false;
+            return RuntimeModeUtilities.ShouldSuppressLogLine(logVerbosity, formatted);
+        }
 
-            string text = (formatted ?? "").TrimStart();
-            return text.StartsWith("INFO", StringComparison.OrdinalIgnoreCase)
-                || text.StartsWith("SKIP", StringComparison.OrdinalIgnoreCase);
+        private void LogVerbose(string message)
+        {
+            if (!String.IsNullOrWhiteSpace(message))
+                Log("VERBOSE " + message);
         }
 
         private void AppendLogLine(string text, Color color)
@@ -789,6 +791,8 @@ namespace CK3MPS
                 return Color.FromArgb(24, 100, 170);
             if (upper.StartsWith("INFO"))
                 return Color.FromArgb(70, 70, 70);
+            if (upper.StartsWith("VERBOSE") || upper.StartsWith("DEBUG") || upper.StartsWith("TRACE"))
+                return Color.FromArgb(110, 110, 110);
 
             return logBox.ForeColor;
         }
@@ -923,7 +927,7 @@ namespace CK3MPS
             if (trimmed.StartsWith("Report written:", StringComparison.OrdinalIgnoreCase))
                 return "FILE  | " + trimmed.Substring("Report written:".Length).Trim();
 
-            string[] known = new[] { "OK", "FAIL", "WARN", "INFO", "CMD", "ERROR", "SKIP", "MOVE", "BACKUP", "FILE", "RISK", "GUARD", "RESULT" };
+            string[] known = new[] { "OK", "FAIL", "WARN", "INFO", "CMD", "ERROR", "SKIP", "MOVE", "BACKUP", "FILE", "RISK", "GUARD", "RESULT", "VERBOSE", "DEBUG", "TRACE" };
             foreach (string tag in known)
             {
                 if (trimmed.StartsWith(tag, StringComparison.OrdinalIgnoreCase))
