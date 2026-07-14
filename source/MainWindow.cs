@@ -50,9 +50,6 @@ namespace CK3MPS
             BuildRestoreTab();
             BuildAdvancedTab();
 
-            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
-            Controls.Add(progress);
-
             statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             statusLabel.Text = "Ready.";
             Controls.Add(statusLabel);
@@ -89,17 +86,11 @@ namespace CK3MPS
         {
             int width = Math.Max(760, ClientSize.Width - 32);
             int bottomMargin = 14;
-            int buttonHeight = 22;
             int statusHeight = 24;
-            int gap = 8;
-
-            progress.Location = new Point(16, ClientSize.Height - bottomMargin - statusHeight - gap - buttonHeight);
-            progress.Size = new Size(width, buttonHeight);
-
-            statusLabel.Location = new Point(16, progress.Bottom + gap);
+            statusLabel.Location = new Point(16, ClientSize.Height - bottomMargin - statusHeight);
             statusLabel.Size = new Size(width, statusHeight);
 
-            int height = Math.Max(420, progress.Top - mainTabs.Top - 14);
+            int height = Math.Max(420, statusLabel.Top - mainTabs.Top - 14);
             mainTabs.Size = new Size(width, height);
         }
 
@@ -205,6 +196,9 @@ namespace CK3MPS
             ConfigureLogView(logBox);
             mainPage.Controls.Add(logBox);
 
+            progress.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            mainPage.Controls.Add(progress);
+
             LayoutMainTabControls();
         }
 
@@ -218,7 +212,8 @@ namespace CK3MPS
             int labelY = 56;
             int logTop = 78;
             int actionButtonTop = mainPage.ClientSize.Height - 46;
-            int availableHeight = Math.Max(170, actionButtonTop - top - bottomMargin);
+            int progressTop = actionButtonTop - 34;
+            int availableHeight = Math.Max(170, progressTop - top - bottomMargin);
 
             checklistPanel.Location = new Point(leftMargin, top);
             checklistPanel.Size = new Size(checklistWidth, availableHeight);
@@ -226,7 +221,10 @@ namespace CK3MPS
             liveLogLabel.Location = new Point(checklistPanel.Right + gap, labelY);
 
             logBox.Location = new Point(checklistPanel.Right + gap, logTop);
-            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(150, actionButtonTop - logTop - bottomMargin));
+            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(150, progressTop - logTop - bottomMargin));
+
+            progress.Location = new Point(leftMargin, progressTop);
+            progress.Size = new Size(mainPage.ClientSize.Width - (leftMargin * 2), 22);
 
             stabilizeButton.Location = new Point(leftMargin, actionButtonTop);
             checkButton.Location = new Point(stabilizeButton.Right + gap, actionButtonTop);
