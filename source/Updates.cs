@@ -116,9 +116,12 @@ namespace CK3MPS
             using (WebClient client = CreateGitHubWebClient())
             {
                 string json = client.DownloadString(ReleasesApiUrl);
+                string releaseJson = ExtractFirstReleaseObject(json);
+                if (String.IsNullOrEmpty(releaseJson))
+                    return null;
                 ReleaseInfo release = new ReleaseInfo();
-                release.TagName = JsonStringValue(json, "tag_name");
-                PickReleaseAsset(json, release);
+                release.TagName = JsonStringValue(releaseJson, "tag_name");
+                PickReleaseAsset(releaseJson, release);
                 return release;
             }
         }
@@ -135,6 +138,63 @@ namespace CK3MPS
         {
             Match match = Regex.Match(json ?? "", "\"" + Regex.Escape(key) + "\"\\s*:\\s*\"([^\"]*)\"", RegexOptions.IgnoreCase);
             return match.Success ? UnescapeJsonString(match.Groups[1].Value) : "";
+        }
+
+        private static string ExtractFirstReleaseObject(string json)
+        {
+            string text = json ?? "";
+            int arrayStart = text.IndexOf('[');
+            if (arrayStart < 0)
+                return "";
+
+            bool inString = false;
+            bool escape = false;
+            int depth = 0;
+            int objectStart = -1;
+
+            for (int i = arrayStart + 1; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (escape)
+                {
+                    escape = false;
+                    continue;
+                }
+
+                if (ch == '\\' && inString)
+                {
+                    escape = true;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = !inString;
+                    continue;
+                }
+
+                if (inString)
+                    continue;
+
+                if (ch == '{')
+                {
+                    if (depth == 0)
+                        objectStart = i;
+                    depth++;
+                    continue;
+                }
+
+                if (ch == '}')
+                {
+                    if (depth == 0)
+                        continue;
+                    depth--;
+                    if (depth == 0 && objectStart >= 0)
+                        return text.Substring(objectStart, i - objectStart + 1);
+                }
+            }
+
+            return "";
         }
 
         private static void PickReleaseAsset(string json, ReleaseInfo release)
