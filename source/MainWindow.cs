@@ -174,6 +174,13 @@ namespace CK3MPS
             checklistPanel.Size = new Size(446, 372);
             checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
             checklistPanel.AutoScroll = true;
+            checklistPanel.BorderStyle = BorderStyle.FixedSingle;
+
+            checklistContentPanel.Location = new Point(0, 0);
+            checklistContentPanel.Size = new Size(426, 372);
+            checklistContentPanel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            checklistPanel.Controls.Add(checklistContentPanel);
+
             checklistPanel.Resize += delegate { ResizeChecklistRows(); };
             mainPage.Controls.Add(checklistPanel);
 

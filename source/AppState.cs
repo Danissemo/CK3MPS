@@ -22,6 +22,7 @@ namespace CK3MPS
 
         private readonly CheckedListBox steps = new CheckedListBox();
         private readonly Panel checklistPanel = new Panel();
+        private readonly Panel checklistContentPanel = new Panel();
         private readonly ToolTip stepToolTip = new ToolTip();
         private readonly List<StepGroupUi> stepGroups = new List<StepGroupUi>();
         private readonly List<StepRowUi> stepRows = new List<StepRowUi>();

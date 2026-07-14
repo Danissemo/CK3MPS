@@ -12,7 +12,8 @@ namespace CK3MPS
             try
             {
                 checklistPanel.SuspendLayout();
-                checklistPanel.Controls.Clear();
+                checklistContentPanel.SuspendLayout();
+                checklistContentPanel.Controls.Clear();
                 stepGroups.Clear();
                 stepRows.Clear();
                 for (int i = 0; i < ExpectedStepCount; i++)
@@ -31,6 +32,7 @@ namespace CK3MPS
                 ResizeChecklistRows();
                 RelayoutChecklistGroups();
                 RefreshAllGroupStates();
+                checklistContentPanel.ResumeLayout();
                 checklistPanel.ResumeLayout();
             }
         }
@@ -73,14 +75,14 @@ namespace CK3MPS
             group.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             group.Header.Controls.Add(group.TitleLabel);
 
-            checklistPanel.Controls.Add(group.Header);
+            checklistContentPanel.Controls.Add(group.Header);
 
             foreach (int index in indices)
             {
                 StepRowUi row = CreateStepRow(index);
                 group.Rows.Add(row);
                 stepRows[index] = row;
-                checklistPanel.Controls.Add(row.RowPanel);
+                checklistContentPanel.Controls.Add(row.RowPanel);
             }
         }
 
@@ -121,7 +123,9 @@ namespace CK3MPS
                 y += 4;
             }
 
-            checklistPanel.AutoScrollMinSize = new Size(0, Math.Max(0, y + 4));
+            int contentHeight = Math.Max(checklistPanel.ClientSize.Height, y + 4);
+            checklistContentPanel.Size = new Size(ChecklistContentWidth(), contentHeight);
+            checklistPanel.AutoScrollMinSize = new Size(checklistContentPanel.Width + 4, contentHeight);
         }
 
         private StepRowUi CreateStepRow(int index)
@@ -224,9 +228,9 @@ namespace CK3MPS
 
         private int ChecklistContentWidth()
         {
-            int width = checklistPanel.DisplayRectangle.Width - 4;
+            int width = checklistPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8;
             if (width < 300)
-                width = checklistPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8;
+                width = checklistPanel.ClientSize.Width - 8;
             return Math.Max(300, width);
         }
 
