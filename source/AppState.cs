@@ -66,7 +66,7 @@ namespace CK3MPS
         private readonly Label gamePathStatusLabel = new Label();
         private readonly Label settingsPathStatusLabel = new Label();
         private readonly Label pathDetailsLabel = new Label();
-        private readonly TextBox historyBox = new TextBox();
+        private readonly RichTextBox historyBox = new RichTextBox();
         private readonly ComboBox restoreRunBox = new ComboBox();
         private readonly CheckedListBox restoreListBox = new CheckedListBox();
         private readonly TextBox restoreDetailsBox = new TextBox();

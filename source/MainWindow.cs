@@ -374,15 +374,37 @@ namespace CK3MPS
             clearReportsButton.Click += delegate { ClearAllReports(); };
             reportsPage.Controls.Add(clearReportsButton);
 
-            historyBox.Location = new Point(16, 66);
-            historyBox.Size = new Size(888, 370);
-            historyBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            historyBox.Multiline = true;
-            historyBox.ReadOnly = true;
-            historyBox.ScrollBars = ScrollBars.Both;
-            historyBox.WordWrap = false;
-            historyBox.Font = new Font("Consolas", 9F);
+            ConfigureLogView(historyBox);
             reportsPage.Controls.Add(historyBox);
+
+            reportsPage.Resize += delegate { LayoutReportsTabControls(); };
+            LayoutReportsTabControls();
+        }
+
+        private void LayoutReportsTabControls()
+        {
+            int left = 16;
+            int top = 18;
+            int gap = 14;
+            int buttonHeight = 34;
+            int rightPadding = 16;
+            int bottomPadding = 16;
+
+            openReportsButton.Location = new Point(left, top);
+            openReportsButton.Size = new Size(128, buttonHeight);
+
+            exportSupportButton.Location = new Point(openReportsButton.Right + gap, top);
+            exportSupportButton.Size = new Size(168, buttonHeight);
+
+            refreshHistoryButton.Location = new Point(exportSupportButton.Right + gap, top);
+            refreshHistoryButton.Size = new Size(138, buttonHeight);
+
+            clearReportsButton.Location = new Point(refreshHistoryButton.Right + gap, top);
+            clearReportsButton.Size = new Size(128, buttonHeight);
+
+            historyBox.Location = new Point(left, top + buttonHeight + 14);
+            historyBox.Size = new Size(Math.Max(320, reportsPage.ClientSize.Width - left - rightPadding), Math.Max(220, reportsPage.ClientSize.Height - historyBox.Top - bottomPadding));
+            historyBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         }
 
         private void BuildRestoreTab()
