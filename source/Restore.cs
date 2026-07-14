@@ -136,6 +136,8 @@ namespace CK3MPS
                             before = RestoreManifestUtilities.SerializeRegistryValue(value, kind);
                     }
                 }
+                if (String.Equals(before, after, StringComparison.Ordinal))
+                    return;
                 RecordRestoreEntry("registry", source, "", description, before, after, "");
             }
             catch (Exception ex)

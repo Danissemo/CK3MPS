@@ -62,6 +62,11 @@ namespace CK3MPS
         {
             try
             {
+                if (RegistryValueSerializedEquals(root, subKey, name, "DWord:" + value))
+                {
+                    Log("INFO Registry DWORD already set: " + subKey + "\\" + name);
+                    return;
+                }
                 RecordRegistryBeforeChange(root, subKey, name, "Before registry DWORD change: " + subKey + "\\" + name, "DWord:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
@@ -80,6 +85,11 @@ namespace CK3MPS
         {
             try
             {
+                if (RegistryValueSerializedEquals(root, subKey, name, "String:" + value))
+                {
+                    Log("INFO Registry string already set: " + subKey + "\\" + name);
+                    return;
+                }
                 RecordRegistryBeforeChange(root, subKey, name, "Before registry string change: " + subKey + "\\" + name, "String:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
@@ -91,6 +101,29 @@ namespace CK3MPS
             catch (Exception ex)
             {
                 Log("WARN  Registry string not set: " + subKey + "\\" + name + " | " + ex.Message);
+            }
+        }
+
+        private bool RegistryValueSerializedEquals(RegistryKey root, string subKey, string name, string expectedSerializedValue)
+        {
+            try
+            {
+                using (RegistryKey key = root.OpenSubKey(subKey, false))
+                {
+                    if (key == null)
+                        return false;
+
+                    object value = key.GetValue(name, null);
+                    if (value == null)
+                        return false;
+
+                    string current = RestoreManifestUtilities.SerializeRegistryValue(value, key.GetValueKind(name));
+                    return String.Equals(current, expectedSerializedValue, StringComparison.Ordinal);
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
 
