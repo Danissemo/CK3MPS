@@ -438,38 +438,18 @@ namespace CK3MPS
 
         private void ApplyRecommendedPreset()
         {
+            // Recommended must be non-destructive: diagnostics, backups, and report files only.
+            // Steps that rewrite Steam/CK3 settings, move saves/mods/caches, or change Windows
+            // firewall/registry/adapter state belong to Maximum or explicit manual selection.
             SetPresetSteps(new[]
             {
-                2, 3, 4, 7, 8,
-                9, 10, 11, 12,
-                13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                23, 24, 25, 26, 27
+                3, 7, 8,
+                9, 12,
+                15, 16,
+                21, 24, 25, 26, 27
             });
 
-            bool addedRegistry = false;
-            bool addedPowerAdapter = false;
-
-            if (!WindowsGameNetworkProfileOk())
-            {
-                SetStepChecked(5, true);
-                addedRegistry = true;
-            }
-
-            if (HasRiskyNetworkRouteProfile())
-            {
-                SetStepChecked(6, true);
-                addedPowerAdapter = true;
-            }
-
-            string extra = "";
-            if (addedRegistry && addedPowerAdapter)
-                extra = " Added Windows registry and adapter tuning because the current profile needs it.";
-            else if (addedRegistry)
-                extra = " Added Windows registry profile because the current CK3/Windows game profile is incomplete.";
-            else if (addedPowerAdapter)
-                extra = " Added adapter tuning because the current network route profile is risky.";
-
-            statusLabel.Text = "Preset selected: Recommended. Safe default with conditional Windows tuning." + extra;
+            statusLabel.Text = "Preset selected: Recommended. Safe default: diagnostics, backups and reports only. No CK3, Steam or Windows settings are changed.";
         }
 
         private void SetPresetSteps(int[] indices)
