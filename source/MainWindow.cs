@@ -389,26 +389,22 @@ namespace CK3MPS
         private void BuildRestoreTab()
         {
             refreshRestoreButton.Text = "Refresh";
-            refreshRestoreButton.Location = new Point(16, 18);
-            refreshRestoreButton.Size = new Size(100, 34);
             refreshRestoreButton.Click += delegate { RefreshRestoreList(); };
             restorePage.Controls.Add(refreshRestoreButton);
 
             restoreSelectedButton.Text = "Restore selected";
-            restoreSelectedButton.Location = new Point(130, 18);
-            restoreSelectedButton.Size = new Size(140, 34);
             restoreSelectedButton.Click += delegate { RestoreSelectedItem(); };
             restorePage.Controls.Add(restoreSelectedButton);
 
             restoreDefaultButton.Text = "Restore default";
-            restoreDefaultButton.Location = new Point(284, 18);
-            restoreDefaultButton.Size = new Size(140, 34);
             restoreDefaultButton.Click += delegate { RestoreSelectedItemToDefault(); };
             restorePage.Controls.Add(restoreDefaultButton);
 
+            deleteRestoreButton.Text = "Delete selected";
+            deleteRestoreButton.Click += delegate { DeleteSelectedRestoreEntries(); };
+            restorePage.Controls.Add(deleteRestoreButton);
+
             openQuarantineButton.Text = "Open quarantine";
-            openQuarantineButton.Location = new Point(438, 18);
-            openQuarantineButton.Size = new Size(140, 34);
             openQuarantineButton.Click += delegate
             {
                 string dir = GetKnownQuarantine();
@@ -417,16 +413,11 @@ namespace CK3MPS
             };
             restorePage.Controls.Add(openQuarantineButton);
 
-            var restoreRunLabel = new Label();
             restoreRunLabel.Text = "Run:";
             restoreRunLabel.AutoSize = true;
-            restoreRunLabel.Location = new Point(594, 27);
             restorePage.Controls.Add(restoreRunLabel);
 
             restoreRunBox.DropDownStyle = ComboBoxStyle.DropDownList;
-            restoreRunBox.Location = new Point(632, 22);
-            restoreRunBox.Size = new Size(252, 24);
-            restoreRunBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             restoreRunBox.SelectedIndexChanged += delegate
             {
                 if (!updatingRestoreUi)
@@ -434,21 +425,63 @@ namespace CK3MPS
             };
             restorePage.Controls.Add(restoreRunBox);
 
-            restoreListBox.Location = new Point(16, 66);
-            restoreListBox.Size = new Size(410, 370);
-            restoreListBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+            restoreListBox.HorizontalScrollbar = true;
             restoreListBox.SelectedIndexChanged += delegate { ShowSelectedRestoreDetails(); };
             restorePage.Controls.Add(restoreListBox);
 
-            restoreDetailsBox.Location = new Point(442, 66);
-            restoreDetailsBox.Size = new Size(462, 370);
-            restoreDetailsBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             restoreDetailsBox.Multiline = true;
             restoreDetailsBox.ReadOnly = true;
             restoreDetailsBox.ScrollBars = ScrollBars.Both;
             restoreDetailsBox.WordWrap = false;
             restoreDetailsBox.Font = new Font("Consolas", 9F);
             restorePage.Controls.Add(restoreDetailsBox);
+
+            restorePage.Resize += delegate { LayoutRestoreTabControls(); };
+            LayoutRestoreTabControls();
+        }
+
+        private void LayoutRestoreTabControls()
+        {
+            int left = 16;
+            int top = 18;
+            int buttonHeight = 34;
+            int gap = 10;
+            int smallGap = 8;
+            int rightPadding = 16;
+            int detailsMinWidth = 360;
+            int listTop = 66;
+            int bottomPadding = 16;
+
+            refreshRestoreButton.Location = new Point(left, top);
+            refreshRestoreButton.Size = new Size(96, buttonHeight);
+
+            restoreSelectedButton.Location = new Point(refreshRestoreButton.Right + gap, top);
+            restoreSelectedButton.Size = new Size(136, buttonHeight);
+
+            restoreDefaultButton.Location = new Point(restoreSelectedButton.Right + gap, top);
+            restoreDefaultButton.Size = new Size(136, buttonHeight);
+
+            deleteRestoreButton.Location = new Point(restoreDefaultButton.Right + gap, top);
+            deleteRestoreButton.Size = new Size(126, buttonHeight);
+
+            openQuarantineButton.Location = new Point(deleteRestoreButton.Right + gap, top);
+            openQuarantineButton.Size = new Size(138, buttonHeight);
+
+            restoreRunLabel.Location = new Point(openQuarantineButton.Right + 18, top + 9);
+
+            int runBoxLeft = restoreRunLabel.Right + smallGap;
+            int runBoxWidth = Math.Max(150, restorePage.ClientSize.Width - runBoxLeft - rightPadding);
+            restoreRunBox.Location = new Point(runBoxLeft, top + 5);
+            restoreRunBox.Size = new Size(runBoxWidth, 24);
+
+            int listWidth = Math.Max(300, restorePage.ClientSize.Width - left - rightPadding - gap - detailsMinWidth);
+            restoreListBox.Location = new Point(left, listTop);
+            restoreListBox.Size = new Size(listWidth, Math.Max(220, restorePage.ClientSize.Height - listTop - bottomPadding));
+            restoreListBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+
+            restoreDetailsBox.Location = new Point(restoreListBox.Right + gap, listTop);
+            restoreDetailsBox.Size = new Size(Math.Max(detailsMinWidth, restorePage.ClientSize.Width - restoreDetailsBox.Left - rightPadding), restoreListBox.Height);
+            restoreDetailsBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         }
 
         private void BuildAdvancedTab()

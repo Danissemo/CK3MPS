@@ -69,8 +69,10 @@ namespace CK3MPS
         private readonly TextBox restoreDetailsBox = new TextBox();
         private readonly Button restoreSelectedButton = new Button();
         private readonly Button restoreDefaultButton = new Button();
+        private readonly Button deleteRestoreButton = new Button();
         private readonly Button refreshRestoreButton = new Button();
         private readonly Button openQuarantineButton = new Button();
+        private readonly Label restoreRunLabel = new Label();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
         private readonly CheckBox portableModeBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();

@@ -22,11 +22,11 @@ namespace CK3MPS
             public string Created;
             public string Status;
             public string RunId;
+            public string DisplayText;
 
             public override string ToString()
             {
-                string status = String.IsNullOrEmpty(Status) ? "active" : Status;
-                return RunId + " | " + status + " | " + Created + " | " + Kind + " | " + Description;
+                return DisplayText ?? Description ?? Id ?? "";
             }
         }
 
@@ -209,7 +209,7 @@ namespace CK3MPS
                 string[] parts = lines[i].Split('\t');
                 if (parts.Length < 9)
                     continue;
-                entries.Add(new RestoreEntry
+                RestoreEntry entry = new RestoreEntry
                 {
                     Id = parts[0],
                     Created = parts[1],
@@ -221,7 +221,9 @@ namespace CK3MPS
                     After = parts[7],
                     Status = parts[8],
                     RunId = RestoreManifestUtilities.RunIdFromManifestParts(parts, parts[1])
-                });
+                };
+                entry.DisplayText = BuildListDisplayText(entry);
+                entries.Add(entry);
             }
             ApplyRestoreStatusOverlay(entries);
             return entries;
@@ -267,7 +269,9 @@ namespace CK3MPS
                 foreach (RestoreEntry entry in entries)
                     if (!String.IsNullOrEmpty(entry.RunId))
                         runs[entry.RunId] = true;
-                foreach (string run in runs.Keys)
+                List<string> runIds = new List<string>(runs.Keys);
+                runIds.Sort(delegate (string a, string b) { return StringComparer.OrdinalIgnoreCase.Compare(b, a); });
+                foreach (string run in runIds)
                     restoreRunBox.Items.Add(run);
                 restoreRunBox.SelectedItem = restoreRunBox.Items.Contains(selected) ? selected : "All runs";
             }
@@ -281,13 +285,21 @@ namespace CK3MPS
         {
             restoreListBox.Items.Clear();
             string selectedRun = Convert.ToString(restoreRunBox.SelectedItem);
+            List<RestoreEntry> visibleEntries = new List<RestoreEntry>();
             foreach (RestoreEntry entry in ReadRestoreEntries())
             {
                 if (!String.IsNullOrEmpty(selectedRun) && selectedRun != "All runs" && !String.Equals(entry.RunId, selectedRun, StringComparison.OrdinalIgnoreCase))
                     continue;
-                restoreListBox.Items.Add(entry);
+                visibleEntries.Add(entry);
             }
-            restoreDetailsBox.Text = restoreListBox.Items.Count == 0 ? "(no restore entries yet)" : "";
+            visibleEntries.Sort(CompareRestoreEntriesNewestFirst);
+            foreach (RestoreEntry entry in visibleEntries)
+                restoreListBox.Items.Add(entry);
+
+            if (restoreListBox.Items.Count > 0)
+                restoreListBox.SelectedIndex = 0;
+            else
+                restoreDetailsBox.Text = "(no restore entries yet)";
         }
 
         private void ShowSelectedRestoreDetails()
@@ -300,34 +312,143 @@ namespace CK3MPS
             }
 
             StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Action: " + RestoreActionCaption(entry));
+            sb.AppendLine("Status: " + RestoreStatusText(entry));
             sb.AppendLine("Created: " + entry.Created);
-            sb.AppendLine("Kind: " + entry.Kind);
-            sb.AppendLine("Description: " + entry.Description);
-            sb.AppendLine("Original path: " + entry.SourcePath);
-            sb.AppendLine("Backup/quarantine path: " + entry.BackupPath);
+            sb.AppendLine("Run: " + NullText(entry.RunId));
             sb.AppendLine();
-            sb.AppendLine("Before:");
-            sb.AppendLine(entry.Before);
+            sb.AppendLine("What it affects:");
+            sb.AppendLine(NullText(entry.Description));
             sb.AppendLine();
-            sb.AppendLine("After:");
-            sb.AppendLine(entry.After);
-            sb.AppendLine();
-            sb.AppendLine("Current now:");
+            sb.AppendLine("Current item state:");
             sb.AppendLine(DescribeRestoreCurrentState(entry));
             sb.AppendLine();
+            sb.AppendLine("Restore selected:");
+            sb.AppendLine(RestoreSelectedExplanation(entry));
+            sb.AppendLine();
+            sb.AppendLine("Restore default:");
+            sb.AppendLine(DefaultRestoreSupported(entry)
+                ? "Supported. CK3MPS removes this override and lets Windows/Steam/Launcher/CK3 recreate the default state."
+                : "Not supported for this item. Use Restore selected instead.");
+            sb.AppendLine();
+            sb.AppendLine("Original path:");
+            sb.AppendLine(NullText(entry.SourcePath));
+            if (!String.IsNullOrEmpty(entry.BackupPath))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Backup/quarantine path:");
+                sb.AppendLine(entry.BackupPath);
+            }
+            sb.AppendLine();
+            sb.AppendLine("Before:");
+            sb.AppendLine(NullText(entry.Before));
+            if (!String.IsNullOrEmpty(entry.After))
+            {
+                sb.AppendLine();
+                sb.AppendLine("After:");
+                sb.AppendLine(entry.After);
+            }
             string diffSummary = BuildRestoreDiffSummary(entry);
             if (!String.IsNullOrEmpty(diffSummary))
             {
-                sb.AppendLine("Diff:");
-                sb.AppendLine(diffSummary);
                 sb.AppendLine();
+                sb.AppendLine("Compact diff:");
+                sb.AppendLine(diffSummary);
             }
-            sb.AppendLine("Status:");
-            sb.AppendLine(entry.Status);
-            sb.AppendLine();
-            sb.AppendLine("Default restore:");
-            sb.AppendLine(DefaultRestoreSupported(entry) ? "Supported: CK3MPS will remove this override/file/value so the owner recreates defaults." : "Not supported for this item. Use recorded previous-value restore.");
             restoreDetailsBox.Text = sb.ToString();
+        }
+
+        private static int CompareRestoreEntriesNewestFirst(RestoreEntry left, RestoreEntry right)
+        {
+            DateTime a;
+            DateTime b;
+            bool aOk = DateTime.TryParse(left.Created, out a);
+            bool bOk = DateTime.TryParse(right.Created, out b);
+            if (aOk && bOk)
+            {
+                int cmp = b.CompareTo(a);
+                if (cmp != 0)
+                    return cmp;
+            }
+            return StringComparer.OrdinalIgnoreCase.Compare(right.Id, left.Id);
+        }
+
+        private string BuildListDisplayText(RestoreEntry entry)
+        {
+            string created = entry.Created;
+            DateTime dt;
+            if (DateTime.TryParse(entry.Created, out dt))
+                created = dt.ToString("yyyy-MM-dd HH:mm");
+            return created
+                + " | "
+                + RestoreStatusText(entry)
+                + " | "
+                + RestoreActionCaption(entry)
+                + " | "
+                + ShortRestoreText(entry.Description, 54);
+        }
+
+        private static string RestoreStatusText(RestoreEntry entry)
+        {
+            string status = String.IsNullOrEmpty(entry.Status) ? "active" : entry.Status;
+            if (String.Equals(status, "restored_default", StringComparison.OrdinalIgnoreCase))
+                return "default restored";
+            if (String.Equals(status, "restore_action", StringComparison.OrdinalIgnoreCase))
+                return "restored";
+            if (String.Equals(status, "already_default", StringComparison.OrdinalIgnoreCase))
+                return "already default";
+            return status.Replace('_', ' ');
+        }
+
+        private string RestoreActionCaption(RestoreEntry entry)
+        {
+            switch ((entry.Kind ?? "").ToLowerInvariant())
+            {
+                case "snapshot":
+                    return "Snapshot";
+                case "system_snapshot":
+                    return "System snapshot";
+                case "registry":
+                    return "Registry value";
+                case "file":
+                    return "Backed-up file";
+                case "directory":
+                    return "Backed-up folder";
+                case "moved_file":
+                    return "Moved file";
+                case "moved_directory":
+                    return "Moved folder";
+                case "created_file":
+                    return "Created file";
+                case "restore_action":
+                    return "Restore action";
+                case "default_restore":
+                    return "Default restore";
+            }
+            return NullText(entry.Kind);
+        }
+
+        private static string ShortRestoreText(string text, int max)
+        {
+            string value = (text ?? "").Trim();
+            if (value.Length <= max)
+                return value;
+            return value.Substring(0, max - 3) + "...";
+        }
+
+        private string RestoreSelectedExplanation(RestoreEntry entry)
+        {
+            if (entry.Kind == "snapshot" || entry.Kind == "system_snapshot")
+                return "This is informational only. There is nothing to restore directly from the app.";
+            if (entry.Kind == "registry")
+                return "Writes the recorded previous registry value back, or removes it if it did not exist before.";
+            if (entry.Kind == "created_file")
+                return "Deletes the file created by CK3MPS and backs up the current file first if it still exists.";
+            if (entry.Kind == "file" || entry.Kind == "moved_file")
+                return "Copies the recorded backup file back to the original path.";
+            if (entry.Kind == "directory" || entry.Kind == "moved_directory")
+                return "Replaces the current folder with the recorded backup folder.";
+            return "Restores the previously recorded state for this item.";
         }
 
         private string DescribeRestoreCurrentState(RestoreEntry entry)
@@ -458,6 +579,78 @@ namespace CK3MPS
             {
                 Log("ERROR Default restore failed: " + ex.Message);
                 MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void DeleteSelectedRestoreEntries()
+        {
+            RestoreEntry entry = restoreListBox.SelectedItem as RestoreEntry;
+            if (entry == null)
+                return;
+
+            DialogResult result = MessageBox.Show(
+                "Delete this restore record from CK3MPS?\r\n\r\n"
+                + entry.Description
+                + "\r\n\r\nThis removes the entry from the Restore list. If its backup file is no longer used by other entries, CK3MPS will delete that backup too.",
+                "CK3MPS restore",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+                return;
+
+            try
+            {
+                DeleteRestoreEntries(new[] { entry.Id });
+                Log("OK   Deleted restore entry: " + entry.Description);
+                RefreshRestoreList();
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR Delete restore entry failed: " + ex.Message);
+                MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void DeleteRestoreEntries(IEnumerable<string> entryIds)
+        {
+            HashSet<string> toDelete = new HashSet<string>(entryIds ?? new string[0], StringComparer.OrdinalIgnoreCase);
+            if (toDelete.Count == 0)
+                return;
+
+            string manifest = RestoreManifestFile();
+            if (String.IsNullOrEmpty(manifest) || !File.Exists(manifest))
+                return;
+
+            List<RestoreEntry> entries = ReadRestoreEntries();
+            List<string> lines = new List<string>(File.ReadAllLines(manifest, Encoding.UTF8));
+            if (lines.Count == 0)
+                return;
+
+            List<string> kept = new List<string>();
+            kept.Add(lines[0]);
+            for (int i = 1; i < lines.Count; i++)
+            {
+                string line = lines[i];
+                string[] parts = line.Split('\t');
+                if (parts.Length == 0 || !toDelete.Contains(parts[0]))
+                    kept.Add(line);
+            }
+            File.WriteAllLines(manifest, kept.ToArray(), Encoding.UTF8);
+
+            HashSet<string> remainingBackups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (RestoreEntry existing in ReadRestoreEntries())
+                if (!String.IsNullOrEmpty(existing.BackupPath))
+                    remainingBackups.Add(existing.BackupPath);
+
+            foreach (RestoreEntry removed in entries)
+            {
+                if (!toDelete.Contains(removed.Id) || String.IsNullOrEmpty(removed.BackupPath) || remainingBackups.Contains(removed.BackupPath))
+                    continue;
+
+                if (File.Exists(removed.BackupPath))
+                    File.Delete(removed.BackupPath);
+                else if (Directory.Exists(removed.BackupPath))
+                    Directory.Delete(removed.BackupPath, true);
             }
         }
 
