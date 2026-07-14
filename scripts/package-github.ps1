@@ -25,7 +25,7 @@ try {
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>CK3MPS</id>
-    <version>0.1.0-beta.1</version>
+    <version>0.1.0-beta.2</version>
     <authors>Danissemo</authors>
     <owners>Danissemo</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -34,7 +34,7 @@ try {
     <projectUrl>https://github.com/Danissemo/CK3MPS</projectUrl>
     <repository type="git" url="https://github.com/Danissemo/CK3MPS.git" commit="$Commit" />
     <description>CK3 multiplayer stabilization utility for Windows.</description>
-    <releaseNotes>Presentation refresh package for v0.1 beta. Regular users should download the Release executable.</releaseNotes>
+    <releaseNotes>Branding refresh package for v0.1 beta with updated application icon and social preview. Regular users should download the Release executable.</releaseNotes>
     <copyright>Copyright (c) Danissemo</copyright>
     <tags>CK3 Crusader-Kings-III multiplayer stabilization OOS Windows Paradox Steam</tags>
   </metadata>

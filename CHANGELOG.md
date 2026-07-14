@@ -6,6 +6,7 @@
 - Added GitHub issue templates, pull request template, build workflow, support, security and contribution notes.
 - Added repository social preview image and screenshot assets.
 - Added GitHub NuGet package helper script.
+- Updated application icon and repository social preview artwork.
 
 ## v0.1-beta
 
