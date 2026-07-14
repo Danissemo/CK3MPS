@@ -626,19 +626,7 @@ namespace CK3MPS
 
         private string CompactStabilizerFileName(string name)
         {
-            if (String.Equals(name, "ck3_stabilizer_check_only_report.txt", StringComparison.OrdinalIgnoreCase))
-                return "check.txt";
-            if (String.Equals(name, "ck3_stabilizer_mp_parity_manifest.txt", StringComparison.OrdinalIgnoreCase))
-                return "mp_parity.txt";
-            if (String.Equals(name, "ck3_stabilizer_oos_protocol.txt", StringComparison.OrdinalIgnoreCase))
-                return "protocol.txt";
-            if (String.Equals(name, "ck3_stabilizer_expected_profile_hashes.txt", StringComparison.OrdinalIgnoreCase))
-                return "state.txt";
-            if (String.Equals(name, "ck3_stabilizer_cache_cleanup.txt", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(name, "ck3_stabilizer_cache_diagnostics.txt", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(name, "ck3_stabilizer_folder_cleanup.txt", StringComparison.OrdinalIgnoreCase))
-                return "cleanup.txt";
-            return "report.txt";
+            return StabilizerFileNameUtilities.CompactName(name);
         }
 
         private void MoveLegacyStabilizerArtifacts()

@@ -363,4 +363,28 @@ namespace CK3MPS
             return bytes;
         }
     }
+
+    internal static class StabilizerFileNameUtilities
+    {
+        public static string CompactName(string name)
+        {
+            string normalized = name ?? "";
+            if (String.Equals(normalized, "ck3_stabilizer_check_only_report.txt", StringComparison.OrdinalIgnoreCase))
+                return "check.txt";
+            if (String.Equals(normalized, "ck3_stabilizer_last_report.txt", StringComparison.OrdinalIgnoreCase))
+                return "report.txt";
+            if (String.Equals(normalized, "ck3_stabilizer_mp_parity_manifest.txt", StringComparison.OrdinalIgnoreCase))
+                return "mp_parity.txt";
+            if (String.Equals(normalized, "ck3_stabilizer_oos_protocol.txt", StringComparison.OrdinalIgnoreCase))
+                return "protocol.txt";
+            if (String.Equals(normalized, "ck3_stabilizer_expected_profile_hashes.txt", StringComparison.OrdinalIgnoreCase))
+                return "state.txt";
+
+            const string prefix = "ck3_stabilizer_";
+            string compact = Path.GetFileName(normalized);
+            if (compact.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                compact = compact.Substring(prefix.Length);
+            return String.IsNullOrEmpty(compact) ? "report.txt" : compact;
+        }
+    }
 }

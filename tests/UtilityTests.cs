@@ -12,6 +12,7 @@ internal static class UtilityTests
         TestPathNormalizationAndValidation();
         TestRecommendedPresetSafety();
         TestRestoreManifestRules();
+        TestCompactReportNames();
         TestRegistryValueSerialization();
 
         if (failures > 0)
@@ -51,6 +52,15 @@ internal static class UtilityTests
             && restoredMulti[1] == "semi;colon"
             && restoredMulti[2] == "line\r\nbreak"
             && restoredMulti[3] == "slash\\tail", "registry multistring snapshot restores all entries");
+    }
+
+    private static void TestCompactReportNames()
+    {
+        Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_last_report.txt") == "report.txt", "last report keeps compact legacy file name");
+        Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_runtime_verification.txt") == "runtime_verification.txt", "runtime verification keeps unique compact file name");
+        Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_latest_oos_summary.txt") == "latest_oos_summary.txt", "latest OOS summary keeps unique compact file name");
+        Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_portable_notes.txt") == "portable_notes.txt", "portable notes keeps unique compact file name");
+        Assert(StabilizerFileNameUtilities.CompactName("ck3_stabilizer_cache_cleanup.txt") == "cache_cleanup.txt", "cache cleanup keeps unique compact file name");
     }
 
     private static void TestRecommendedPresetSafety()
