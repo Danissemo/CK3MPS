@@ -114,6 +114,7 @@ namespace CK3MPS
         private bool gamePathOverrideActive;
         private bool settingsPathOverrideActive;
         private string liveLogFilePath;
+        private bool liveLogWritesEnabled;
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private sealed class StepGroupUi
@@ -215,7 +216,7 @@ namespace CK3MPS
             UpdateSettingsUi();
             UpdatePathStatusIndicators();
             EnsureStabilizerRoot();
-            InitializeLiveLogFile();
+            ResetLiveLogFilePath();
             MigrateLegacyStabilizerState();
             MoveLegacyStabilizerArtifacts();
             SaveAppConfig();
@@ -239,12 +240,12 @@ namespace CK3MPS
             Log("Steam: " + NullText(steamRoot));
             Log((!String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install) ? "OK   " : "WARN ") + "CK3 game folder: " + NullText(ck3Install));
             Log("Launch options file: " + NullText(localConfig));
-            Log("FILE Live log: " + NullText(liveLogFilePath));
             Shown += delegate
             {
                 RefreshHistoryView();
                 RefreshRestoreList();
                 CheckForUpdatesOnStartup();
+                liveLogWritesEnabled = true;
             };
         }
     }

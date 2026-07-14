@@ -663,8 +663,7 @@ namespace CK3MPS
                 }
             }
 
-            liveLogFilePath = "";
-            InitializeLiveLogFile();
+            ResetLiveLogFilePath();
             Log("INFO Live log restarted after cleanup.");
             statusLabel.Text = "Deleted other logs: files=" + deletedFiles + ", folders=" + deletedDirs + ".";
             Log("OK   Deleted other logs: files=" + deletedFiles + ", folders=" + deletedDirs + ".");
@@ -868,10 +867,18 @@ namespace CK3MPS
             return Path.Combine(stabilizerRoot, "LiveLogs");
         }
 
-        private void InitializeLiveLogFile()
+        private void ResetLiveLogFilePath()
+        {
+            liveLogFilePath = "";
+        }
+
+        private void EnsureLiveLogFileCreated()
         {
             try
             {
+                if (!String.IsNullOrEmpty(liveLogFilePath) && File.Exists(liveLogFilePath))
+                    return;
+
                 string folder = LiveLogsFolder();
                 Directory.CreateDirectory(folder);
                 liveLogFilePath = Path.Combine(folder, "live_log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
@@ -893,6 +900,9 @@ namespace CK3MPS
         {
             try
             {
+                if (!liveLogWritesEnabled)
+                    return;
+                EnsureLiveLogFileCreated();
                 if (String.IsNullOrEmpty(liveLogFilePath))
                     return;
                 File.AppendAllText(liveLogFilePath, (text ?? "") + Environment.NewLine, Utf8NoBom);

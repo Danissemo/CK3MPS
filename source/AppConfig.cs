@@ -312,7 +312,7 @@ namespace CK3MPS
                 }
             }
 
-            InitializeLiveLogFile();
+            ResetLiveLogFilePath();
         }
 
         private string BuildResetSummary(string oldGame, string newGame, string oldSettings, string newSettings, bool includeGame, bool includeSettings)
