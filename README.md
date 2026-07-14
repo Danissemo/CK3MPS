@@ -22,7 +22,7 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 | --- | --- |
 | ![Main window](assets/screenshots/main-window.png) | ![Presets](assets/screenshots/presets.png) |
 
-| Check only | Compact report |
+| Check only | Generated report |
 | --- | --- |
 | ![Check only](assets/screenshots/check-only.png) | ![Report](assets/screenshots/report.png) |
 
