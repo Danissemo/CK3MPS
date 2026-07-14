@@ -22,15 +22,18 @@ namespace CK3MPS
 
         private readonly CheckedListBox steps = new CheckedListBox();
         private readonly ProgressBar progress = new ProgressBar();
-        private readonly TextBox logBox = new TextBox();
+        private readonly RichTextBox logBox = new RichTextBox();
         private readonly ComboBox presetBox = new ComboBox();
         private readonly ComboBox graphicsProfileBox = new ComboBox();
         private readonly Button stabilizeButton = new Button();
         private readonly Button checkButton = new Button();
         private readonly Button openFolderButton = new Button();
         private readonly Button openReportsButton = new Button();
+        private readonly Button updateButton = new Button();
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
+        private readonly Label gamePathStatusLabel = new Label();
+        private readonly Label settingsPathStatusLabel = new Label();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
 
@@ -114,6 +117,7 @@ namespace CK3MPS
             sharedConfig = DetectSharedConfig();
 
             BuildUi();
+            UpdatePathStatusIndicators();
             EnsureStabilizerRoot();
             MigrateLegacyStabilizerState();
             MoveLegacyStabilizerArtifacts();
@@ -128,10 +132,11 @@ namespace CK3MPS
             if (graphicsProfileBox.SelectedItem == null && graphicsProfileBox.Items.Count > 0)
                 graphicsProfileBox.SelectedIndex = 0;
             LogSection("Detected paths");
-            Log("CK3 Documents: " + ck3Docs);
+            Log((Directory.Exists(ck3Docs) ? "OK   " : "FAIL ") + "CK3 settings folder: " + ck3Docs);
             Log("Steam: " + NullText(steamRoot));
-            Log("CK3 install: " + NullText(ck3Install));
+            Log((!String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install) ? "OK   " : "WARN ") + "CK3 game folder: " + NullText(ck3Install));
             Log("Launch options file: " + NullText(localConfig));
+            Shown += delegate { CheckForUpdatesOnStartup(); };
         }
     }
 }

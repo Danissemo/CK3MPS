@@ -27,7 +27,9 @@ namespace CK3MPS
 
             var subtitle = new Label();
             subtitle.Text = "Safely prepares a clean vanilla CK3 multiplayer profile. Files are moved to quarantine, not deleted.";
-            subtitle.AutoSize = true;
+            subtitle.AutoSize = false;
+            subtitle.AutoEllipsis = true;
+            subtitle.Size = new Size(610, 20);
             subtitle.Location = new Point(18, 48);
             Controls.Add(subtitle);
 
@@ -97,6 +99,18 @@ namespace CK3MPS
             graphicsProfileBox.Size = new Size(140, 24);
             Controls.Add(graphicsProfileBox);
 
+            gamePathStatusLabel.Location = new Point(650, 18);
+            gamePathStatusLabel.Size = new Size(290, 20);
+            gamePathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            gamePathStatusLabel.AutoEllipsis = true;
+            Controls.Add(gamePathStatusLabel);
+
+            settingsPathStatusLabel.Location = new Point(650, 44);
+            settingsPathStatusLabel.Size = new Size(290, 20);
+            settingsPathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            settingsPathStatusLabel.AutoEllipsis = true;
+            Controls.Add(settingsPathStatusLabel);
+
             steps.CheckOnClick = true;
             steps.Location = new Point(20, 108);
             steps.Size = new Size(430, 416);
@@ -107,9 +121,13 @@ namespace CK3MPS
             logBox.Size = new Size(470, 416);
             logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             logBox.Multiline = true;
-            logBox.ScrollBars = ScrollBars.Vertical;
+            logBox.ScrollBars = RichTextBoxScrollBars.Both;
+            logBox.WordWrap = false;
             logBox.ReadOnly = true;
             logBox.Font = new Font("Consolas", 9F);
+            logBox.BackColor = Color.White;
+            logBox.BorderStyle = BorderStyle.FixedSingle;
+            logBox.DetectUrls = false;
             Controls.Add(logBox);
 
             progress.Location = new Point(20, 540);
@@ -159,6 +177,16 @@ namespace CK3MPS
                 OpenReportsLocation();
             };
             Controls.Add(openReportsButton);
+
+            updateButton.Text = "Check updates";
+            updateButton.Location = new Point(636, 615);
+            updateButton.Size = new Size(130, 34);
+            updateButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            updateButton.Click += delegate
+            {
+                CheckForUpdatesManual();
+            };
+            Controls.Add(updateButton);
         }
 
         private void FillSteps()

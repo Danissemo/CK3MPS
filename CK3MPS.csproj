@@ -47,6 +47,7 @@
     <Compile Include="source\Reports.cs" />
     <Compile Include="source\Readiness.cs" />
     <Compile Include="source\Helpers.cs" />
+    <Compile Include="source\Updates.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />

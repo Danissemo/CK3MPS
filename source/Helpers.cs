@@ -521,6 +521,7 @@ namespace CK3MPS
             checkButton.Enabled = !busy;
             openFolderButton.Enabled = !busy;
             openReportsButton.Enabled = !busy;
+            updateButton.Enabled = !busy;
             selectAllButton.Enabled = !busy;
             selectNoneButton.Enabled = !busy;
             presetBox.Enabled = !busy;
@@ -683,16 +684,16 @@ namespace CK3MPS
         private void LogSection(string title)
         {
             Log("");
-            logBox.AppendText("------------------------------------------------------------" + Environment.NewLine);
-            logBox.AppendText(title + Environment.NewLine);
-            logBox.AppendText("------------------------------------------------------------" + Environment.NewLine);
+            AppendLogLine("------------------------------------------------------------", Color.FromArgb(120, 120, 120));
+            AppendLogLine(title, Color.FromArgb(50, 50, 50));
+            AppendLogLine("------------------------------------------------------------", Color.FromArgb(120, 120, 120));
         }
 
         private void Log(string message)
         {
             if (String.IsNullOrEmpty(message))
             {
-                logBox.AppendText(Environment.NewLine);
+                AppendLogLine("", logBox.ForeColor);
                 return;
             }
 
@@ -700,7 +701,57 @@ namespace CK3MPS
                 .Replace("[FAIL]", "FAIL")
                 .Replace("[INFO]", "INFO")
                 .Replace("Warning:", "WARN ");
-            logBox.AppendText(FormatLogLine(clean) + Environment.NewLine);
+            string formatted = FormatLogLine(clean);
+            AppendLogLine(formatted, LogColorForLine(formatted, clean));
+        }
+
+        private void AppendLogLine(string text, Color color)
+        {
+            logBox.SelectionStart = logBox.TextLength;
+            logBox.SelectionLength = 0;
+            logBox.SelectionColor = color;
+            logBox.AppendText(text + Environment.NewLine);
+            logBox.SelectionColor = logBox.ForeColor;
+            logBox.SelectionStart = logBox.TextLength;
+            logBox.ScrollToCaret();
+        }
+
+        private Color LogColorForLine(string formatted, string original)
+        {
+            string text = (formatted ?? "").TrimStart();
+            string upper = (text + " " + (original ?? "")).ToUpperInvariant();
+
+            if (upper.StartsWith("OK") || upper.StartsWith("RESULT| READY") || upper.Contains(" RESULT READY"))
+                return Color.FromArgb(0, 128, 64);
+            if (upper.StartsWith("FAIL") || upper.StartsWith("ERROR") || upper.Contains(" FAILED") || upper.Contains(" NOT READY"))
+                return Color.FromArgb(192, 0, 0);
+            if (upper.StartsWith("WARN") || upper.StartsWith("RISK") || upper.StartsWith("GUARD"))
+                return Color.FromArgb(200, 104, 0);
+            if (upper.StartsWith("SKIP"))
+                return Color.FromArgb(120, 120, 120);
+            if (upper.StartsWith("FILE") || upper.StartsWith("BACKUP") || upper.StartsWith("MOVE") || upper.StartsWith("CMD"))
+                return Color.FromArgb(24, 100, 170);
+            if (upper.StartsWith("INFO"))
+                return Color.FromArgb(70, 70, 70);
+
+            return logBox.ForeColor;
+        }
+
+        private void UpdatePathStatusIndicators()
+        {
+            bool gameFound = !String.IsNullOrEmpty(ck3Install) && Directory.Exists(ck3Install);
+            bool settingsFound = Directory.Exists(ck3Docs);
+
+            ApplyPathStatus(gamePathStatusLabel, "Game folder", gameFound, ck3Install);
+            ApplyPathStatus(settingsPathStatusLabel, "Settings folder", settingsFound, ck3Docs);
+        }
+
+        private void ApplyPathStatus(Label label, string name, bool found, string path)
+        {
+            label.Text = name + ": " + (found ? "found" : "not found");
+            label.ForeColor = found ? Color.FromArgb(0, 128, 64) : Color.FromArgb(192, 0, 0);
+            label.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
+            label.Tag = path;
         }
 
         private string FormatLogLine(string message)

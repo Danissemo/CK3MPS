@@ -149,11 +149,12 @@ namespace CK3MPS
 
             EnsureStabilizerRoot();
             MoveLegacyStabilizerArtifacts();
-            Log("CK3 Documents found.");
+            UpdatePathStatusIndicators();
+            Log("OK   CK3 settings folder found: " + ck3Docs);
             if (String.IsNullOrEmpty(ck3Install) || !Directory.Exists(ck3Install))
-                Log("CK3 install folder not found automatically. Steam/binary checks will be skipped.");
+                Log("WARN CK3 game folder not found automatically. Steam/binary checks will be skipped.");
             else
-                Log("CK3 install found: " + ck3Install);
+                Log("OK   CK3 game folder found: " + ck3Install);
         }
 
         private void CheckBasePathsReadOnly()
