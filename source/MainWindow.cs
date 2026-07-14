@@ -164,12 +164,24 @@ namespace CK3MPS
             graphicsProfileBox.Size = new Size(140, 24);
             mainPage.Controls.Add(graphicsProfileBox);
 
+            var liveLogLabel = new Label();
+            liveLogLabel.Text = "Live log:";
+            liveLogLabel.AutoSize = true;
+            liveLogLabel.Location = new Point(470, 56);
+            mainPage.Controls.Add(liveLogLabel);
+
             checklistPanel.Location = new Point(12, 52);
-            checklistPanel.Size = new Size(888, 372);
-            checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            checklistPanel.Size = new Size(446, 372);
+            checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
             checklistPanel.AutoScroll = true;
             checklistPanel.Resize += delegate { ResizeChecklistRows(); };
             mainPage.Controls.Add(checklistPanel);
+
+            ConfigureLogView(logBox);
+            logBox.Location = new Point(470, 78);
+            logBox.Size = new Size(430, 346);
+            logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            mainPage.Controls.Add(logBox);
         }
 
         private void BuildPathsTab()
@@ -267,18 +279,24 @@ namespace CK3MPS
 
         private void BuildLogTab()
         {
-            logBox.Location = new Point(8, 8);
-            logBox.Size = new Size(896, 428);
-            logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            logBox.Multiline = true;
-            logBox.ScrollBars = RichTextBoxScrollBars.Both;
-            logBox.WordWrap = false;
-            logBox.ReadOnly = true;
-            logBox.Font = new Font("Consolas", 9F);
-            logBox.BackColor = Color.White;
-            logBox.BorderStyle = BorderStyle.FixedSingle;
-            logBox.DetectUrls = false;
-            logPage.Controls.Add(logBox);
+            ConfigureLogView(logTabBox);
+            logTabBox.Location = new Point(8, 8);
+            logTabBox.Size = new Size(896, 428);
+            logTabBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            logPage.Controls.Add(logTabBox);
+        }
+
+        private static void ConfigureLogView(RichTextBox box)
+        {
+            box.Multiline = true;
+            box.ScrollBars = RichTextBoxScrollBars.Both;
+            box.WordWrap = false;
+            box.ReadOnly = true;
+            box.Font = new Font("Consolas", 9F);
+            box.BackColor = Color.White;
+            box.BorderStyle = BorderStyle.FixedSingle;
+            box.DetectUrls = false;
+            box.HideSelection = false;
         }
 
         private void BuildReportsTab()
@@ -434,35 +452,35 @@ namespace CK3MPS
         private void FillSteps()
         {
             steps.Items.Clear();
-            steps.Items.Add("1. Safety: create Windows restore point");
-            steps.Items.Add("2. Safety: check CK3 folders and running processes");
-            steps.Items.Add("3. Safety: create timestamped quarantine backup");
-            steps.Items.Add("4. Windows network: flush DNS cache");
-            steps.Items.Add("5. Windows network: diagnose adapters, routes, DNS, MTU and TCP/IP");
-            steps.Items.Add("6. Windows firewall: add CK3 allow rules when elevated");
-            steps.Items.Add("7. Windows registry: apply game/network stability profile");
-            steps.Items.Add("8. Windows adapters: tune power and adapter stability profile");
-            steps.Items.Add("9. Windows apps: check overlays, VPNs and competing background apps");
-            steps.Items.Add("10. Windows network: check Paradox and Steam online reachability");
-            steps.Items.Add("11. Launchers: back up Steam and Paradox Launcher settings");
-            steps.Items.Add("12. Steam: stabilize CK3 launch/cloud/overlay settings");
-            steps.Items.Add("13. Paradox Launcher: rebuild CK3 database");
-            steps.Items.Add("14. Launchers: check runtime hygiene");
-            steps.Items.Add("15. CK3 external profile: force no-mod dlc_load.json");
-            steps.Items.Add("16. CK3 external settings: stabilize pdx_settings.txt");
-            steps.Items.Add("17. CK3 runtime verification: confirm launched profile");
-            steps.Items.Add("18. CK3 in-game rules: write stable new-campaign profile");
-            steps.Items.Add("19. CK3 user state: clear player UI state");
-            steps.Items.Add("20. CK3 reports: archive OOS and crash reports");
-            steps.Items.Add("21. CK3 cache: clear CK3 and launcher caches");
-            steps.Items.Add("22. CK3 mods: quarantine local .mod descriptors");
-            steps.Items.Add("23. CK3 binaries: inspect non-vanilla loader files");
-            steps.Items.Add("24. CK3 saves: check active save and save-folder hygiene");
-            steps.Items.Add("25. CK3 folder cleanup: remove nonessential files, keep saves");
-            steps.Items.Add("26. OOS reports: analyze latest OOS metadata");
-            steps.Items.Add("27. OOS evidence: write support package index");
-            steps.Items.Add("28. OOS protocol: write prevention rules");
-            steps.Items.Add("29. MP parity: write player comparison manifest");
+            steps.Items.Add("Safety: create Windows restore point");
+            steps.Items.Add("Safety: check CK3 folders and running processes");
+            steps.Items.Add("Safety: create timestamped quarantine backup");
+            steps.Items.Add("Windows network: flush DNS cache");
+            steps.Items.Add("Windows network: diagnose adapters, routes, DNS, MTU and TCP/IP");
+            steps.Items.Add("Windows firewall: add CK3 allow rules when elevated");
+            steps.Items.Add("Windows registry: apply game/network stability profile");
+            steps.Items.Add("Windows adapters: tune power and adapter stability profile");
+            steps.Items.Add("Windows apps: check overlays, VPNs and competing background apps");
+            steps.Items.Add("Windows network: check Paradox and Steam online reachability");
+            steps.Items.Add("Launchers: back up Steam and Paradox Launcher settings");
+            steps.Items.Add("Steam: stabilize CK3 launch/cloud/overlay settings");
+            steps.Items.Add("Paradox Launcher: rebuild CK3 database");
+            steps.Items.Add("Launchers: check runtime hygiene");
+            steps.Items.Add("CK3 external profile: force no-mod dlc_load.json");
+            steps.Items.Add("CK3 external settings: stabilize pdx_settings.txt");
+            steps.Items.Add("CK3 runtime verification: confirm launched profile");
+            steps.Items.Add("CK3 in-game rules: write stable new-campaign profile");
+            steps.Items.Add("CK3 user state: clear player UI state");
+            steps.Items.Add("CK3 reports: archive OOS and crash reports");
+            steps.Items.Add("CK3 cache: clear CK3 and launcher caches");
+            steps.Items.Add("CK3 mods: quarantine local .mod descriptors");
+            steps.Items.Add("CK3 binaries: inspect non-vanilla loader files");
+            steps.Items.Add("CK3 saves: check active save and save-folder hygiene");
+            steps.Items.Add("CK3 folder cleanup: remove nonessential files, keep saves");
+            steps.Items.Add("OOS reports: analyze latest OOS metadata");
+            steps.Items.Add("OOS evidence: write support package index");
+            steps.Items.Add("OOS protocol: write prevention rules");
+            steps.Items.Add("MP parity: write player comparison manifest");
             progress.Maximum = steps.Items.Count;
             BuildChecklistGroups();
         }
@@ -472,17 +490,17 @@ namespace CK3MPS
             if (steps.Items.Count != ExpectedStepCount)
                 Log("WARN Step configuration mismatch: expected " + ExpectedStepCount + ", actual " + steps.Items.Count);
 
-            if (steps.Items.Count > 0 && !steps.Items[0].ToString().StartsWith("1. Safety:", StringComparison.Ordinal))
+            if (steps.Items.Count > 0 && !steps.Items[0].ToString().StartsWith("Safety:", StringComparison.Ordinal))
                 Log("WARN First checklist item is not the expected Safety block.");
 
-            if (steps.Items.Count > 0 && !steps.Items[steps.Items.Count - 1].ToString().StartsWith(ExpectedStepCount + ". MP parity:", StringComparison.Ordinal))
+            if (steps.Items.Count > 0 && !steps.Items[steps.Items.Count - 1].ToString().StartsWith("MP parity:", StringComparison.Ordinal))
                 Log("WARN Last checklist item is not the expected MP parity block.");
         }
 
         private void RunStabilize()
         {
             SetBusy(true);
-            logBox.Clear();
+            ClearLogViews();
             progress.Value = 0;
             progress.Maximum = Math.Max(1, CountSelectedSteps());
 
@@ -588,7 +606,7 @@ namespace CK3MPS
         private void RunCheckOnly()
         {
             SetBusy(true);
-            logBox.Clear();
+            ClearLogViews();
             progress.Value = 0;
             progress.Maximum = steps.Items.Count;
             try

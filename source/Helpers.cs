@@ -723,13 +723,25 @@ namespace CK3MPS
 
         private void AppendLogLine(string text, Color color)
         {
-            logBox.SelectionStart = logBox.TextLength;
-            logBox.SelectionLength = 0;
-            logBox.SelectionColor = color;
-            logBox.AppendText(text + Environment.NewLine);
-            logBox.SelectionColor = logBox.ForeColor;
-            logBox.SelectionStart = logBox.TextLength;
-            logBox.ScrollToCaret();
+            AppendLogLineTo(logBox, text, color);
+            AppendLogLineTo(logTabBox, text, color);
+        }
+
+        private static void AppendLogLineTo(RichTextBox box, string text, Color color)
+        {
+            box.SelectionStart = box.TextLength;
+            box.SelectionLength = 0;
+            box.SelectionColor = color;
+            box.AppendText(text + Environment.NewLine);
+            box.SelectionColor = box.ForeColor;
+            box.SelectionStart = box.TextLength;
+            box.ScrollToCaret();
+        }
+
+        private void ClearLogViews()
+        {
+            logBox.Clear();
+            logTabBox.Clear();
         }
 
         private Color LogColorForLine(string formatted, string original)
