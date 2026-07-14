@@ -452,35 +452,35 @@ namespace CK3MPS
         private void FillSteps()
         {
             steps.Items.Clear();
-            steps.Items.Add("Safety: create Windows restore point");
-            steps.Items.Add("Safety: check CK3 folders and running processes");
-            steps.Items.Add("Safety: create timestamped quarantine backup");
-            steps.Items.Add("Windows network: flush DNS cache");
-            steps.Items.Add("Windows network: diagnose adapters, routes, DNS, MTU and TCP/IP");
-            steps.Items.Add("Windows firewall: add CK3 allow rules when elevated");
-            steps.Items.Add("Windows registry: apply game/network stability profile");
-            steps.Items.Add("Windows adapters: tune power and adapter stability profile");
-            steps.Items.Add("Windows apps: check overlays, VPNs and competing background apps");
-            steps.Items.Add("Windows network: check Paradox and Steam online reachability");
-            steps.Items.Add("Launchers: back up Steam and Paradox Launcher settings");
-            steps.Items.Add("Steam: stabilize CK3 launch/cloud/overlay settings");
-            steps.Items.Add("Paradox Launcher: rebuild CK3 database");
-            steps.Items.Add("Launchers: check runtime hygiene");
-            steps.Items.Add("CK3 external profile: force no-mod dlc_load.json");
-            steps.Items.Add("CK3 external settings: stabilize pdx_settings.txt");
-            steps.Items.Add("CK3 runtime verification: confirm launched profile");
-            steps.Items.Add("CK3 in-game rules: write stable new-campaign profile");
-            steps.Items.Add("CK3 user state: clear player UI state");
-            steps.Items.Add("CK3 reports: archive OOS and crash reports");
-            steps.Items.Add("CK3 cache: clear CK3 and launcher caches");
-            steps.Items.Add("CK3 mods: quarantine local .mod descriptors");
-            steps.Items.Add("CK3 binaries: inspect non-vanilla loader files");
-            steps.Items.Add("CK3 saves: check active save and save-folder hygiene");
-            steps.Items.Add("CK3 folder cleanup: remove nonessential files, keep saves");
-            steps.Items.Add("OOS reports: analyze latest OOS metadata");
-            steps.Items.Add("OOS evidence: write support package index");
-            steps.Items.Add("OOS protocol: write prevention rules");
-            steps.Items.Add("MP parity: write player comparison manifest");
+            steps.Items.Add("Create Windows restore point");
+            steps.Items.Add("Check CK3 folders and running processes");
+            steps.Items.Add("Create timestamped quarantine backup");
+            steps.Items.Add("Flush DNS cache");
+            steps.Items.Add("Diagnose adapters, routes, DNS, MTU and TCP/IP");
+            steps.Items.Add("Add CK3 allow rules when elevated");
+            steps.Items.Add("Apply game/network stability profile");
+            steps.Items.Add("Tune power and adapter stability profile");
+            steps.Items.Add("Check overlays, VPNs and competing background apps");
+            steps.Items.Add("Check Paradox and Steam online reachability");
+            steps.Items.Add("Back up Steam and Paradox Launcher settings");
+            steps.Items.Add("Stabilize CK3 launch/cloud/overlay settings");
+            steps.Items.Add("Rebuild CK3 launcher database");
+            steps.Items.Add("Check runtime hygiene");
+            steps.Items.Add("Force no-mod dlc_load.json");
+            steps.Items.Add("Stabilize pdx_settings.txt");
+            steps.Items.Add("Confirm launched profile");
+            steps.Items.Add("Write stable new-campaign profile");
+            steps.Items.Add("Clear player UI state");
+            steps.Items.Add("Archive OOS and crash reports");
+            steps.Items.Add("Clear CK3 and launcher caches");
+            steps.Items.Add("Quarantine local .mod descriptors");
+            steps.Items.Add("Inspect non-vanilla loader files");
+            steps.Items.Add("Check active save and save-folder hygiene");
+            steps.Items.Add("Remove nonessential files, keep saves");
+            steps.Items.Add("Analyze latest OOS metadata");
+            steps.Items.Add("Write support package index");
+            steps.Items.Add("Write prevention rules");
+            steps.Items.Add("Write player comparison manifest");
             progress.Maximum = steps.Items.Count;
             BuildChecklistGroups();
         }
@@ -490,10 +490,10 @@ namespace CK3MPS
             if (steps.Items.Count != ExpectedStepCount)
                 Log("WARN Step configuration mismatch: expected " + ExpectedStepCount + ", actual " + steps.Items.Count);
 
-            if (steps.Items.Count > 0 && !steps.Items[0].ToString().StartsWith("Safety:", StringComparison.Ordinal))
+            if (steps.Items.Count > 0 && !steps.Items[0].ToString().StartsWith("Create Windows restore point", StringComparison.Ordinal))
                 Log("WARN First checklist item is not the expected Safety block.");
 
-            if (steps.Items.Count > 0 && !steps.Items[steps.Items.Count - 1].ToString().StartsWith("MP parity:", StringComparison.Ordinal))
+            if (steps.Items.Count > 0 && !steps.Items[steps.Items.Count - 1].ToString().StartsWith("Write player comparison manifest", StringComparison.Ordinal))
                 Log("WARN Last checklist item is not the expected MP parity block.");
         }
 
