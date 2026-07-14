@@ -40,11 +40,11 @@ namespace CK3MPS
             StepGroupUi group = new StepGroupUi(title, indices);
             stepGroups.Add(group);
 
-            int groupWidth = Math.Max(300, checklistPanel.ClientSize.Width - 28);
+            int groupWidth = ChecklistContentWidth();
             group.Header.Size = new Size(groupWidth, 30);
             group.Header.MinimumSize = new Size(groupWidth, 30);
             group.Header.MaximumSize = new Size(groupWidth, 30);
-            group.Header.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            group.Header.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             group.Header.BackColor = Color.FromArgb(242, 244, 247);
 
             group.ToggleButton.Text = "-";
@@ -70,7 +70,7 @@ namespace CK3MPS
             group.TitleLabel.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
             group.TitleLabel.Location = new Point(62, 6);
             group.TitleLabel.Size = new Size(Math.Max(100, groupWidth - group.TitleLabel.Left - 8), 18);
-            group.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            group.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             group.Header.Controls.Add(group.TitleLabel);
 
             checklistPanel.Controls.Add(group.Header);
@@ -86,7 +86,7 @@ namespace CK3MPS
 
         private void ResizeChecklistRows()
         {
-            int width = Math.Max(300, checklistPanel.ClientSize.Width - 28);
+            int width = ChecklistContentWidth();
             foreach (StepGroupUi group in stepGroups)
             {
                 group.Header.Size = new Size(width, 30);
@@ -120,6 +120,8 @@ namespace CK3MPS
                 }
                 y += 4;
             }
+
+            checklistPanel.AutoScrollMinSize = new Size(0, Math.Max(0, y + 4));
         }
 
         private StepRowUi CreateStepRow(int index)
@@ -129,11 +131,11 @@ namespace CK3MPS
             row.Title = StepTitle(index);
             row.HelpText = StepHelpText(index);
 
-            int rowWidth = Math.Max(300, checklistPanel.ClientSize.Width - 28);
+            int rowWidth = ChecklistContentWidth();
             row.RowPanel.Size = new Size(rowWidth, 28);
             row.RowPanel.MinimumSize = new Size(rowWidth, 28);
             row.RowPanel.MaximumSize = new Size(rowWidth, 28);
-            row.RowPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            row.RowPanel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
 
             row.CheckBox.Width = 22;
             row.CheckBox.Height = 22;
@@ -163,7 +165,7 @@ namespace CK3MPS
             row.TitleLabel.Text = row.Title;
             row.TitleLabel.Location = new Point(98, 6);
             row.TitleLabel.Size = new Size(Math.Max(100, rowWidth - row.TitleLabel.Left - 8), 18);
-            row.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            row.TitleLabel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             stepToolTip.SetToolTip(row.TitleLabel, row.HelpText);
             row.RowPanel.Controls.Add(row.TitleLabel);
 
@@ -218,6 +220,14 @@ namespace CK3MPS
             group.CheckBox.CheckState = selected == 0
                 ? CheckState.Unchecked
                 : (selected == group.StepIndices.Length ? CheckState.Checked : CheckState.Indeterminate);
+        }
+
+        private int ChecklistContentWidth()
+        {
+            int width = checklistPanel.DisplayRectangle.Width - 4;
+            if (width < 300)
+                width = checklistPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8;
+            return Math.Max(300, width);
         }
 
         private string StepTitle(int index)
