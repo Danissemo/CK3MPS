@@ -225,20 +225,18 @@ namespace CK3MPS
 
             gamePathBox.Location = new Point(124, 24);
             gamePathBox.Size = new Size(630, 24);
-            gamePathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            gamePathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             gamePathBox.ReadOnly = true;
             pathsPage.Controls.Add(gamePathBox);
 
             gamePathBrowseButton.Text = "Browse...";
             gamePathBrowseButton.Location = new Point(766, 22);
             gamePathBrowseButton.Size = new Size(84, 28);
-            gamePathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             gamePathBrowseButton.Click += delegate { BrowseForGameFolder(); };
             pathsPage.Controls.Add(gamePathBrowseButton);
 
             gamePathStatusLabel.Location = new Point(858, 27);
             gamePathStatusLabel.Size = new Size(88, 20);
-            gamePathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             pathsPage.Controls.Add(gamePathStatusLabel);
 
             var settingsPathLabel = new Label();
@@ -249,20 +247,18 @@ namespace CK3MPS
 
             settingsPathBox.Location = new Point(124, 60);
             settingsPathBox.Size = new Size(630, 24);
-            settingsPathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            settingsPathBox.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             settingsPathBox.ReadOnly = true;
             pathsPage.Controls.Add(settingsPathBox);
 
             settingsPathBrowseButton.Text = "Browse...";
             settingsPathBrowseButton.Location = new Point(766, 58);
             settingsPathBrowseButton.Size = new Size(84, 28);
-            settingsPathBrowseButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             settingsPathBrowseButton.Click += delegate { BrowseForSettingsFolder(); };
             pathsPage.Controls.Add(settingsPathBrowseButton);
 
             settingsPathStatusLabel.Location = new Point(858, 63);
             settingsPathStatusLabel.Size = new Size(88, 20);
-            settingsPathStatusLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             pathsPage.Controls.Add(settingsPathStatusLabel);
 
             resetPathsButton.Text = "Auto-detect paths";
@@ -304,8 +300,37 @@ namespace CK3MPS
 
             pathDetailsLabel.Location = new Point(124, 198);
             pathDetailsLabel.Size = new Size(760, 120);
-            pathDetailsLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             pathsPage.Controls.Add(pathDetailsLabel);
+
+            pathsPage.Resize += delegate { LayoutPathsTabControls(); };
+            LayoutPathsTabControls();
+        }
+
+        private void LayoutPathsTabControls()
+        {
+            const int leftMargin = 124;
+            const int topGame = 24;
+            const int topSettings = 60;
+            const int buttonWidth = 84;
+            const int statusWidth = 88;
+            const int gap = 8;
+            const int rightMargin = 18;
+
+            int statusLeft = Math.Max(640, pathsPage.ClientSize.Width - rightMargin - statusWidth);
+            int browseLeft = Math.Max(leftMargin + 220, statusLeft - gap - buttonWidth);
+            int textWidth = Math.Max(280, browseLeft - leftMargin - gap);
+
+            gamePathBox.Location = new Point(leftMargin, topGame);
+            gamePathBox.Size = new Size(textWidth, 24);
+            gamePathBrowseButton.Location = new Point(browseLeft, 22);
+            gamePathStatusLabel.Location = new Point(statusLeft, 27);
+
+            settingsPathBox.Location = new Point(leftMargin, topSettings);
+            settingsPathBox.Size = new Size(textWidth, 24);
+            settingsPathBrowseButton.Location = new Point(browseLeft, 58);
+            settingsPathStatusLabel.Location = new Point(statusLeft, 63);
+
+            pathDetailsLabel.Size = new Size(Math.Max(520, pathsPage.ClientSize.Width - leftMargin - rightMargin), 120);
         }
 
         private void BuildLogTab()
