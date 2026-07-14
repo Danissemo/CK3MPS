@@ -164,26 +164,20 @@ namespace CK3MPS
             graphicsProfileBox.Size = new Size(140, 24);
             mainPage.Controls.Add(graphicsProfileBox);
 
-            var liveLogLabel = new Label();
             liveLogLabel.Text = "Live log:";
             liveLogLabel.AutoSize = true;
-            liveLogLabel.Location = new Point(470, 56);
             mainPage.Controls.Add(liveLogLabel);
 
-            checklistPanel.Location = new Point(12, 52);
-            checklistPanel.Size = new Size(446, 372);
-            checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+            checklistPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             checklistPanel.BorderStyle = BorderStyle.FixedSingle;
             checklistPanel.TabStop = true;
             checklistPanel.MouseWheel += delegate(object sender, MouseEventArgs e) { ScrollChecklistWheel(e.Delta); };
 
-            checklistContentPanel.Location = new Point(0, 0);
-            checklistContentPanel.Size = new Size(426, 372);
             checklistContentPanel.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             checklistPanel.Controls.Add(checklistContentPanel);
 
             checklistScrollBar.Width = SystemInformation.VerticalScrollBarWidth;
-            checklistScrollBar.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            checklistScrollBar.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             checklistScrollBar.Scroll += delegate { UpdateChecklistScrollPosition(); };
             checklistPanel.Controls.Add(checklistScrollBar);
 
@@ -192,13 +186,33 @@ namespace CK3MPS
                 ResizeChecklistRows();
                 LayoutChecklistViewport();
             };
+            mainPage.Resize += delegate { LayoutMainTabControls(); };
             mainPage.Controls.Add(checklistPanel);
 
             ConfigureLogView(logBox);
-            logBox.Location = new Point(470, 78);
-            logBox.Size = new Size(430, 346);
-            logBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             mainPage.Controls.Add(logBox);
+
+            LayoutMainTabControls();
+        }
+
+        private void LayoutMainTabControls()
+        {
+            int leftMargin = 12;
+            int top = 52;
+            int bottomMargin = 12;
+            int gap = 12;
+            int checklistWidth = 446;
+            int labelY = 56;
+            int logTop = 78;
+            int availableHeight = Math.Max(240, mainPage.ClientSize.Height - top - bottomMargin);
+
+            checklistPanel.Location = new Point(leftMargin, top);
+            checklistPanel.Size = new Size(checklistWidth, availableHeight);
+
+            liveLogLabel.Location = new Point(checklistPanel.Right + gap, labelY);
+
+            logBox.Location = new Point(checklistPanel.Right + gap, logTop);
+            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(220, mainPage.ClientSize.Height - logTop - bottomMargin));
         }
 
         private void BuildPathsTab()

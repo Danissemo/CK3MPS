@@ -50,6 +50,7 @@ namespace CK3MPS
         private readonly Button selectAllButton = new Button();
         private readonly Button selectNoneButton = new Button();
         private readonly Button previewButton = new Button();
+        private readonly Label liveLogLabel = new Label();
         private readonly TextBox gamePathBox = new TextBox();
         private readonly TextBox settingsPathBox = new TextBox();
         private readonly Button gamePathBrowseButton = new Button();
