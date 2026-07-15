@@ -858,10 +858,10 @@ namespace CK3MPS
                 return false;
 
             string quotedExe = "\"" + exe + "\"";
-            string inbound = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Inbound\"");
-            string outbound = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3MPS - CK3 Outbound\"");
-            string legacyInbound = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3 Stabilizer - CK3 Inbound\"");
-            string legacyOutbound = RunCommandQuiet("netsh.exe", "advfirewall firewall show rule name=\"CK3 Stabilizer - CK3 Outbound\"");
+            string inbound = ReadFirewallRule("CK3MPS - CK3 Inbound");
+            string outbound = ReadFirewallRule("CK3MPS - CK3 Outbound");
+            string legacyInbound = ReadFirewallRule("CK3 Stabilizer - CK3 Inbound");
+            string legacyOutbound = ReadFirewallRule("CK3 Stabilizer - CK3 Outbound");
 
             return !FirewallRuleMatches(inbound, quotedExe, "in")
                 || !FirewallRuleMatches(outbound, quotedExe, "out")

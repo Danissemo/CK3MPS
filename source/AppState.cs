@@ -116,6 +116,8 @@ namespace CK3MPS
         private string liveLogFilePath;
         private bool liveLogWritesEnabled;
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool hasFreshCheckOnlyScan;
+        private string freshCheckOnlyScanKey = "";
 
         private sealed class StepGroupUi
         {

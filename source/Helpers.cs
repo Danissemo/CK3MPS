@@ -546,9 +546,12 @@ namespace CK3MPS
         {
             if (index >= 0 && index < steps.Items.Count)
             {
+                bool changed = steps.GetItemChecked(index) != value;
                 steps.SetItemChecked(index, value);
                 if (index < stepRows.Count && stepRows[index] != null)
                     stepRows[index].CheckBox.Checked = value;
+                if (changed)
+                    InvalidateFreshCheckOnlyScan();
             }
         }
 
@@ -1116,9 +1119,13 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(path))
                 return;
 
+            if (String.Equals(ck3Install, path, StringComparison.OrdinalIgnoreCase))
+                return;
+
             ck3Install = path;
             ck3Bin = Path.Combine(ck3Install, "binaries");
             gamePathOverrideActive = true;
+            InvalidateFreshCheckOnlyScan();
         }
 
         private void ApplySettingsFolder(string selectedPath)
@@ -1127,8 +1134,44 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(path))
                 return;
 
+            if (String.Equals(ck3Docs, path, StringComparison.OrdinalIgnoreCase))
+                return;
+
             ck3Docs = path;
             settingsPathOverrideActive = true;
+            InvalidateFreshCheckOnlyScan();
+        }
+
+        private void InvalidateFreshCheckOnlyScan()
+        {
+            hasFreshCheckOnlyScan = false;
+            freshCheckOnlyScanKey = "";
+        }
+
+        private void MarkFreshCheckOnlyScan()
+        {
+            hasFreshCheckOnlyScan = true;
+            freshCheckOnlyScanKey = BuildCheckOnlyScanKey();
+        }
+
+        private bool HasReusableFreshCheckOnlyScan()
+        {
+            return hasFreshCheckOnlyScan
+                && String.Equals(freshCheckOnlyScanKey, BuildCheckOnlyScanKey(), StringComparison.Ordinal);
+        }
+
+        private string BuildCheckOnlyScanKey()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("portable=" + portableMode);
+            sb.AppendLine("root=" + NullText(stabilizerRoot));
+            sb.AppendLine("game=" + NullText(ck3Install));
+            sb.AppendLine("settings=" + NullText(ck3Docs));
+            sb.AppendLine("preset=" + NullText(Convert.ToString(presetBox.SelectedItem)));
+            sb.AppendLine("graphics=" + CurrentGraphicsProfile());
+            for (int i = 0; i < steps.Items.Count; i++)
+                sb.AppendLine("step_" + i + "=" + (IsStepChecked(i) ? "1" : "0"));
+            return sb.ToString();
         }
 
         private string FormatLogLine(string message)

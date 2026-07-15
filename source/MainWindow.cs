@@ -166,6 +166,7 @@ namespace CK3MPS
             });
             graphicsProfileBox.Location = new Point(578, 14);
             graphicsProfileBox.Size = new Size(140, 24);
+            graphicsProfileBox.SelectedIndexChanged += delegate { InvalidateFreshCheckOnlyScan(); };
             mainPage.Controls.Add(graphicsProfileBox);
 
             liveLogLabel.Text = "Live log:";
@@ -757,7 +758,6 @@ namespace CK3MPS
                 LogSection("Run started");
                 Log("Preset: " + NullText(Convert.ToString(presetBox.SelectedItem)));
                 Log("Selected steps: " + CountSelectedSteps());
-                Log("Planned steps after current-state filtering: " + CountPlannedStabilizeSteps());
 
                 if (!ValidateBeforeRun())
                 {
@@ -773,6 +773,21 @@ namespace CK3MPS
                     AppendRunHistory("stabilize", "stopped_no_steps");
                     return;
                 }
+
+                if (HasReusableFreshCheckOnlyScan())
+                {
+                    Log("INFO Reusing the fresh Check Only scan from this session.");
+                }
+                else
+                {
+                    LogSection("Preflight check");
+                    Log("INFO No fresh Check Only scan is available. Running the read-only checklist first.");
+                    RunCheckOnlyScanCore(false, false);
+                    LogSection("Stabilize plan");
+                }
+
+                progress.Maximum = Math.Max(1, CountPlannedStabilizeSteps());
+                Log("Planned steps after current-state filtering: " + CountPlannedStabilizeSteps());
 
                 if (CountPlannedStabilizeSteps() == 0)
                 {
@@ -846,6 +861,8 @@ namespace CK3MPS
                     Log("RESULT Completed with blockers. Fix failed readiness checks before serious MP.");
                     AppendRunHistory("stabilize", "completed_with_blockers");
                 }
+
+                InvalidateFreshCheckOnlyScan();
             }
             catch (Exception ex)
             {
@@ -878,12 +895,7 @@ namespace CK3MPS
                     return;
                 }
 
-                for (int i = 0; i < steps.Items.Count; i++)
-                    RunCheckStep(i);
-
-                LogSection("Final readiness summary");
-                RunReadinessChecks(false);
-                WriteCheckOnlyReport();
+                RunCheckOnlyScanCore(true, true);
                 statusLabel.Text = "Check complete. Every checklist item was checked in read-only mode.";
                 AppendRunHistory("check_only", lastReadinessFailures == 0 ? "ready" : "completed_with_blockers");
             }
@@ -896,6 +908,18 @@ namespace CK3MPS
             {
                 SetBusy(false);
             }
+        }
+
+        private void RunCheckOnlyScanCore(bool writeReport, bool advanceProgress)
+        {
+            for (int i = 0; i < steps.Items.Count; i++)
+                RunCheckStep(i, advanceProgress);
+
+            LogSection("Final readiness summary");
+            RunReadinessChecks(false);
+            if (writeReport)
+                WriteCheckOnlyReport();
+            MarkFreshCheckOnlyScan();
         }
 
         private void RunStep(int index, string label, Action action)

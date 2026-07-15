@@ -531,7 +531,6 @@ namespace CK3MPS
             sb.AppendLine("- Steam Cloud remote suspicious saves: " + CountSuspiciousSteamCloudSaveNames());
             sb.AppendLine("- Steam Cloud remote fingerprint: " + BuildSteamCloudSaveFingerprint());
             sb.AppendLine("- Non-vanilla loader files: " + CountSuspectBinaries());
-            sb.AppendLine("- Settings guard report: " + YesNo(File.Exists(StabilizerFile("ck3_stabilizer_settings_guard.txt"))));
             sb.AppendLine();
             sb.AppendLine("Mods and launcher");
             sb.AppendLine("- No active mods: " + YesNo(NoActiveMods()));

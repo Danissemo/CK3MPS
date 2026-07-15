@@ -19,6 +19,7 @@ namespace CK3MPS
             settingsPathOverrideActive = false;
             gamePathOverrideActive = false;
             RefreshDerivedPaths();
+            InvalidateFreshCheckOnlyScan();
         }
 
         private void RefreshDerivedPaths()
@@ -211,6 +212,7 @@ namespace CK3MPS
             try
             {
                 portableMode = enabled;
+                InvalidateFreshCheckOnlyScan();
                 RefreshStabilizerRoot();
                 string newRoot = stabilizerRoot;
                 statusLabel.Text = "Moving CK3MPS state for portable mode...";

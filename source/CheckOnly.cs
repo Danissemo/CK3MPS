@@ -55,7 +55,7 @@ namespace CK3MPS
             RunStep(index, label, action);
         }
 
-        private void RunCheckStep(int index)
+        private void RunCheckStep(int index, bool advanceProgress)
         {
             string item = StepTitle(index);
             statusLabel.Text = "Checking: " + item;
@@ -120,11 +120,13 @@ namespace CK3MPS
                     Check("pdx_settings.txt has no UTF-8 BOM", !HasUtf8Bom(Path.Combine(ck3Docs, "pdx_settings.txt")));
                     break;
                 case 16:
+                    WriteRuntimeVerificationReport();
                     Check("Runtime verification report exists", File.Exists(StabilizerFile("ck3_stabilizer_runtime_verification.txt")));
                     CheckRuntimeProfileReadOnly();
                     Check("Settings guard report exists", File.Exists(StabilizerFile("ck3_stabilizer_settings_guard.txt")));
                     break;
                 case 17:
+                    WriteStableGameRuleProfile();
                     Check("Stable game-rule profile exists", File.Exists(StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt")));
                     break;
                 case 18:
@@ -151,22 +153,27 @@ namespace CK3MPS
                     CheckCk3DocumentsCleanupReadOnly();
                     break;
                 case 25:
+                    AnalyzeLatestOosReport();
                     CheckLatestOosReportReadOnly();
                     break;
                 case 26:
+                    WriteOosEvidencePack();
                     CheckOosEvidencePackReadOnly();
                     break;
                 case 27:
+                    WriteOosPreventionProtocol();
                     Check("OOS prevention protocol exists", File.Exists(StabilizerFile("ck3_stabilizer_oos_protocol.txt")));
                     break;
                 case 28:
+                    WriteMultiplayerParityManifest();
                     Check("MP parity manifest exists", File.Exists(StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt")));
                     Check("MP parity manifest contains required comparison fields", ParityManifestComplete());
                     Check("OOS risk score report exists", File.Exists(StabilizerFile("ck3_stabilizer_oos_risk_score.txt")));
                     break;
             }
 
-            progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
+            if (advanceProgress)
+                progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
             Application.DoEvents();
         }
 
