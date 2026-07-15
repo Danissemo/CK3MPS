@@ -60,14 +60,8 @@ namespace CK3MPS
 
         private void CheckWindowsRestorePointReadOnly()
         {
-            Check("System Restore PowerShell cmdlets available", SystemRestoreCmdletsAvailable());
-            Check("Volume Shadow Copy service available", WindowsServiceExistsAndNotDisabled("VSS"));
-            Check("Microsoft Software Shadow Copy Provider available", WindowsServiceExistsAndNotDisabled("swprv"));
-            Check("System Restore status readable", SystemRestoreStatusReadable());
-            string latest = LatestRestorePointSummary();
-            if (!String.IsNullOrEmpty(latest))
-                Log("INFO Latest restore point: " + latest);
-            Log("INFO Stabilize can create a restore point before CK3MPS changes. If Windows System Restore is disabled, CK3MPS asks before trying to enable it.");
+            Log("INFO Check Only does not query Windows restore points.");
+            Log("INFO Stabilize can create a restore point before CK3MPS changes when this step is selected.");
         }
 
         private bool WindowsRestorePointInfrastructureOk()

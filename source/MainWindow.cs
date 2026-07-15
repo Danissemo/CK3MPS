@@ -751,7 +751,7 @@ namespace CK3MPS
             SetBusy(true);
             ClearLogViews();
             progress.Value = 0;
-            progress.Maximum = Math.Max(1, CountPlannedStabilizeSteps());
+            progress.Maximum = 1;
 
             try
             {
@@ -786,10 +786,11 @@ namespace CK3MPS
                     LogSection("Stabilize plan");
                 }
 
-                progress.Maximum = Math.Max(1, CountPlannedStabilizeSteps());
-                Log("Planned steps after current-state filtering: " + CountPlannedStabilizeSteps());
+                int plannedSteps = CountPlannedStabilizeSteps();
+                progress.Maximum = Math.Max(1, plannedSteps);
+                Log("Planned steps after current-state filtering: " + plannedSteps);
 
-                if (CountPlannedStabilizeSteps() == 0)
+                if (plannedSteps == 0)
                 {
                     statusLabel.Text = "All selected items are already applied.";
                     Log("INFO All selected items are already in the target state. No changes were needed.");
@@ -845,7 +846,7 @@ namespace CK3MPS
                 if (IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16))
                     StartSettingsGuard();
                 LogSection("Final readiness summary");
-                RunReadinessChecks(true);
+                RunReadinessChecks(true, true);
                 LogSection("Automatic report");
                 WriteStabilityReport();
 
@@ -915,11 +916,10 @@ namespace CK3MPS
                 RunCheckStep(i, advanceProgress);
 
             LogSection("Final readiness summary");
-            RunReadinessChecks(false);
+            RunReadinessChecks(false, false);
             if (writeReport)
                 WriteCheckOnlyReport();
             MarkFreshCheckOnlyScan();
-            EnsurePlanningSnapshot();
         }
 
         private void RunStep(int index, string label, Action action)

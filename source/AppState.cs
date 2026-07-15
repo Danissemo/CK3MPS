@@ -121,7 +121,11 @@ namespace CK3MPS
         private bool hasPlanningSnapshot;
         private string planningSnapshotKey = "";
         private readonly bool[] planningShouldRun = new bool[ExpectedStepCount];
+        private readonly bool[] planningDetailsReady = new bool[ExpectedStepCount];
         private readonly List<string>[] planningDetails = new List<string>[ExpectedStepCount];
+        private int planningPlannedStepCount;
+        private bool planningPathValidationRequired;
+        private bool planningQuarantineRequired;
 
         private sealed class StepGroupUi
         {

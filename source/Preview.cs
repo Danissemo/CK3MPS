@@ -385,35 +385,19 @@ namespace CK3MPS
         private int CountPlannedStabilizeSteps()
         {
             EnsurePlanningSnapshot();
-            int count = 0;
-            if (ShouldRunPathValidationCoreStep())
-                count++;
-            if (ShouldRunQuarantineCoreStep())
-                count++;
-
-            for (int i = 0; i < steps.Items.Count; i++)
-                if (IsStepChecked(i) && i != 1 && i != 2 && ShouldRunSelectedStabilizeStep(i))
-                    count++;
-
-            return count;
+            return planningPlannedStepCount;
         }
 
         private bool ShouldRunPathValidationCoreStep()
         {
             EnsurePlanningSnapshot();
-            for (int i = 0; i < steps.Items.Count; i++)
-                if (IsStepChecked(i) && i != 1 && i != 2 && ShouldRunSelectedStabilizeStep(i))
-                    return true;
-            return false;
+            return planningPathValidationRequired;
         }
 
         private bool ShouldRunQuarantineCoreStep()
         {
             EnsurePlanningSnapshot();
-            for (int i = 0; i < steps.Items.Count; i++)
-                if (IsStepChecked(i) && i != 1 && i != 2 && ShouldRunSelectedStabilizeStep(i) && StepNeedsQuarantine(i))
-                    return true;
-            return false;
+            return planningQuarantineRequired;
         }
 
         private bool ShouldRunSelectedStabilizeStep(int index)
@@ -604,10 +588,16 @@ namespace CK3MPS
         private List<string> BuildStepPreviewDetails(int index)
         {
             EnsurePlanningSnapshot();
-            if (index >= 0 && index < planningDetails.Length && planningDetails[index] != null)
+            if (index >= 0 && index < planningDetails.Length && planningDetailsReady[index] && planningDetails[index] != null)
                 return new List<string>(planningDetails[index]);
 
-            return ComputeStepPreviewDetails(index);
+            List<string> details = ComputeStepPreviewDetails(index);
+            if (index >= 0 && index < planningDetails.Length)
+            {
+                planningDetails[index] = new List<string>(details);
+                planningDetailsReady[index] = true;
+            }
+            return details;
         }
 
         private List<string> ComputeStepPreviewDetails(int index)
@@ -781,11 +771,27 @@ namespace CK3MPS
 
             planningSnapshotKey = key;
             hasPlanningSnapshot = true;
+            planningPlannedStepCount = 0;
+            planningPathValidationRequired = false;
+            planningQuarantineRequired = false;
             for (int i = 0; i < planningShouldRun.Length; i++)
             {
                 planningShouldRun[i] = ComputeShouldRunSelectedStabilizeStep(i);
-                planningDetails[i] = ComputeStepPreviewDetails(i);
+                planningDetailsReady[i] = false;
+                planningDetails[i] = null;
+                if (!IsStepChecked(i) || i == 1 || i == 2 || !planningShouldRun[i])
+                    continue;
+
+                planningPlannedStepCount++;
+                planningPathValidationRequired = true;
+                if (StepNeedsQuarantine(i))
+                    planningQuarantineRequired = true;
             }
+
+            if (planningPathValidationRequired)
+                planningPlannedStepCount++;
+            if (planningQuarantineRequired)
+                planningPlannedStepCount++;
         }
 
         private bool RuntimeVerificationReportNeedsUpdate()

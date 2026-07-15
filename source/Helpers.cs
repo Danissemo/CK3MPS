@@ -1179,8 +1179,15 @@ namespace CK3MPS
         {
             hasPlanningSnapshot = false;
             planningSnapshotKey = "";
+            planningPlannedStepCount = 0;
+            planningPathValidationRequired = false;
+            planningQuarantineRequired = false;
             for (int i = 0; i < planningDetails.Length; i++)
+            {
+                planningShouldRun[i] = false;
+                planningDetailsReady[i] = false;
                 planningDetails[i] = null;
+            }
         }
 
         private string FormatLogLine(string message)
