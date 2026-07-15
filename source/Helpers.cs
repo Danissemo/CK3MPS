@@ -667,6 +667,7 @@ namespace CK3MPS
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
             if (!busy)
             {
+                FlushPendingUiLogLines();
                 FlushLiveLogBuffer();
                 ScrollLogToBottom();
             }
@@ -983,7 +984,16 @@ namespace CK3MPS
 
         private void AppendLogLine(string text, Color color)
         {
-            AppendLogLineTo(logBox, text, color);
+            if (busyUi)
+            {
+                pendingUiLogLines.Add(new PendingUiLogLine(text, color));
+                if (pendingUiLogLines.Count >= 10)
+                    FlushPendingUiLogLines();
+            }
+            else
+            {
+                AppendLogLineTo(logBox, text, color);
+            }
             AppendLiveLogLine(text);
         }
 
@@ -1002,8 +1012,20 @@ namespace CK3MPS
 
         private void ClearLogViews()
         {
+            pendingUiLogLines.Clear();
             logBox.Clear();
             uiLogLinesSinceLastScroll = 0;
+        }
+
+        private void FlushPendingUiLogLines()
+        {
+            if (pendingUiLogLines.Count == 0)
+                return;
+
+            foreach (PendingUiLogLine line in pendingUiLogLines)
+                AppendLogLineTo(logBox, line.Text, line.Color);
+
+            pendingUiLogLines.Clear();
         }
 
         private string LiveLogsFolder()
@@ -1081,6 +1103,7 @@ namespace CK3MPS
 
         private void ScrollLogToBottom()
         {
+            FlushPendingUiLogLines();
             logBox.SelectionStart = logBox.TextLength;
             logBox.ScrollToCaret();
             uiLogLinesSinceLastScroll = 0;

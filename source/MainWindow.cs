@@ -926,8 +926,10 @@ namespace CK3MPS
         {
             statusLabel.Text = label + "...";
             LogSection(label);
+            FlushPendingUiLogLines();
             Application.DoEvents();
             action();
+            FlushPendingUiLogLines();
             progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
             Application.DoEvents();
         }

@@ -116,6 +116,7 @@ namespace CK3MPS
         private string liveLogFilePath;
         private bool liveLogWritesEnabled;
         private readonly StringBuilder liveLogBuffer = new StringBuilder();
+        private readonly List<PendingUiLogLine> pendingUiLogLines = new List<PendingUiLogLine>();
         private int uiLogLinesSinceLastScroll;
         private bool busyUi;
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -157,6 +158,18 @@ namespace CK3MPS
             public readonly CheckBox CheckBox = new CheckBox();
             public readonly Label TitleLabel = new Label();
             public readonly Label HelpButton = new Label();
+        }
+
+        private sealed class PendingUiLogLine
+        {
+            public readonly string Text;
+            public readonly Color Color;
+
+            public PendingUiLogLine(string text, Color color)
+            {
+                Text = text ?? "";
+                Color = color;
+            }
         }
 
         private readonly string[] suspectBinaryFiles = new[]

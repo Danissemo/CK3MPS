@@ -1426,6 +1426,7 @@ namespace CK3MPS
                 if (process.WaitForExit(50))
                     return true;
 
+                FlushPendingUiLogLines();
                 Application.DoEvents();
                 if (sw.ElapsedMilliseconds >= timeoutMs)
                     return false;
