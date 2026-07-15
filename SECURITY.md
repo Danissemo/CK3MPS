@@ -6,7 +6,9 @@ CK3MPS touches local game, launcher and Windows settings, so security reports ar
 
 | Version | Supported |
 | --- | --- |
-| v0.1 beta | Yes |
+| v0.3 | Yes |
+| v0.2 | No |
+| v0.1 beta | No |
 
 ## Reporting
 
