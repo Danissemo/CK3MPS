@@ -644,25 +644,23 @@ namespace CK3MPS
                     details.Add("Move `" + Path.Combine(ck3Docs, "player") + "` to quarantine so CK3 recreates fresh UI state.");
                     break;
                 case 19:
-                    details.Add("Move visible OOS/crash/dump/exception items to quarantine. Current count: " + CountReportItemsForArchive() + ".");
+                    foreach (string path in EnumerateReportArchiveTargets())
+                        details.Add("Move report target `" + path + "` to quarantine.");
                     break;
                 case 20:
                     foreach (string path in EnumerateCacheCleanupTargets())
                         details.Add("Move cache target `" + path + "` to quarantine if it exists.");
                     break;
                 case 21:
-                    details.Add("Move " + CountModDescriptorFiles() + " local `.mod` descriptor file(s) from `" + Path.Combine(ck3Docs, "mod") + "` to quarantine.");
+                    foreach (string path in EnumerateModDescriptorFiles())
+                        details.Add("Move local mod descriptor `" + path + "` to quarantine.");
                     break;
                 case 22:
                     details.Add("Write a binary inspection report for the " + CountSuspectBinaries() + " suspect non-vanilla loader file(s) that were found.");
                     break;
                 case 23:
-                    if (File.Exists(Path.Combine(ck3Docs, "continue_game.json")) && ActiveContinueSaveNameSuspicious())
-                        details.Add("Move the suspicious `continue_game.json` pointer to quarantine.");
-                    if (CountSuspiciousLocalSaveFiles() > 0)
-                        details.Add("Move suspicious local `.ck3` save files out of the active save list when a clean manual save exists. Current suspicious local saves: " + CountSuspiciousLocalSaveFiles() + ".");
-                    if (CountSuspiciousSteamCloudSaveNames() > 0 && !ProcessRunningContains("steam"))
-                        details.Add("Move suspicious Steam Cloud remote save files to quarantine. Current suspicious cloud saves: " + CountSuspiciousSteamCloudSaveNames() + ".");
+                    foreach (string path in EnumerateSuspiciousSaveHygieneTargets())
+                        details.Add("Move suspicious save target `" + path + "` to quarantine.");
                     details.Add("Write the clean save launch note `" + StabilizerFile("ck3_stabilizer_clean_save_note.txt") + "`.");
                     break;
                 case 24:
@@ -816,6 +814,16 @@ namespace CK3MPS
                 + CountItems(Path.Combine(ck3Docs, "exceptions"));
         }
 
+        private List<string> EnumerateReportArchiveTargets()
+        {
+            List<string> paths = new List<string>();
+            AddExistingDirectory(paths, Path.Combine(ck3Docs, "oos"));
+            AddExistingDirectory(paths, Path.Combine(ck3Docs, "crashes"));
+            AddExistingDirectory(paths, Path.Combine(ck3Docs, "dumps"));
+            AddExistingDirectory(paths, Path.Combine(ck3Docs, "exceptions"));
+            return paths;
+        }
+
         private List<string> EnumerateCacheCleanupTargets()
         {
             List<string> paths = new List<string>();
@@ -835,6 +843,18 @@ namespace CK3MPS
         {
             string modDir = Path.Combine(ck3Docs, "mod");
             return Directory.Exists(modDir) ? Directory.GetFiles(modDir, "*.mod", SearchOption.TopDirectoryOnly).Length : 0;
+        }
+
+        private List<string> EnumerateModDescriptorFiles()
+        {
+            List<string> paths = new List<string>();
+            string modDir = Path.Combine(ck3Docs, "mod");
+            if (!Directory.Exists(modDir))
+                return paths;
+
+            foreach (string file in Directory.GetFiles(modDir, "*.mod", SearchOption.TopDirectoryOnly))
+                paths.Add(file);
+            return paths;
         }
 
         private bool SaveHygieneNeedsChanges()
@@ -871,6 +891,42 @@ namespace CK3MPS
                 count++;
             }
             return count;
+        }
+
+        private List<string> EnumerateSuspiciousSaveHygieneTargets()
+        {
+            List<string> paths = new List<string>();
+            string continuePath = Path.Combine(ck3Docs, "continue_game.json");
+            if (File.Exists(continuePath) && ActiveContinueSaveNameSuspicious())
+                paths.Add(continuePath);
+
+            string saveDir = Path.Combine(ck3Docs, "save games");
+            string bestClean = FindBestCleanManualSave();
+            if (Directory.Exists(saveDir) && !String.IsNullOrEmpty(bestClean) && !IsSuspiciousSaveName(Path.GetFileName(bestClean)))
+            {
+                foreach (string file in Directory.GetFiles(saveDir, "*.ck3", SearchOption.TopDirectoryOnly))
+                {
+                    if (!IsSuspiciousSaveName(Path.GetFileName(file)))
+                        continue;
+                    if (String.Equals(Path.GetFullPath(file), Path.GetFullPath(bestClean), StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    paths.Add(file);
+                }
+            }
+
+            if (!ProcessRunningContains("steam"))
+            {
+                foreach (string dir in DetectSteamCloudSaveDirs())
+                {
+                    foreach (string file in Directory.GetFiles(dir, "*.ck3", SearchOption.TopDirectoryOnly))
+                    {
+                        if (IsSuspiciousSaveName(Path.GetFileName(file)))
+                            paths.Add(file);
+                    }
+                }
+            }
+
+            return paths;
         }
 
         private bool FolderCleanupNeedsChanges()
