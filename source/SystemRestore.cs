@@ -223,7 +223,7 @@ namespace CK3MPS
                 removed++;
             }
 
-            statusLabel.Text = successMessage;
+            SetStatusText(successMessage);
             Log("OK   " + successMessage + " Removed=" + removed + ".");
         }
 

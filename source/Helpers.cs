@@ -965,7 +965,7 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(message))
             {
                 if (!RuntimeModeUtilities.ShouldSuppressLogLine(logVerbosity, ""))
-                    AppendLogLine("", logBox.ForeColor);
+                    AppendLogLine("", Color.Black);
                 return;
             }
 
@@ -1220,7 +1220,7 @@ namespace CK3MPS
             if (upper.StartsWith("VERBOSE") || upper.StartsWith("DEBUG") || upper.StartsWith("TRACE"))
                 return Color.FromArgb(110, 110, 110);
 
-            return logBox.ForeColor;
+            return Color.Black;
         }
 
         private void UpdatePathStatusIndicators()
