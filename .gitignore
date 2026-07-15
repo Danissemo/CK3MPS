@@ -15,6 +15,10 @@ source.zip
 *.user
 *.suo
 .vs/
+.codex-remote-attachments/
+_oos_extract/
+CK3MPS_exports/
+.artifacts/
 
 # Stabilizer reports should stay on the user's machine, not in git.
 check.txt

@@ -24,7 +24,7 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 
 | Scan | Generated report |
 | --- | --- |
-| ![Scan](assets/screenshots/check-only.png) | ![Report](assets/screenshots/report.png) |
+| ![Scan](assets/screenshots/scan.png) | ![Report](assets/screenshots/report.png) |
 
 ## What It Does
 
@@ -114,6 +114,17 @@ Create the GitHub NuGet package locally:
 ```
 
 The package is written outside the repository to `CK3MPS_exports`.
+
+## Workflow
+
+1. Run `Scan` to read the current CK3 / launcher / Windows state without changing files.
+2. Open `Review` to inspect the exact actions and reports that would run now.
+3. Run `Apply Settings` only after the same-session scan looks correct.
+
+## Release Maintenance
+
+- Use [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md) before every official release.
+- Run `.\scripts\validate-release.ps1` before packaging or publishing.
 
 ## Links
 

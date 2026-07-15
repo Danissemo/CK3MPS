@@ -25,3 +25,9 @@ LICENSE
 ```
 
 For normal use, download `CK3MPS.exe` from Releases. The NuGet package is not intended as the primary end-user installer.
+
+Before packaging, run:
+
+```powershell
+.\scripts\validate-release.ps1
+```

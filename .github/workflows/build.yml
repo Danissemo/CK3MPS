@@ -28,12 +28,18 @@ jobs:
         shell: pwsh
         run: ./scripts/test.ps1
 
+      - name: Validate release metadata
+        shell: pwsh
+        run: ./scripts/validate-release.ps1
+
       - name: Package release zip
         shell: pwsh
         run: |
           ./scripts/package-release.ps1
           New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
           Copy-Item ../CK3MPS_exports/*.zip .artifacts/
+          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
+          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
@@ -46,3 +52,9 @@ jobs:
         with:
           name: CK3MPS-release-zip
           path: .artifacts/*.zip
+
+      - name: Upload release checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: CK3MPS-release-checksums
+          path: .artifacts/*.sha256

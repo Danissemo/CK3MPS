@@ -2,7 +2,8 @@
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
-& (Join-Path $ScriptDir "build.ps1")
+& (Join-Path $ScriptDir "build.ps1") -UpdateReleaseArtifacts
+& (Join-Path $ScriptDir "validate-release.ps1")
 
 $VersionLine = Select-String -Path (Join-Path $Root "source\AppState.cs") -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
 if (-not $VersionLine) {

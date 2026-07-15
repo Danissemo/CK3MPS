@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
+& (Join-Path $ScriptDir "build.ps1") -UpdateReleaseArtifacts
+& (Join-Path $ScriptDir "validate-release.ps1")
 $ExportRoot = Join-Path (Split-Path -Parent $Root) "CK3MPS_exports"
 $PackageRoot = Join-Path $ExportRoot "github-package"
 $NuGet = Join-Path $ExportRoot "nuget.exe"
@@ -12,8 +14,17 @@ if (-not $VersionLine) {
     throw "Could not detect AppVersion."
 }
 
+function Normalize-PackageVersion([string]$VersionText) {
+    $clean = $VersionText.TrimStart('v') -replace '-', '.'
+    if ($clean -match '^\d+\.\d+$') {
+        return $clean + ".0"
+    }
+
+    return $clean
+}
+
 $TagVersion = [regex]::Match($VersionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
-$PackageVersion = $TagVersion.TrimStart('v') -replace '-', '.'
+$PackageVersion = Normalize-PackageVersion $TagVersion
 
 New-Item -ItemType Directory -Force -Path $PackageRoot | Out-Null
 

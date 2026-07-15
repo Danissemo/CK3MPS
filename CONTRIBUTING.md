@@ -22,6 +22,8 @@ Before opening a pull request:
 
 ```powershell
 .\scripts\build.ps1
+.\scripts\test.ps1
+.\scripts\validate-release.ps1
 git status --short
 ```
 
