@@ -782,7 +782,7 @@ namespace CK3MPS
                 {
                     LogSection("Preflight check");
                     Log("INFO No fresh Check Only scan is available. Running the read-only checklist first.");
-                    RunCheckOnlyScanCore(false, false);
+                    await Task.Run(delegate { RunCheckOnlyScanCore(false, false); });
                     LogSection("Stabilize plan");
                 }
 
