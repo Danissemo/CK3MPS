@@ -1322,6 +1322,7 @@ namespace CK3MPS
         {
             try
             {
+                Stopwatch sw = Stopwatch.StartNew();
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = file;
                 psi.Arguments = args;
@@ -1364,6 +1365,9 @@ namespace CK3MPS
 
                     if (p.ExitCode != 0 && !ignoreFailure)
                         Log("WARN " + file + " exited with code " + p.ExitCode);
+                    sw.Stop();
+                    if (sw.ElapsedMilliseconds >= 500)
+                        Log("INFO Command duration: " + file + " " + FormatDurationMs(sw.ElapsedMilliseconds));
                     return combined;
                 }
             }
@@ -1379,6 +1383,7 @@ namespace CK3MPS
         {
             try
             {
+                Stopwatch sw = Stopwatch.StartNew();
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName = file;
                 psi.Arguments = args;
@@ -1409,6 +1414,9 @@ namespace CK3MPS
                         return "";
                     }
                     p.WaitForExit();
+                    sw.Stop();
+                    if (sw.ElapsedMilliseconds >= 1000)
+                        Log("INFO Quiet command duration: " + file + " " + FormatDurationMs(sw.ElapsedMilliseconds));
                     return (output.ToString() + "\r\n" + error.ToString()).Trim();
                 }
             }

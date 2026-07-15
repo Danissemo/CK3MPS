@@ -264,6 +264,7 @@ namespace CK3MPS
 
         private PowerShellResult RunPowerShellScript(string script, int timeoutMs)
         {
+            Stopwatch sw = Stopwatch.StartNew();
             string tempScript = Path.Combine(Path.GetTempPath(), "CK3MPS-" + Guid.NewGuid().ToString("N") + ".ps1");
             File.WriteAllText(tempScript, script, Encoding.UTF8);
             try
@@ -298,6 +299,9 @@ namespace CK3MPS
                         return new PowerShellResult(124, "PowerShell command timed out.");
                     }
                     process.WaitForExit();
+                    sw.Stop();
+                    if (sw.ElapsedMilliseconds >= 1000)
+                        Log("INFO PowerShell duration: " + FormatDurationMs(sw.ElapsedMilliseconds));
                     return new PowerShellResult(process.ExitCode, (output.ToString() + "\r\n" + error.ToString()).Trim());
                 }
             }

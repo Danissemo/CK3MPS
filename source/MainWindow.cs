@@ -932,6 +932,7 @@ namespace CK3MPS
 
         private void RunStep(int index, string label, Action action)
         {
+            Stopwatch sw = Stopwatch.StartNew();
             SetStatusText(label + "...");
             LogSection(label);
             SetProgressStyleSafe(ProgressBarStyle.Marquee);
@@ -939,7 +940,9 @@ namespace CK3MPS
             if (!InvokeRequired)
                 Application.DoEvents();
             action();
+            sw.Stop();
             SetProgressStyleSafe(ProgressBarStyle.Blocks);
+            Log("INFO Step finished in " + FormatDurationMs(sw.ElapsedMilliseconds) + ": " + label);
             FlushPendingUiLogLines();
             IncrementProgressValueSafe();
             if (!InvokeRequired)

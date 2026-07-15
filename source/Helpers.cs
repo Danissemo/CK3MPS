@@ -1215,6 +1215,13 @@ namespace CK3MPS
             return MessageBox.Show(text, caption, buttons, icon);
         }
 
+        private string FormatDurationMs(long elapsedMs)
+        {
+            if (elapsedMs < 1000)
+                return elapsedMs + " ms";
+            return (elapsedMs / 1000d).ToString("0.00") + " s";
+        }
+
         private Color LogColorForLine(string formatted, string original)
         {
             string text = (formatted ?? "").TrimStart();
