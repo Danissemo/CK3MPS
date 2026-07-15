@@ -23,9 +23,10 @@ CK3MPS.exe.sha256
 
 1. Close CK3 and Paradox Launcher.
 2. Run `CK3MPS.exe` as administrator.
-3. Apply `Recommended` or `Maximum`.
-4. Run `Check Only`.
-5. Start CK3 and verify readiness again if needed.
+3. Run `Scan`.
+4. Open `Review` and confirm the planned changes.
+5. Run `Apply Settings`.
+6. Start CK3 and verify readiness again if needed.
 
 ## Known Limitations
 

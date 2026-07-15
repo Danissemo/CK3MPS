@@ -59,7 +59,7 @@ namespace CK3MPS
             group.Header.Anchor = AnchorStyles.Left | AnchorStyles.Top;
             group.Header.BackColor = Color.FromArgb(242, 244, 247);
 
-            group.ToggleButton.Text = "-";
+            group.ToggleButton.Text = group.Expanded ? "-" : "+";
             group.ToggleButton.Width = 28;
             group.ToggleButton.Height = 24;
             group.ToggleButton.Location = new Point(4, 3);

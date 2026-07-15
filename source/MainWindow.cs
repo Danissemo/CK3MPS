@@ -57,29 +57,27 @@ namespace CK3MPS
             Resize += delegate { LayoutRootControls(); };
             LayoutRootControls();
 
-            stabilizeButton.Text = "Stabilize CK3";
+            stabilizeButton.Text = "Apply Settings";
             stabilizeButton.Size = new Size(150, 34);
             stabilizeButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             stabilizeButton.Click += delegate { RunStabilize(); };
             mainPage.Controls.Add(stabilizeButton);
 
-            checkButton.Text = "Check only";
+            checkButton.Text = "Scan";
             checkButton.Size = new Size(130, 34);
             checkButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
             checkButton.Click += delegate { RunCheckOnly(); };
             mainPage.Controls.Add(checkButton);
 
-            openFolderButton.Text = "Open quarantine";
-            openFolderButton.Size = new Size(150, 34);
-            openFolderButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-            openFolderButton.Click += delegate
+            mainPage.MouseMove += delegate(object sender, MouseEventArgs e)
             {
-                if (!String.IsNullOrEmpty(lastQuarantine) && Directory.Exists(lastQuarantine))
-                    Process.Start("explorer.exe", lastQuarantine);
-                else if (Directory.Exists(ck3Docs))
-                    Process.Start("explorer.exe", ck3Docs);
+                if (!stabilizeButton.Enabled && stabilizeButton.Bounds.Contains(e.Location))
+                    ShowApplyButtonHint();
+                else
+                    HideApplyButtonHint();
             };
-            mainPage.Controls.Add(openFolderButton);
+            mainPage.MouseLeave += delegate { HideApplyButtonHint(); };
+            UpdateApplyButtonState();
         }
 
         private void LayoutRootControls()
@@ -144,17 +142,21 @@ namespace CK3MPS
             };
             mainPage.Controls.Add(selectNoneButton);
 
-            previewButton.Text = "Preview";
-            previewButton.Location = new Point(406, 12);
-            previewButton.Size = new Size(84, 28);
-            previewButton.Click += delegate { ShowStabilizationPreview(false); };
+            previewButton.Text = "Review";
+            previewButton.Size = new Size(110, 34);
+            previewButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            previewButton.Click += delegate { RunReview(); };
             mainPage.Controls.Add(previewButton);
 
-            var graphicsLabel = new Label();
-            graphicsLabel.Text = "Graphics:";
-            graphicsLabel.AutoSize = true;
-            graphicsLabel.Location = new Point(512, 18);
-            mainPage.Controls.Add(graphicsLabel);
+            graphicsSectionLabel.Text = "In-game graphics profile";
+            graphicsSectionLabel.AutoSize = true;
+            graphicsSectionLabel.Font = new Font(Font, FontStyle.Bold);
+            mainPage.Controls.Add(graphicsSectionLabel);
+
+            graphicsHintLabel.Text = "Changes CK3 graphics settings in `pdx_settings.txt`. Choose a safer profile for multiplayer stability or keep the current game graphics.";
+            graphicsHintLabel.AutoSize = false;
+            graphicsHintLabel.ForeColor = Color.FromArgb(90, 90, 90);
+            mainPage.Controls.Add(graphicsHintLabel);
 
             graphicsProfileBox.DropDownStyle = ComboBoxStyle.DropDownList;
             graphicsProfileBox.Items.AddRange(new object[]
@@ -164,8 +166,7 @@ namespace CK3MPS
                 "Quality",
                 "Keep current"
             });
-            graphicsProfileBox.Location = new Point(578, 14);
-            graphicsProfileBox.Size = new Size(140, 24);
+            graphicsProfileBox.Size = new Size(200, 24);
             graphicsProfileBox.SelectedIndexChanged += delegate { InvalidateFreshCheckOnlyScan(); };
             mainPage.Controls.Add(graphicsProfileBox);
 
@@ -210,26 +211,42 @@ namespace CK3MPS
             int bottomMargin = 12;
             int gap = 12;
             int checklistWidth = 446;
-            int labelY = 56;
-            int logTop = 78;
+            int rightColumnLeft = checklistWidth + leftMargin + gap;
+            int rightColumnWidth = Math.Max(260, mainPage.ClientSize.Width - rightColumnLeft - leftMargin);
+            int graphicsTop = top;
+            int graphicsWidth = checklistWidth;
+            int graphicsLabelTop = graphicsTop;
+            int graphicsComboTop = graphicsLabelTop + 22;
+            int graphicsHintTop = graphicsComboTop + 30;
+            int graphicsHintHeight = 36;
+            int checklistTop = graphicsHintTop + graphicsHintHeight + 14;
+            int logLabelTop = 16;
+            int logTop = 34;
             int actionButtonTop = mainPage.ClientSize.Height - 46;
             int progressTop = actionButtonTop - 34;
-            int availableHeight = Math.Max(170, progressTop - top - bottomMargin);
+            int checklistHeight = Math.Max(150, progressTop - checklistTop - bottomMargin);
+            int logHeight = Math.Max(170, progressTop - logTop - 4);
 
-            checklistPanel.Location = new Point(leftMargin, top);
-            checklistPanel.Size = new Size(checklistWidth, availableHeight);
+            graphicsSectionLabel.Location = new Point(leftMargin, graphicsLabelTop);
+            graphicsProfileBox.Location = new Point(leftMargin, graphicsComboTop);
+            graphicsProfileBox.Size = new Size(Math.Min(220, graphicsWidth), 24);
+            graphicsHintLabel.Location = new Point(leftMargin, graphicsHintTop);
+            graphicsHintLabel.Size = new Size(graphicsWidth, graphicsHintHeight);
 
-            liveLogLabel.Location = new Point(checklistPanel.Right + gap, labelY);
+            checklistPanel.Location = new Point(leftMargin, checklistTop);
+            checklistPanel.Size = new Size(checklistWidth, checklistHeight);
 
-            logBox.Location = new Point(checklistPanel.Right + gap, logTop);
-            logBox.Size = new Size(Math.Max(260, mainPage.ClientSize.Width - logBox.Left - leftMargin), Math.Max(150, progressTop - logTop - bottomMargin));
+            liveLogLabel.Location = new Point(rightColumnLeft, logLabelTop);
+
+            logBox.Location = new Point(rightColumnLeft, logTop);
+            logBox.Size = new Size(rightColumnWidth, logHeight);
 
             progress.Location = new Point(leftMargin, progressTop);
             progress.Size = new Size(mainPage.ClientSize.Width - (leftMargin * 2), 22);
 
-            stabilizeButton.Location = new Point(leftMargin, actionButtonTop);
-            checkButton.Location = new Point(stabilizeButton.Right + gap, actionButtonTop);
-            openFolderButton.Location = new Point(checkButton.Right + gap, actionButtonTop);
+            checkButton.Location = new Point(leftMargin, actionButtonTop);
+            previewButton.Location = new Point(checkButton.Right + gap, actionButtonTop);
+            stabilizeButton.Location = new Point(previewButton.Right + gap, actionButtonTop);
         }
 
         private void BuildPathsTab()
@@ -562,8 +579,11 @@ namespace CK3MPS
 
         private void BuildAdvancedTab()
         {
+            advancedGeneralGroup.Text = "General";
+            advancedGeneralGroup.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            advancedPage.Controls.Add(advancedGeneralGroup);
+
             updateOnStartupBox.Text = "Check for updates on startup";
-            updateOnStartupBox.Location = new Point(18, 22);
             updateOnStartupBox.Size = new Size(260, 24);
             updateOnStartupBox.CheckedChanged += delegate
             {
@@ -572,10 +592,9 @@ namespace CK3MPS
                 updateCheckOnStartup = updateOnStartupBox.Checked;
                 SaveAppConfig();
             };
-            advancedPage.Controls.Add(updateOnStartupBox);
+            advancedGeneralGroup.Controls.Add(updateOnStartupBox);
 
             portableModeBox.Text = "Portable mode";
-            portableModeBox.Location = new Point(18, 56);
             portableModeBox.Size = new Size(180, 24);
             portableModeBox.CheckedChanged += async delegate
             {
@@ -591,17 +610,14 @@ namespace CK3MPS
                     MessageBox.Show(ex.Message, "CK3MPS", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
-            advancedPage.Controls.Add(portableModeBox);
+            advancedGeneralGroup.Controls.Add(portableModeBox);
 
-            var logVerbosityLabel = new Label();
-            logVerbosityLabel.Text = "Log verbosity:";
-            logVerbosityLabel.AutoSize = true;
-            logVerbosityLabel.Location = new Point(18, 96);
-            advancedPage.Controls.Add(logVerbosityLabel);
+            advancedLogVerbosityLabel.Text = "Log verbosity:";
+            advancedLogVerbosityLabel.AutoSize = true;
+            advancedGeneralGroup.Controls.Add(advancedLogVerbosityLabel);
 
             logVerbosityBox.DropDownStyle = ComboBoxStyle.DropDownList;
             logVerbosityBox.Items.AddRange(new object[] { "Quiet", "Normal", "Verbose" });
-            logVerbosityBox.Location = new Point(124, 92);
             logVerbosityBox.Size = new Size(130, 24);
             logVerbosityBox.SelectedIndexChanged += delegate
             {
@@ -613,45 +629,52 @@ namespace CK3MPS
                     SaveAppConfig();
                 }
             };
-            advancedPage.Controls.Add(logVerbosityBox);
+            advancedGeneralGroup.Controls.Add(logVerbosityBox);
+
+            advancedHintLabel.Text = "Use this page for update behavior, portable mode and cleanup tasks. Restore point deletion affects system restore points created by CK3MPS on this PC.";
+            advancedHintLabel.AutoSize = false;
+            advancedHintLabel.ForeColor = Color.FromArgb(90, 90, 90);
+            advancedGeneralGroup.Controls.Add(advancedHintLabel);
+
+            advancedMaintenanceGroup.Text = "Maintenance";
+            advancedMaintenanceGroup.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            advancedPage.Controls.Add(advancedMaintenanceGroup);
 
             updateButton.Text = "Check updates";
-            updateButton.Location = new Point(18, 136);
             updateButton.Size = new Size(130, 34);
             updateButton.Click += delegate { CheckForUpdatesManual(); };
-            advancedPage.Controls.Add(updateButton);
+            advancedMaintenanceGroup.Controls.Add(updateButton);
+
+            clearOtherLogsButton.Text = "Delete other logs";
+            clearOtherLogsButton.Size = new Size(180, 34);
+            clearOtherLogsButton.Click += delegate { ClearOtherLogs(); };
+
+            clearQuarantineButton.Text = "Delete quarantine files";
+            clearQuarantineButton.Size = new Size(180, 34);
+            clearQuarantineButton.Click += delegate { ClearQuarantineFiles(); };
+
+            updateDownloadProgress.Size = new Size(280, 22);
+            advancedMaintenanceGroup.Controls.Add(updateDownloadProgress);
+
+            advancedRestoreGroup.Text = "Delete Data";
+            advancedRestoreGroup.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            advancedPage.Controls.Add(advancedRestoreGroup);
 
             restorePointsLabel.Text = "Restore Points";
             restorePointsLabel.AutoSize = true;
-            restorePointsLabel.Location = new Point(18, 184);
-            advancedPage.Controls.Add(restorePointsLabel);
+            advancedRestoreGroup.Controls.Add(restorePointsLabel);
 
             restorePointsListBox.CheckOnClick = true;
             restorePointsListBox.HorizontalScrollbar = true;
             restorePointsListBox.IntegralHeight = false;
-            advancedPage.Controls.Add(restorePointsListBox);
+            advancedRestoreGroup.Controls.Add(restorePointsListBox);
 
             deleteSelectedRestorePointsButton.Text = "Delete selected restore points";
-            deleteSelectedRestorePointsButton.Location = new Point(18, 418);
             deleteSelectedRestorePointsButton.Size = new Size(240, 34);
             deleteSelectedRestorePointsButton.Click += delegate { DeleteSelectedRestorePoints(); };
-            advancedPage.Controls.Add(deleteSelectedRestorePointsButton);
-
-            clearOtherLogsButton.Text = "Delete other logs";
-            clearOtherLogsButton.Location = new Point(18, 316);
-            clearOtherLogsButton.Size = new Size(180, 34);
-            clearOtherLogsButton.Click += delegate { ClearOtherLogs(); };
-            advancedPage.Controls.Add(clearOtherLogsButton);
-
-            clearQuarantineButton.Text = "Delete quarantine files";
-            clearQuarantineButton.Location = new Point(18, 356);
-            clearQuarantineButton.Size = new Size(180, 34);
-            clearQuarantineButton.Click += delegate { ClearQuarantineFiles(); };
-            advancedPage.Controls.Add(clearQuarantineButton);
-
-            updateDownloadProgress.Location = new Point(164, 142);
-            updateDownloadProgress.Size = new Size(280, 22);
-            advancedPage.Controls.Add(updateDownloadProgress);
+            advancedRestoreGroup.Controls.Add(deleteSelectedRestorePointsButton);
+            advancedRestoreGroup.Controls.Add(clearOtherLogsButton);
+            advancedRestoreGroup.Controls.Add(clearQuarantineButton);
 
             mainTabs.SelectedIndexChanged += async delegate
             {
@@ -665,37 +688,50 @@ namespace CK3MPS
         private void LayoutAdvancedTabControls()
         {
             const int left = 18;
-            const int topButton = 136;
+            const int top = 18;
+            const int gap = 12;
             const int buttonWidth = 130;
-            const int gap = 16;
             const int rightPadding = 18;
             const int progressMinWidth = 180;
+            int contentWidth = Math.Max(520, advancedPage.ClientSize.Width - left - rightPadding);
+            int generalHeight = 136;
+            int maintenanceHeight = 82;
+            int restoreTop = top + generalHeight + gap + maintenanceHeight + gap;
 
-            updateButton.Location = new Point(left, topButton);
+            advancedGeneralGroup.Location = new Point(left, top);
+            advancedGeneralGroup.Size = new Size(contentWidth, generalHeight);
+            updateOnStartupBox.Location = new Point(14, 28);
+            updateOnStartupBox.Size = new Size(250, 24);
+            portableModeBox.Location = new Point(14, 56);
+            portableModeBox.Size = new Size(180, 24);
+            advancedLogVerbosityLabel.Location = new Point(300, 31);
+            logVerbosityBox.Location = new Point(404, 27);
+            logVerbosityBox.Size = new Size(Math.Min(150, Math.Max(130, advancedGeneralGroup.ClientSize.Width - 418)), 24);
+            advancedHintLabel.Location = new Point(14, 88);
+            advancedHintLabel.Size = new Size(advancedGeneralGroup.ClientSize.Width - 28, 32);
+
+            advancedMaintenanceGroup.Location = new Point(left, advancedGeneralGroup.Bottom + gap);
+            advancedMaintenanceGroup.Size = new Size(contentWidth, maintenanceHeight);
+            updateButton.Location = new Point(14, 30);
             updateButton.Size = new Size(buttonWidth, 34);
-
             int progressLeft = updateButton.Right + gap;
-            int progressWidth = Math.Max(progressMinWidth, advancedPage.ClientSize.Width - progressLeft - rightPadding);
-            updateDownloadProgress.Location = new Point(progressLeft, topButton + 6);
+            int progressWidth = Math.Max(progressMinWidth, advancedMaintenanceGroup.ClientSize.Width - progressLeft - 14);
+            updateDownloadProgress.Location = new Point(progressLeft, 36);
             updateDownloadProgress.Size = new Size(progressWidth, 22);
 
-            int rightColumnWidth = Math.Max(200, Math.Min(260, advancedPage.ClientSize.Width - left - rightPadding));
-            clearOtherLogsButton.Location = new Point(advancedPage.ClientSize.Width - rightPadding - rightColumnWidth, 18);
-            clearOtherLogsButton.Size = new Size(rightColumnWidth, 34);
-
-            clearQuarantineButton.Location = new Point(clearOtherLogsButton.Left, clearOtherLogsButton.Bottom + 10);
-            clearQuarantineButton.Size = new Size(rightColumnWidth, 34);
-
-            int listRight = clearOtherLogsButton.Left - gap;
-            int listWidth = Math.Max(320, listRight - left);
-            restorePointsLabel.Location = new Point(left, topButton + 48);
-            restorePointsListBox.Location = new Point(left, restorePointsLabel.Bottom + 6);
-            int deleteButtonBottomPadding = 18;
-            int deleteButtonHeight = 34;
-            int listBottomGap = 10;
-            restorePointsListBox.Size = new Size(listWidth, Math.Max(180, advancedPage.ClientSize.Height - restorePointsListBox.Top - deleteButtonHeight - listBottomGap - deleteButtonBottomPadding));
-            deleteSelectedRestorePointsButton.Location = new Point(left, advancedPage.ClientSize.Height - deleteButtonHeight - deleteButtonBottomPadding);
-            deleteSelectedRestorePointsButton.Size = new Size(Math.Min(260, listWidth), 34);
+            advancedRestoreGroup.Location = new Point(left, restoreTop);
+            advancedRestoreGroup.Size = new Size(contentWidth, Math.Max(220, advancedPage.ClientSize.Height - restoreTop - 18));
+            deleteSelectedRestorePointsButton.Location = new Point(14, 24);
+            deleteSelectedRestorePointsButton.Size = new Size(240, 34);
+            int cleanupButtonWidth = Math.Max(180, Math.Min(210, (advancedRestoreGroup.ClientSize.Width - 28 - gap * 2 - deleteSelectedRestorePointsButton.Width) / 2));
+            clearOtherLogsButton.Location = new Point(deleteSelectedRestorePointsButton.Right + gap, 24);
+            clearOtherLogsButton.Size = new Size(cleanupButtonWidth, 34);
+            clearQuarantineButton.Location = new Point(clearOtherLogsButton.Right + gap, 24);
+            clearQuarantineButton.Size = new Size(cleanupButtonWidth, 34);
+            restorePointsLabel.Location = new Point(14, deleteSelectedRestorePointsButton.Bottom + 14);
+            int listWidth = Math.Max(320, advancedRestoreGroup.ClientSize.Width - 28);
+            restorePointsListBox.Location = new Point(14, restorePointsLabel.Bottom + 6);
+            restorePointsListBox.Size = new Size(listWidth, Math.Max(180, advancedRestoreGroup.ClientSize.Height - restorePointsListBox.Top - 18));
         }
 
         private void FillSteps()
@@ -748,6 +784,7 @@ namespace CK3MPS
 
         private async void RunStabilize()
         {
+            int finalizeGeneration = ++deferredFinalizeGeneration;
             SetBusy(true);
             ClearLogViews();
             SetProgressValueSafe(0);
@@ -774,17 +811,16 @@ namespace CK3MPS
                     return;
                 }
 
-                if (HasReusableFreshCheckOnlyScan())
+                if (!HasReusableFreshCheckOnlyScan())
                 {
-                    Log("INFO Reusing the fresh Check Only scan from this session.");
+                    SetStatusText("Run Scan first to activate Apply Settings.");
+                    Log("INFO Apply Settings is locked until a fresh Scan is completed in this session.");
+                    return;
                 }
-                else
-                {
-                    LogSection("Preflight check");
-                    Log("INFO No fresh Check Only scan is available. Running the read-only checklist first.");
-                    await Task.Run(delegate { RunCheckOnlyScanCore(false, false); });
-                    LogSection("Stabilize plan");
-                }
+
+                Log("INFO Reusing the fresh Scan from this session.");
+                LogSection("Stabilize plan");
+                await EnsurePlanningSnapshotPreparedAsync("Preparing apply plan...");
 
                 int plannedSteps = CountPlannedStabilizeSteps();
                 SetProgressMaximumSafe(plannedSteps);
@@ -803,14 +839,6 @@ namespace CK3MPS
                     MessageBox.Show("Close CK3 and Paradox Launcher first. Steam may stay open.", "CK3 is running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     Log("Stopped: CK3 or Paradox Launcher is running.");
                     AppendRunHistory("stabilize", "stopped_game_running");
-                    return;
-                }
-
-                if (!ConfirmStabilizationPreview())
-                {
-                    SetStatusText("Stopped: preview was not confirmed.");
-                    Log("INFO Stabilize stopped before changes: preview was not confirmed.");
-                    AppendRunHistory("stabilize", "stopped_preview_not_confirmed");
                     return;
                 }
 
@@ -849,24 +877,32 @@ namespace CK3MPS
                     RunPlannedStabilizeStep(28, "MP parity: writing comparison manifest", WriteMultiplayerParityManifest);
                     LogSection("Final readiness summary");
                     RunReadinessChecks(true);
-                    LogSection("Automatic report");
-                    WriteStabilityReport();
                 });
-                if (shouldStartGuard)
-                    StartSettingsGuard();
+                string[] runLogLines = SnapshotRunLogLines();
+                int readinessFailures = lastReadinessFailures;
+                string historyResult;
 
-                if (lastReadinessFailures == 0)
+                if (readinessFailures == 0)
                 {
                     SetStatusText("Done. CK3 profile is prepared for stable vanilla multiplayer.");
                     Log("Done. Use host local save, no hotjoin, speed 1-2 after load.");
-                    AppendRunHistory("stabilize", "ready");
+                    historyResult = "ready";
                 }
                 else
                 {
                     SetStatusText("Completed with blockers. Fix failed readiness checks before serious MP.");
                     Log("RESULT Completed with blockers. Fix failed readiness checks before serious MP.");
-                    AppendRunHistory("stabilize", "completed_with_blockers");
+                    historyResult = "completed_with_blockers";
                 }
+
+                string historyLine = BuildRunHistoryLine(
+                    "stabilize",
+                    historyResult,
+                    Convert.ToString(presetBox.SelectedItem),
+                    ck3Install,
+                    ck3Docs,
+                    readinessFailures);
+                BeginDeferredStabilizeFinalize(finalizeGeneration, readinessFailures, runLogLines, historyLine, shouldStartGuard);
 
                 InvalidateFreshCheckOnlyScan();
             }
@@ -884,8 +920,58 @@ namespace CK3MPS
             }
         }
 
+        private async void RunReview()
+        {
+            if (!HasReusableFreshCheckOnlyScan())
+            {
+                SetStatusText("Run Scan first to unlock Review.");
+                return;
+            }
+
+            string previousStatus = statusLabel.Text;
+            previewButton.Enabled = false;
+            stabilizeButton.Enabled = false;
+            checkButton.Enabled = false;
+            Cursor = Cursors.WaitCursor;
+            try
+            {
+                await EnsurePlanningSnapshotPreparedAsync("Preparing review...");
+                SetStatusText("Review ready.");
+                ShowStabilizationPreview(false);
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+                checkButton.Enabled = !busyUi;
+                UpdateApplyButtonState();
+                if (String.Equals(statusLabel.Text, "Preparing review...", StringComparison.Ordinal)
+                    || String.Equals(statusLabel.Text, "Review ready.", StringComparison.Ordinal))
+                    statusLabel.Text = previousStatus;
+            }
+        }
+
+        private async Task EnsurePlanningSnapshotPreparedAsync(string statusText)
+        {
+            string key;
+            CaptureExecutionSnapshot();
+            key = BuildCheckOnlyScanKey();
+            try
+            {
+                if (sessionScanSnapshot != null && String.Equals(sessionScanSnapshot.ScanKey, key, StringComparison.Ordinal))
+                    return;
+
+                SetStatusText(statusText);
+                await Task.Run(delegate { sessionScanSnapshot = BuildSessionScanSnapshot(key); });
+            }
+            finally
+            {
+                ClearExecutionSnapshot();
+            }
+        }
+
         private async void RunCheckOnly()
         {
+            int finalizeGeneration = ++deferredFinalizeGeneration;
             SetBusy(true);
             ClearLogViews();
             SetProgressValueSafe(0);
@@ -902,9 +988,19 @@ namespace CK3MPS
                 }
 
                 CaptureExecutionSnapshot();
-                await Task.Run(delegate { RunCheckOnlyScanCore(true, true); });
-                SetStatusText("Check complete. Every checklist item was checked in read-only mode.");
-                AppendRunHistory("check_only", lastReadinessFailures == 0 ? "ready" : "completed_with_blockers");
+                await Task.Run(delegate { RunCheckOnlyScanCore(false, true); });
+                string[] runLogLines = SnapshotRunLogLines();
+                int readinessFailures = lastReadinessFailures;
+                SetStatusText("Scan complete. Apply Settings is now available for this session.");
+                string historyResult = readinessFailures == 0 ? "ready" : "completed_with_blockers";
+                string historyLine = BuildRunHistoryLine(
+                    "check_only",
+                    historyResult,
+                    Convert.ToString(presetBox.SelectedItem),
+                    ck3Install,
+                    ck3Docs,
+                    readinessFailures);
+                BeginDeferredCheckOnlyFinalize(finalizeGeneration, readinessFailures, runLogLines, historyLine);
             }
             catch (Exception ex)
             {
@@ -947,6 +1043,32 @@ namespace CK3MPS
             IncrementProgressValueSafe();
             if (!InvokeRequired)
                 Application.DoEvents();
+        }
+
+        private void BeginDeferredCheckOnlyFinalize(int finalizeGeneration, int readinessFailures, string[] runLogLines, string historyLine)
+        {
+            Task.Run(delegate
+            {
+                if (finalizeGeneration != deferredFinalizeGeneration)
+                    return;
+
+                WriteCheckOnlyReportSnapshot(readinessFailures, runLogLines);
+                AppendRunHistoryLineAsync(historyLine);
+            });
+        }
+
+        private void BeginDeferredStabilizeFinalize(int finalizeGeneration, int readinessFailures, string[] runLogLines, string historyLine, bool shouldStartGuard)
+        {
+            Task.Run(delegate
+            {
+                if (finalizeGeneration != deferredFinalizeGeneration)
+                    return;
+
+                WriteStabilityReportSnapshot(readinessFailures, runLogLines);
+                AppendRunHistoryLineAsync(historyLine);
+                if (shouldStartGuard && finalizeGeneration == deferredFinalizeGeneration)
+                    StartSettingsGuardDeferred();
+            });
         }
 
     }

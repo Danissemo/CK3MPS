@@ -56,6 +56,8 @@ namespace CK3MPS
         private readonly Button selectNoneButton = new Button();
         private readonly Button previewButton = new Button();
         private readonly Label liveLogLabel = new Label();
+        private readonly Label graphicsSectionLabel = new Label();
+        private readonly Label graphicsHintLabel = new Label();
         private readonly TextBox gamePathBox = new TextBox();
         private readonly TextBox settingsPathBox = new TextBox();
         private readonly Button gamePathBrowseButton = new Button();
@@ -84,6 +86,11 @@ namespace CK3MPS
         private readonly CheckBox portableModeBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();
         private readonly ProgressBar updateDownloadProgress = new ProgressBar();
+        private readonly GroupBox advancedGeneralGroup = new GroupBox();
+        private readonly GroupBox advancedMaintenanceGroup = new GroupBox();
+        private readonly GroupBox advancedRestoreGroup = new GroupBox();
+        private readonly Label advancedLogVerbosityLabel = new Label();
+        private readonly Label advancedHintLabel = new Label();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
         private bool updatingSettingsUi;
@@ -132,6 +139,9 @@ namespace CK3MPS
         private bool hasFreshCheckOnlyScan;
         private string freshCheckOnlyScanKey = "";
         private SessionScanSnapshot sessionScanSnapshot;
+        private int historyRefreshRequestId;
+        private int deferredFinalizeGeneration;
+        private bool applyButtonHintVisible;
 
         private sealed class StepGroupUi
         {
@@ -142,7 +152,7 @@ namespace CK3MPS
             public readonly Button ToggleButton = new Button();
             public readonly Label TitleLabel = new Label();
             public readonly List<StepRowUi> Rows = new List<StepRowUi>();
-            public bool Expanded = true;
+            public bool Expanded = false;
 
             public StepGroupUi(string title, int[] stepIndices)
             {

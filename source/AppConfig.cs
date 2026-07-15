@@ -390,24 +390,86 @@ namespace CK3MPS
             return Path.Combine(stabilizerRoot, "run_history.txt");
         }
 
+        private string BuildRunHistoryLine(string mode, string result, string preset, string gamePath, string settingsPath, int readinessFailures)
+        {
+            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                + " | mode=" + mode
+                + " | preset=" + NullText(preset)
+                + " | result=" + result
+                + " | readiness_failures=" + readinessFailures
+                + " | game=" + NullText(gamePath)
+                + " | settings=" + NullText(settingsPath);
+        }
+
         private void AppendRunHistory(string mode, string result)
         {
             try
             {
-                string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                    + " | mode=" + mode
-                    + " | preset=" + NullText(Convert.ToString(presetBox.SelectedItem))
-                    + " | result=" + result
-                    + " | readiness_failures=" + lastReadinessFailures
-                    + " | game=" + NullText(ck3Install)
-                    + " | settings=" + NullText(ck3Docs);
-                File.AppendAllText(HistoryFile(), line + Environment.NewLine, Encoding.UTF8);
-                RefreshHistoryView();
+                string line = BuildRunHistoryLine(
+                    mode,
+                    result,
+                    Convert.ToString(presetBox.SelectedItem),
+                    ck3Install,
+                    ck3Docs,
+                    lastReadinessFailures);
+                AppendRunHistoryLineAsync(line);
             }
             catch (Exception ex)
             {
                 Log("WARN Run history could not be updated: " + ex.Message);
             }
+        }
+
+        private void AppendRunHistoryLineAsync(string line)
+        {
+            string historyPath = HistoryFile();
+            Task.Run(delegate
+            {
+                try
+                {
+                    File.AppendAllText(historyPath, line + Environment.NewLine, Encoding.UTF8);
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        Log("WARN Run history could not be updated: " + ex.Message);
+                    });
+                    return;
+                }
+
+                RequestHistoryRefresh();
+            });
+        }
+
+        private void RequestHistoryRefresh()
+        {
+            if (historyBox == null)
+                return;
+
+            int requestId = ++historyRefreshRequestId;
+            string path = HistoryFile();
+            Task.Run(delegate
+            {
+                string text;
+                if (!File.Exists(path))
+                {
+                    text = "(no run history yet)";
+                }
+                else
+                {
+                    List<string> lines = new List<string>(File.ReadAllLines(path, Encoding.UTF8));
+                    int skip = Math.Max(0, lines.Count - 200);
+                    text = String.Join(Environment.NewLine, lines.GetRange(skip, lines.Count - skip).ToArray());
+                }
+
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (requestId != historyRefreshRequestId)
+                        return;
+                    historyBox.Text = text;
+                });
+            });
         }
 
         private void RefreshHistoryView()

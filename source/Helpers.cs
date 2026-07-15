@@ -570,6 +570,7 @@ namespace CK3MPS
             RefreshAllGroupStates();
             if (!String.Equals(preset, "Recommended", StringComparison.Ordinal))
                 statusLabel.Text = "Preset selected: " + preset + ". You can still change checkboxes manually.";
+            UpdateApplyButtonState();
         }
 
         private void ApplyRecommendedPreset()
@@ -644,7 +645,7 @@ namespace CK3MPS
             }
 
             busyUi = busy;
-            stabilizeButton.Enabled = !busy;
+            stabilizeButton.Enabled = !busy && HasReusableFreshCheckOnlyScan();
             checkButton.Enabled = !busy;
             openFolderButton.Enabled = !busy;
             openReportsButton.Enabled = !busy;
@@ -655,7 +656,7 @@ namespace CK3MPS
             restoreSelectedButton.Enabled = !busy;
             restoreDefaultButton.Enabled = !busy;
             openQuarantineButton.Enabled = !busy;
-            previewButton.Enabled = !busy;
+            previewButton.Enabled = !busy && HasReusableFreshCheckOnlyScan();
             openGamePathButton.Enabled = !busy;
             openSettingsPathButton.Enabled = !busy;
             updateButton.Enabled = !busy;
@@ -673,12 +674,48 @@ namespace CK3MPS
             restoreSelectAllBox.Enabled = !busy;
             portableModeBox.Enabled = !busy && !portableModeChangeInProgress;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+            UpdateApplyButtonState();
             if (!busy)
             {
                 FlushPendingUiLogLines();
                 FlushLiveLogBuffer();
                 ScrollLogToBottom(false);
             }
+        }
+
+        private void UpdateApplyButtonState()
+        {
+            if (busyUi)
+            {
+                stabilizeButton.Enabled = false;
+                previewButton.Enabled = false;
+                HideApplyButtonHint();
+                return;
+            }
+
+            bool canApply = HasReusableFreshCheckOnlyScan();
+            stabilizeButton.Enabled = canApply;
+            previewButton.Enabled = canApply;
+            if (canApply)
+                HideApplyButtonHint();
+        }
+
+        private void ShowApplyButtonHint()
+        {
+            if (busyUi || stabilizeButton.Enabled || applyButtonHintVisible)
+                return;
+
+            applyButtonHintVisible = true;
+            stepToolTip.Show("Run Scan first to activate Apply Settings for this session.", mainPage, stabilizeButton.Left + 8, stabilizeButton.Top - 28, 3000);
+        }
+
+        private void HideApplyButtonHint()
+        {
+            if (!applyButtonHintVisible)
+                return;
+
+            applyButtonHintVisible = false;
+            stepToolTip.Hide(mainPage);
         }
 
         private void OpenReportsLocation()
@@ -1402,6 +1439,7 @@ namespace CK3MPS
             hasFreshCheckOnlyScan = false;
             freshCheckOnlyScanKey = "";
             InvalidatePlanningSnapshot();
+            UpdateApplyButtonState();
         }
 
         private void MarkFreshCheckOnlyScan()
@@ -1413,13 +1451,13 @@ namespace CK3MPS
         private void StoreFreshCheckOnlySessionSnapshot()
         {
             MarkFreshCheckOnlyScan();
-            sessionScanSnapshot = BuildSessionScanSnapshot(BuildCheckOnlyScanKey());
+            sessionScanSnapshot = null;
+            UpdateApplyButtonState();
         }
 
         private bool HasReusableFreshCheckOnlyScan()
         {
             return hasFreshCheckOnlyScan
-                && sessionScanSnapshot != null
                 && String.Equals(freshCheckOnlyScanKey, BuildCheckOnlyScanKey(), StringComparison.Ordinal);
         }
 

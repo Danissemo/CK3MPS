@@ -177,6 +177,11 @@ namespace CK3MPS
 
         private void WriteStabilityReport()
         {
+            WriteStabilityReportSnapshot(lastReadinessFailures, SnapshotRunLogLines());
+        }
+
+        private void WriteStabilityReportSnapshot(int readinessFailures, string[] runLogLines)
+        {
             WritePortableTransferNotes();
             WriteRuntimeVerificationReport();
             WritePreSessionPlan();
@@ -186,7 +191,7 @@ namespace CK3MPS
             sb.AppendLine("CK3MPS compact report");
             sb.AppendLine("Stabilizer: " + AppVersion);
             sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            sb.AppendLine("Result: " + (lastReadinessFailures == 0 ? "READY" : "CHECK FINAL SUMMARY"));
+            sb.AppendLine("Result: " + (readinessFailures == 0 ? "READY" : "CHECK FINAL SUMMARY"));
             sb.AppendLine("Files folder: " + stabilizerRoot);
             sb.AppendLine("Quarantine: " + NullText(lastQuarantine));
             sb.AppendLine();
@@ -197,7 +202,7 @@ namespace CK3MPS
             sb.AppendLine("evidence=" + StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"));
             sb.AppendLine();
             sb.AppendLine("Important lines:");
-            foreach (string line in SnapshotRunLogLines())
+            foreach (string line in runLogLines)
             {
                 string trimmed = line.Trim();
                 if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
@@ -540,6 +545,11 @@ namespace CK3MPS
 
         private void WriteCheckOnlyReport()
         {
+            WriteCheckOnlyReportSnapshot(lastReadinessFailures, SnapshotRunLogLines());
+        }
+
+        private void WriteCheckOnlyReportSnapshot(int readinessFailures, string[] runLogLines)
+        {
             try
             {
                 string report = StabilizerFile("ck3_stabilizer_check_only_report.txt");
@@ -547,10 +557,10 @@ namespace CK3MPS
                 sb.AppendLine("CK3MPS compact check");
                 sb.AppendLine("Stabilizer: " + AppVersion);
                 sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine("Result: " + (lastReadinessFailures == 0 ? "READY" : "NOT READY"));
-                sb.AppendLine("Failed readiness checks: " + lastReadinessFailures);
+                sb.AppendLine("Result: " + (readinessFailures == 0 ? "READY" : "NOT READY"));
+                sb.AppendLine("Failed readiness checks: " + readinessFailures);
                 sb.AppendLine();
-                foreach (string line in SnapshotRunLogLines())
+                foreach (string line in runLogLines)
                 {
                     string trimmed = line.Trim();
                     if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)

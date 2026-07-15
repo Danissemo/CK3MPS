@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Reworked the main workflow around `Scan`, `Review`, and `Apply Settings`, with session reuse so a fresh scan can feed apply without repeating the same heavy checks.
+- Reduced unnecessary work by skipping already-applied settings, avoiding restore/history writes when nothing actually changed, and keeping life logs/report writes focused on real actions.
+- Improved firewall, runtime verification, support package, and parity-manifest behavior so repeated runs do not keep rewriting unchanged state.
+- Reworked `Main`, `Reports`, `Restore`, and `Advanced` layouts for clearer reading, better log/report sizing, grouped cleanup tools, and a more informative review/preview flow.
+- Added faster hover-only help on checklist question marks, startup-collapsed checklist groups, restore bulk-selection, restore-point cleanup controls, report cleanup, and targeted cleanup actions for logs/quarantine.
+- Improved CK3 graphics profile handling, including clearer in-app placement and balanced-profile coverage for additional graphics options.
+
 ## v0.2
 
 - Added path validation indicators and manual game/settings folder selection with clearer status text.

@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
@@ -179,13 +180,38 @@ namespace CK3MPS
 
         private void StartSettingsGuard()
         {
-            settingsGuardActive = true;
-            WriteExpectedProfileSnapshot("guard started");
-            WriteSettingsGuardReport("guard started");
+            PrepareSettingsGuardArtifacts("guard started");
+            ActivateSettingsGuard();
+        }
+
+        private void PrepareSettingsGuardArtifacts(string reason)
+        {
+            WriteExpectedProfileSnapshot(reason);
+            WriteSettingsGuardReport(reason);
             WriteRuntimeVerificationReport();
+        }
+
+        private void ActivateSettingsGuard()
+        {
+            settingsGuardActive = true;
             settingsGuardTimer.Stop();
             settingsGuardTimer.Start();
             Log("GUARD Settings guard is active while this app stays open. If CK3/Launcher rewrites settings, mods, launch options, or unsafe save pointers, the stable profile will be restored.");
+        }
+
+        private void StartSettingsGuardDeferred()
+        {
+            Task.Run(delegate
+            {
+                PrepareSettingsGuardArtifacts("guard started");
+                if (IsDisposed)
+                    return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (!IsDisposed)
+                        ActivateSettingsGuard();
+                });
+            });
         }
 
         private void RunSettingsGuardTick()
