@@ -927,7 +927,7 @@ namespace CK3MPS
             RunReadinessChecks(false);
             if (writeReport)
                 WriteCheckOnlyReport();
-            MarkFreshCheckOnlyScan();
+            StoreFreshCheckOnlySessionSnapshot();
         }
 
         private void RunStep(int index, string label, Action action)

@@ -1410,6 +1410,13 @@ namespace CK3MPS
             freshCheckOnlyScanKey = BuildCheckOnlyScanKey();
         }
 
+        private void StoreFreshCheckOnlySessionSnapshot()
+        {
+            MarkFreshCheckOnlyScan();
+            InvalidatePlanningSnapshot();
+            EnsurePlanningSnapshot();
+        }
+
         private bool HasReusableFreshCheckOnlyScan()
         {
             return hasFreshCheckOnlyScan
