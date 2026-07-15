@@ -677,7 +677,7 @@ namespace CK3MPS
             {
                 FlushPendingUiLogLines();
                 FlushLiveLogBuffer();
-                ScrollLogToBottom();
+                ScrollLogToBottom(false);
             }
         }
 
@@ -1005,13 +1005,13 @@ namespace CK3MPS
                 }
                 else
                 {
-                    AppendLogLineTo(logBox, text, color);
+                    AppendLogLineTo(logBox, text, color, true);
                 }
             }
             AppendLiveLogLine(text);
         }
 
-        private void AppendLogLineTo(RichTextBox box, string text, Color color)
+        private void AppendLogLineTo(RichTextBox box, string text, Color color, bool allowAutoScroll)
         {
             box.SelectionStart = box.TextLength;
             box.SelectionLength = 0;
@@ -1020,7 +1020,7 @@ namespace CK3MPS
             box.SelectionColor = box.ForeColor;
             box.SelectionStart = box.TextLength;
             uiLogLinesSinceLastScroll++;
-            if (!busyUi || uiLogLinesSinceLastScroll >= 12)
+            if (allowAutoScroll && (!busyUi || uiLogLinesSinceLastScroll >= 12))
                 ScrollLogToBottom();
         }
 
@@ -1034,8 +1034,12 @@ namespace CK3MPS
 
             lock (runLogSync)
                 runLogLines.Clear();
-            pendingUiLogLines.Clear();
-            uiLogFlushScheduled = false;
+            lock (uiLogSync)
+            {
+                pendingUiLogLines.Clear();
+                uiLogFlushScheduled = false;
+                uiLogFlushInProgress = false;
+            }
             logBox.Clear();
             uiLogLinesSinceLastScroll = 0;
         }
@@ -1060,17 +1064,41 @@ namespace CK3MPS
                 return;
             }
 
+            List<PendingUiLogLine> linesToFlush = null;
             lock (uiLogSync)
             {
                 uiLogFlushScheduled = false;
-                if (pendingUiLogLines.Count == 0)
+                if (uiLogFlushInProgress || pendingUiLogLines.Count == 0)
                     return;
-
-                foreach (PendingUiLogLine line in pendingUiLogLines)
-                    AppendLogLineTo(logBox, line.Text, line.Color);
-
+                uiLogFlushInProgress = true;
+                linesToFlush = new List<PendingUiLogLine>(pendingUiLogLines);
                 pendingUiLogLines.Clear();
             }
+
+            try
+            {
+                foreach (PendingUiLogLine line in linesToFlush)
+                    AppendLogLineTo(logBox, line.Text, line.Color, false);
+            }
+            finally
+            {
+                bool scheduleAnotherFlush = false;
+                lock (uiLogSync)
+                {
+                    uiLogFlushInProgress = false;
+                    if (pendingUiLogLines.Count > 0 && !uiLogFlushScheduled)
+                    {
+                        uiLogFlushScheduled = true;
+                        scheduleAnotherFlush = true;
+                    }
+                }
+
+                if (scheduleAnotherFlush)
+                    BeginInvoke((MethodInvoker)delegate { FlushPendingUiLogLines(); });
+            }
+
+            if (linesToFlush.Count > 0)
+                ScrollLogToBottom(false);
         }
 
         private string LiveLogsFolder()
@@ -1146,15 +1174,16 @@ namespace CK3MPS
             }
         }
 
-        private void ScrollLogToBottom()
+        private void ScrollLogToBottom(bool flushPendingLines = true)
         {
             if (InvokeRequired)
             {
-                BeginInvoke((MethodInvoker)delegate { ScrollLogToBottom(); });
+                BeginInvoke((MethodInvoker)delegate { ScrollLogToBottom(flushPendingLines); });
                 return;
             }
 
-            FlushPendingUiLogLines();
+            if (flushPendingLines)
+                FlushPendingUiLogLines();
             logBox.SelectionStart = logBox.TextLength;
             logBox.ScrollToCaret();
             uiLogLinesSinceLastScroll = 0;

@@ -121,6 +121,7 @@ namespace CK3MPS
         private readonly object runLogSync = new object();
         private readonly List<string> runLogLines = new List<string>();
         private bool uiLogFlushScheduled;
+        private bool uiLogFlushInProgress;
         private int uiLogLinesSinceLastScroll;
         private bool busyUi;
         private bool executionSnapshotActive;
