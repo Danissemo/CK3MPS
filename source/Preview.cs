@@ -940,8 +940,10 @@ namespace CK3MPS
             string expected = ApplyStablePdxSettingsToText(current);
 
             AddPdxSettingDiff(lines, current, expected, "game", "autosave");
+            AddPdxSettingDiff(lines, current, expected, "game", "debug_saves");
             AddPdxSettingDiff(lines, current, expected, "game", "cloud_save");
             AddPdxSettingDiff(lines, current, expected, "game", "save_on_exit");
+            AddPdxSettingDiff(lines, current, expected, "game", "rich_presence");
             AddPdxSettingDiff(lines, current, expected, "game", "file_transfer_speed");
             AddPdxSettingDiff(lines, current, expected, "Graphics", "renderer");
             AddPdxSettingDiff(lines, current, expected, "Graphics", "display_mode");
@@ -952,11 +954,35 @@ namespace CK3MPS
             AddPdxSettingDiff(lines, current, expected, "Graphics", "texture_quality");
             AddPdxSettingDiff(lines, current, expected, "Graphics", "shadowmap_resolution");
             AddPdxSettingDiff(lines, current, expected, "Graphics", "refraction_quality");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "mesh_lod_bias");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "mapobject_quality");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "anti_aliasing");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "anisotropic_filtering");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "portrait_multi_sampling");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "terrain_smoothing");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "bloom_enabled");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "ssao");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "depthoffield");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "lensflare");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "secondary_lensflare");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "mesh_lod_fade");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "animated_portraits");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "portraits_ssao");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "portraits_bloom");
             AddPdxSettingDiff(lines, current, expected, "Graphics", "advanced_shaders");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "winter_particle_effects");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "cloud_shadow_enabled");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "tree_dithering_enabled");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "court_scene_low_priority_characters");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "royal_court_anim_camera_idle");
+            AddPdxSettingDiff(lines, current, expected, "Graphics", "royal_court_anim_camera_transition");
             AddPdxSettingDiff(lines, current, expected, "System", "language");
+            AddPdxSettingDiff(lines, current, expected, "Audio", "audio_debug_log_level");
 
             if (lines.Count == 0)
-                lines.Add("Rewrite `pdx_settings.txt` to the selected `" + CurrentGraphicsProfile() + "` profile and UTF-8 no BOM encoding.");
+                lines.Add(HasUtf8Bom(path)
+                    ? "Rewrite `pdx_settings.txt` only to remove the UTF-8 BOM while keeping the same values."
+                    : "No `pdx_settings.txt` value change is needed.");
 
             return lines;
         }

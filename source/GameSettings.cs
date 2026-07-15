@@ -36,8 +36,7 @@ namespace CK3MPS
             string path = Path.Combine(ck3Docs, "pdx_settings.txt");
             ClearReadOnly(path);
             string original = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
-            string text = original;
-            string updated = ApplyStablePdxSettingsToText(text);
+            string updated = ApplyStablePdxSettingsToText(original);
             if (File.Exists(path) && !HasUtf8Bom(path) && String.Equals(original, updated, StringComparison.Ordinal))
             {
                 Log("OK   pdx_settings.txt already matches the selected CK3MPS profile. Graphics profile: " + CurrentGraphicsProfile() + ".");
@@ -56,22 +55,22 @@ namespace CK3MPS
             if (String.IsNullOrWhiteSpace(text))
                 text = "# CK3 settings rebuilt by CK3MPS\r\n";
 
-            text = SetSectionSettingBlock(text, "game", "autosave", "version=0\r\n\t\tvalue=\"NO_AUTOSAVE\"");
-            text = SetSectionSettingBlock(text, "game", "debug_saves", "version=0\r\n\t\tvalue=3");
-            text = SetSectionSettingBlock(text, "game", "save_on_exit", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "game", "cloud_save", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "game", "rich_presence", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "game", "file_transfer_speed", "version=0\r\n\t\tvalue=\"OPTION_HIGH\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "autosave", "version=0\r\n\t\tvalue=\"NO_AUTOSAVE\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "debug_saves", "version=0\r\n\t\tvalue=3");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "save_on_exit", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "cloud_save", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "rich_presence", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "game", "file_transfer_speed", "version=0\r\n\t\tvalue=\"OPTION_HIGH\"");
 
-            text = SetSectionSettingBlock(text, "Graphics", "renderer", "version=0\r\n\t\tvalue=\"Vulkan\"");
-            text = SetSectionSettingBlock(text, "Graphics", "display_mode", "version=0\r\n\t\tvalue=\"fullscreen\"");
-            text = SetSectionSettingBlock(text, "Graphics", "vsync", "version=0\r\n\t\tenabled=yes");
-            text = SetSectionSettingBlock(text, "Graphics", "adaptive_framerate", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "Graphics", "setting_framerate_cap", "version=0\r\n\t\tvalue=\"60\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "renderer", "version=0\r\n\t\tvalue=\"Vulkan\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "display_mode", "version=0\r\n\t\tvalue=\"fullscreen\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "vsync", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "adaptive_framerate", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "setting_framerate_cap", "version=0\r\n\t\tvalue=\"60\"");
             text = ApplyGraphicsProfileToText(text);
 
-            text = SetSectionSettingBlock(text, "System", "language", "version=0\r\n\t\tvalue=\"l_english\"");
-            text = SetSectionSettingBlock(text, "Audio", "audio_debug_log_level", "version=0\r\n\t\tvalue=\"error\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "System", "language", "version=0\r\n\t\tvalue=\"l_english\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Audio", "audio_debug_log_level", "version=0\r\n\t\tvalue=\"error\"");
             return text;
         }
 
@@ -101,56 +100,84 @@ namespace CK3MPS
         private string ApplyLowGraphicsProfile(string text)
         {
             text = ApplyGraphicsCommon(text, "low", "low", "disabled", "disabled", "low", "off", "DISABLED", false, false, false, false, false, false, false, false, false, false, false, false);
-            text = SetSectionSettingBlock(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=no");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=no");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=no");
             return text;
         }
 
         private string ApplyBalancedGraphicsProfile(string text)
         {
             text = ApplyGraphicsCommon(text, "medium", "medium", "2048x2048", "medium", "medium", "medium", "FXAA", true, false, false, false, true, true, true, false, false, true, false, false);
-            text = SetSectionSettingBlock(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=yes");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=yes");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=yes");
             return text;
         }
 
         private string ApplyQualityGraphicsProfile(string text)
         {
             text = ApplyGraphicsCommon(text, "high", "ultra", "4096x4096", "high", "high", "high", "FXAA", true, true, true, true, true, true, true, true, true, true, true, true);
-            text = SetSectionSettingBlock(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=yes");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=yes");
-            text = SetSectionSettingBlock(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "court_scene_low_priority_characters", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_idle", "version=0\r\n\t\tenabled=yes");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "royal_court_anim_camera_transition", "version=0\r\n\t\tenabled=yes");
             return text;
         }
 
         private string ApplyGraphicsCommon(string text, string quality, string textureQuality, string shadowResolution, string refractionQuality, string meshLodBias, string mapObjectQuality, string antiAliasing, bool terrainSmoothing, bool bloomEnabled, bool ssao, bool depthOfField, bool lensflare, bool secondaryLensflare, bool animatedPortraits, bool portraitsSsao, bool portraitsBloom, bool advancedShaders, bool winterParticleEffects, bool cloudShadows)
         {
-            text = SetSectionSettingBlock(text, "Graphics", "quality", "version=0\r\n\t\tvalue=\"" + quality + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "texture_quality", "version=1\r\n\t\tvalue=\"" + textureQuality + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "shadowmap_resolution", "version=2\r\n\t\tvalue=\"" + shadowResolution + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "refraction_quality", "version=1\r\n\t\tvalue=\"" + refractionQuality + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "mesh_lod_bias", "version=1\r\n\t\tvalue=\"" + meshLodBias + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "mapobject_quality", "version=0\r\n\t\tvalue=\"" + mapObjectQuality + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "anti_aliasing", "version=0\r\n\t\tvalue=\"" + antiAliasing + "\"");
-            text = SetSectionSettingBlock(text, "Graphics", "anisotropic_filtering", "version=0\r\n\t\tvalue=\"x4\"");
-            text = SetSectionSettingBlock(text, "Graphics", "portrait_multi_sampling", "version=0\r\n\t\tvalue=\"x2\"");
-            text = SetSectionSettingBlock(text, "Graphics", "terrain_smoothing", "version=0\r\n\t\tenabled=" + YesNoToken(terrainSmoothing));
-            text = SetSectionSettingBlock(text, "Graphics", "bloom_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(bloomEnabled));
-            text = SetSectionSettingBlock(text, "Graphics", "ssao", "version=0\r\n\t\tenabled=" + YesNoToken(ssao));
-            text = SetSectionSettingBlock(text, "Graphics", "depthoffield", "version=0\r\n\t\tenabled=" + YesNoToken(depthOfField));
-            text = SetSectionSettingBlock(text, "Graphics", "lensflare", "version=0\r\n\t\tenabled=" + YesNoToken(lensflare));
-            text = SetSectionSettingBlock(text, "Graphics", "secondary_lensflare", "version=0\r\n\t\tenabled=" + YesNoToken(secondaryLensflare));
-            text = SetSectionSettingBlock(text, "Graphics", "mesh_lod_fade", "version=0\r\n\t\tenabled=" + YesNoToken(!String.Equals(meshLodBias, "low", StringComparison.OrdinalIgnoreCase)));
-            text = SetSectionSettingBlock(text, "Graphics", "animated_portraits", "version=0\r\n\t\tenabled=" + YesNoToken(animatedPortraits));
-            text = SetSectionSettingBlock(text, "Graphics", "portraits_ssao", "version=0\r\n\t\tenabled=" + YesNoToken(portraitsSsao));
-            text = SetSectionSettingBlock(text, "Graphics", "portraits_bloom", "version=0\r\n\t\tenabled=" + YesNoToken(portraitsBloom));
-            text = SetSectionSettingBlock(text, "Graphics", "advanced_shaders", "version=0\r\n\t\tenabled=" + YesNoToken(advancedShaders));
-            text = SetSectionSettingBlock(text, "Graphics", "winter_particle_effects", "version=0\r\n\t\tenabled=" + YesNoToken(winterParticleEffects));
-            text = SetSectionSettingBlock(text, "Graphics", "cloud_shadow_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(cloudShadows));
-            text = SetSectionSettingBlock(text, "Graphics", "tree_dithering_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(cloudShadows));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "quality", "version=0\r\n\t\tvalue=\"" + quality + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "texture_quality", "version=1\r\n\t\tvalue=\"" + textureQuality + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "shadowmap_resolution", "version=2\r\n\t\tvalue=\"" + shadowResolution + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "refraction_quality", "version=1\r\n\t\tvalue=\"" + refractionQuality + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "mesh_lod_bias", "version=1\r\n\t\tvalue=\"" + meshLodBias + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "mapobject_quality", "version=0\r\n\t\tvalue=\"" + mapObjectQuality + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "anti_aliasing", "version=0\r\n\t\tvalue=\"" + antiAliasing + "\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "anisotropic_filtering", "version=0\r\n\t\tvalue=\"x4\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "portrait_multi_sampling", "version=0\r\n\t\tvalue=\"x2\"");
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "terrain_smoothing", "version=0\r\n\t\tenabled=" + YesNoToken(terrainSmoothing));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "bloom_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(bloomEnabled));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "ssao", "version=0\r\n\t\tenabled=" + YesNoToken(ssao));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "depthoffield", "version=0\r\n\t\tenabled=" + YesNoToken(depthOfField));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "lensflare", "version=0\r\n\t\tenabled=" + YesNoToken(lensflare));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "secondary_lensflare", "version=0\r\n\t\tenabled=" + YesNoToken(secondaryLensflare));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "mesh_lod_fade", "version=0\r\n\t\tenabled=" + YesNoToken(!String.Equals(meshLodBias, "low", StringComparison.OrdinalIgnoreCase)));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "animated_portraits", "version=0\r\n\t\tenabled=" + YesNoToken(animatedPortraits));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "portraits_ssao", "version=0\r\n\t\tenabled=" + YesNoToken(portraitsSsao));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "portraits_bloom", "version=0\r\n\t\tenabled=" + YesNoToken(portraitsBloom));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "advanced_shaders", "version=0\r\n\t\tenabled=" + YesNoToken(advancedShaders));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "winter_particle_effects", "version=0\r\n\t\tenabled=" + YesNoToken(winterParticleEffects));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "cloud_shadow_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(cloudShadows));
+            text = ApplySectionSettingBlockIfDifferent(text, "Graphics", "tree_dithering_enabled", "version=0\r\n\t\tenabled=" + YesNoToken(cloudShadows));
             return text;
+        }
+
+        private string ApplySectionSettingBlockIfDifferent(string text, string section, string key, string body)
+        {
+            string current = NormalizePdxSettingBlock(ExtractPdxSettingBlock(text, section, key));
+            string target = NormalizePdxSettingBlock(body);
+            if (String.Equals(current, target, StringComparison.Ordinal))
+                return text;
+
+            return SetSectionSettingBlock(text, section, key, body);
+        }
+
+        private string ExtractPdxSettingBlock(string text, string section, string key)
+        {
+            string body = ExtractSectionBody(text, section);
+            if (String.IsNullOrEmpty(body))
+                return "";
+
+            Match match = Regex.Match(body, "\"" + Regex.Escape(key) + "\"\\s*=\\s*\\{(.*?)\\}", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value : "";
+        }
+
+        private string NormalizePdxSettingBlock(string block)
+        {
+            if (String.IsNullOrWhiteSpace(block))
+                return "(missing)";
+
+            return Regex.Replace(block.Trim(), "\\s+", " ");
         }
 
         private string YesNoToken(bool enabled)
