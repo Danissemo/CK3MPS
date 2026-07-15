@@ -169,6 +169,7 @@ namespace CK3MPS
 
         private List<PreviewLine> BuildStabilizationPreviewLines()
         {
+            EnsurePlanningSnapshot();
             List<PreviewLine> lines = new List<PreviewLine>();
             int selectedOptional = CountSelectedChecklistSteps();
             int plannedSteps = CountPlannedStabilizeSteps();
@@ -383,6 +384,7 @@ namespace CK3MPS
 
         private int CountPlannedStabilizeSteps()
         {
+            EnsurePlanningSnapshot();
             int count = 0;
             if (ShouldRunPathValidationCoreStep())
                 count++;
@@ -398,6 +400,7 @@ namespace CK3MPS
 
         private bool ShouldRunPathValidationCoreStep()
         {
+            EnsurePlanningSnapshot();
             for (int i = 0; i < steps.Items.Count; i++)
                 if (IsStepChecked(i) && i != 1 && i != 2 && ShouldRunSelectedStabilizeStep(i))
                     return true;
@@ -406,6 +409,7 @@ namespace CK3MPS
 
         private bool ShouldRunQuarantineCoreStep()
         {
+            EnsurePlanningSnapshot();
             for (int i = 0; i < steps.Items.Count; i++)
                 if (IsStepChecked(i) && i != 1 && i != 2 && ShouldRunSelectedStabilizeStep(i) && StepNeedsQuarantine(i))
                     return true;
@@ -413,6 +417,18 @@ namespace CK3MPS
         }
 
         private bool ShouldRunSelectedStabilizeStep(int index)
+        {
+            if (!IsStepChecked(index))
+                return false;
+
+            EnsurePlanningSnapshot();
+            if (index >= 0 && index < planningShouldRun.Length)
+                return planningShouldRun[index];
+
+            return ComputeShouldRunSelectedStabilizeStep(index);
+        }
+
+        private bool ComputeShouldRunSelectedStabilizeStep(int index)
         {
             if (!IsStepChecked(index))
                 return false;
@@ -587,6 +603,15 @@ namespace CK3MPS
 
         private List<string> BuildStepPreviewDetails(int index)
         {
+            EnsurePlanningSnapshot();
+            if (index >= 0 && index < planningDetails.Length && planningDetails[index] != null)
+                return new List<string>(planningDetails[index]);
+
+            return ComputeStepPreviewDetails(index);
+        }
+
+        private List<string> ComputeStepPreviewDetails(int index)
+        {
             List<string> details = new List<string>();
             string ck3Exe = String.IsNullOrEmpty(ck3Bin) ? "" : Path.Combine(ck3Bin, "ck3.exe");
 
@@ -746,6 +771,21 @@ namespace CK3MPS
             }
 
             return details;
+        }
+
+        private void EnsurePlanningSnapshot()
+        {
+            string key = BuildCheckOnlyScanKey();
+            if (hasPlanningSnapshot && String.Equals(planningSnapshotKey, key, StringComparison.Ordinal))
+                return;
+
+            planningSnapshotKey = key;
+            hasPlanningSnapshot = true;
+            for (int i = 0; i < planningShouldRun.Length; i++)
+            {
+                planningShouldRun[i] = ComputeShouldRunSelectedStabilizeStep(i);
+                planningDetails[i] = ComputeStepPreviewDetails(i);
+            }
         }
 
         private bool RuntimeVerificationReportNeedsUpdate()

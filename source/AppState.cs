@@ -118,6 +118,10 @@ namespace CK3MPS
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool hasFreshCheckOnlyScan;
         private string freshCheckOnlyScanKey = "";
+        private bool hasPlanningSnapshot;
+        private string planningSnapshotKey = "";
+        private readonly bool[] planningShouldRun = new bool[ExpectedStepCount];
+        private readonly List<string>[] planningDetails = new List<string>[ExpectedStepCount];
 
         private sealed class StepGroupUi
         {

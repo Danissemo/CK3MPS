@@ -887,7 +887,6 @@ namespace CK3MPS
             {
                 LogSection("Check only started");
                 Log("Mode: read-only scan of every checklist item. No files or settings will be changed.");
-                ShowStabilizationPreview(true);
                 if (!ValidateBeforeRun())
                 {
                     statusLabel.Text = "Check stopped: fix folder paths first.";
@@ -920,6 +919,7 @@ namespace CK3MPS
             if (writeReport)
                 WriteCheckOnlyReport();
             MarkFreshCheckOnlyScan();
+            EnsurePlanningSnapshot();
         }
 
         private void RunStep(int index, string label, Action action)

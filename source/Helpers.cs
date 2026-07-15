@@ -1146,6 +1146,7 @@ namespace CK3MPS
         {
             hasFreshCheckOnlyScan = false;
             freshCheckOnlyScanKey = "";
+            InvalidatePlanningSnapshot();
         }
 
         private void MarkFreshCheckOnlyScan()
@@ -1172,6 +1173,14 @@ namespace CK3MPS
             for (int i = 0; i < steps.Items.Count; i++)
                 sb.AppendLine("step_" + i + "=" + (IsStepChecked(i) ? "1" : "0"));
             return sb.ToString();
+        }
+
+        private void InvalidatePlanningSnapshot()
+        {
+            hasPlanningSnapshot = false;
+            planningSnapshotKey = "";
+            for (int i = 0; i < planningDetails.Length; i++)
+                planningDetails[i] = null;
         }
 
         private string FormatLogLine(string message)
