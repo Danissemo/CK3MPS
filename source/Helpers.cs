@@ -992,6 +992,9 @@ namespace CK3MPS
 
         private void AppendLogLine(string text, Color color)
         {
+            lock (runLogSync)
+                runLogLines.Add(text ?? "");
+
             lock (uiLogSync)
             {
                 if (busyUi)
@@ -1029,10 +1032,18 @@ namespace CK3MPS
                 return;
             }
 
+            lock (runLogSync)
+                runLogLines.Clear();
             pendingUiLogLines.Clear();
             uiLogFlushScheduled = false;
             logBox.Clear();
             uiLogLinesSinceLastScroll = 0;
+        }
+
+        private string[] SnapshotRunLogLines()
+        {
+            lock (runLogSync)
+                return runLogLines.ToArray();
         }
 
         private void FlushPendingUiLogLines()

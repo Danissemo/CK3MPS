@@ -197,7 +197,7 @@ namespace CK3MPS
             sb.AppendLine("evidence=" + StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"));
             sb.AppendLine();
             sb.AppendLine("Important lines:");
-            foreach (string line in logBox.Lines)
+            foreach (string line in SnapshotRunLogLines())
             {
                 string trimmed = line.Trim();
                 if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
@@ -550,7 +550,7 @@ namespace CK3MPS
                 sb.AppendLine("Result: " + (lastReadinessFailures == 0 ? "READY" : "NOT READY"));
                 sb.AppendLine("Failed readiness checks: " + lastReadinessFailures);
                 sb.AppendLine();
-                foreach (string line in logBox.Lines)
+                foreach (string line in SnapshotRunLogLines())
                 {
                     string trimmed = line.Trim();
                     if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
