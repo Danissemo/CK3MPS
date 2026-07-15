@@ -278,14 +278,27 @@ namespace CK3MPS
 
                 using (Process process = Process.Start(psi))
                 {
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-                    if (!process.WaitForExit(timeoutMs))
+                    StringBuilder output = new StringBuilder();
+                    StringBuilder error = new StringBuilder();
+                    process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            output.AppendLine(e.Data);
+                    };
+                    process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            error.AppendLine(e.Data);
+                    };
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    if (!WaitForProcessResponsive(process, timeoutMs))
                     {
                         try { process.Kill(); } catch { }
                         return new PowerShellResult(124, "PowerShell command timed out.");
                     }
-                    return new PowerShellResult(process.ExitCode, (output + "\r\n" + error).Trim());
+                    process.WaitForExit();
+                    return new PowerShellResult(process.ExitCode, (output.ToString() + "\r\n" + error.ToString()).Trim());
                 }
             }
             finally

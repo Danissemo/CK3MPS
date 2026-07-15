@@ -469,6 +469,12 @@ namespace CK3MPS
             if (!String.IsNullOrEmpty(title))
                 LogSection(title);
 
+            if (busyUi)
+            {
+                LogCompactSnapshot(text);
+                return;
+            }
+
             foreach (string line in (text ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
             {
                 if (String.IsNullOrWhiteSpace(line))
@@ -476,6 +482,53 @@ namespace CK3MPS
                 else
                     Log(line);
             }
+        }
+
+        private void LogCompactSnapshot(string text)
+        {
+            string[] lines = (text ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            int hidden = 0;
+            int shown = 0;
+            int warnings = 0;
+            int oks = 0;
+            int infos = 0;
+
+            foreach (string raw in lines)
+            {
+                string line = (raw ?? "").Trim();
+                if (line.Length == 0
+                    || line.StartsWith("CK3MPS ", StringComparison.Ordinal)
+                    || line.StartsWith("Generated: ", StringComparison.Ordinal))
+                    continue;
+
+                if (line.StartsWith("WARN", StringComparison.OrdinalIgnoreCase))
+                    warnings++;
+                else if (line.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
+                    oks++;
+                else if (line.StartsWith("INFO", StringComparison.OrdinalIgnoreCase))
+                    infos++;
+
+                bool important = line.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+                if (shown < 6 && important)
+                {
+                    Log(line);
+                    shown++;
+                }
+                else
+                {
+                    hidden++;
+                }
+            }
+
+            if (shown == 0)
+                Log("INFO Snapshot updated. Full details were written to the report file.");
+            else
+                Log("INFO Snapshot summary: ok=" + oks + " warn=" + warnings + " info=" + infos + ".");
+
+            if (hidden > 0)
+                Log("INFO UI log compacted " + hidden + " additional snapshot line(s); full details remain in the report file.");
         }
 
         private void ApplyPreset(string preset)

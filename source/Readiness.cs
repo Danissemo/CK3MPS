@@ -1332,10 +1332,29 @@ namespace CK3MPS
 
                 using (Process p = Process.Start(psi))
                 {
-                    string output = p.StandardOutput.ReadToEnd();
-                    string error = p.StandardError.ReadToEnd();
-                    p.WaitForExit(10000);
-                    string combined = (output + "\r\n" + error).Trim();
+                    StringBuilder output = new StringBuilder();
+                    StringBuilder error = new StringBuilder();
+                    p.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            output.AppendLine(e.Data);
+                    };
+                    p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            error.AppendLine(e.Data);
+                    };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    if (!WaitForProcessResponsive(p, 10000))
+                    {
+                        try { p.Kill(); } catch { }
+                        if (!ignoreFailure)
+                            Log("WARN " + file + " timed out.");
+                        return "";
+                    }
+                    p.WaitForExit();
+                    string combined = (output.ToString() + "\r\n" + error.ToString()).Trim();
                     if (!String.IsNullOrEmpty(combined))
                     {
                         Log("CMD  " + file + " " + args);
@@ -1370,15 +1389,46 @@ namespace CK3MPS
 
                 using (Process p = Process.Start(psi))
                 {
-                    string output = p.StandardOutput.ReadToEnd();
-                    string error = p.StandardError.ReadToEnd();
-                    p.WaitForExit(10000);
-                    return (output + "\r\n" + error).Trim();
+                    StringBuilder output = new StringBuilder();
+                    StringBuilder error = new StringBuilder();
+                    p.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            output.AppendLine(e.Data);
+                    };
+                    p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                            error.AppendLine(e.Data);
+                    };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    if (!WaitForProcessResponsive(p, 10000))
+                    {
+                        try { p.Kill(); } catch { }
+                        return "";
+                    }
+                    p.WaitForExit();
+                    return (output.ToString() + "\r\n" + error.ToString()).Trim();
                 }
             }
             catch
             {
                 return "";
+            }
+        }
+
+        private bool WaitForProcessResponsive(Process process, int timeoutMs)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            while (true)
+            {
+                if (process.WaitForExit(50))
+                    return true;
+
+                Application.DoEvents();
+                if (sw.ElapsedMilliseconds >= timeoutMs)
+                    return false;
             }
         }
 

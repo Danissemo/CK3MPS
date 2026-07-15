@@ -739,6 +739,43 @@ namespace CK3MPS
         private void CheckSaveHygiene()
         {
             string continuePath = Path.Combine(ck3Docs, "continue_game.json");
+            bool continueExists = File.Exists(continuePath);
+            string installedVersion = DetectInstalledVersion();
+            string activeSaveVersion = DetectActiveSaveVersion();
+            bool versionMismatch = !String.IsNullOrEmpty(installedVersion)
+                && !String.IsNullOrEmpty(activeSaveVersion)
+                && !String.Equals(installedVersion, activeSaveVersion, StringComparison.OrdinalIgnoreCase);
+            string saveDir = Path.Combine(ck3Docs, "save games");
+            int saveCount = 0;
+            int suspiciousLocalSaves = 0;
+
+            if (Directory.Exists(saveDir))
+            {
+                FileInfo[] saves = new DirectoryInfo(saveDir).GetFiles("*.ck3");
+                saveCount = saves.Length;
+                suspiciousLocalSaves = CountSuspiciousSaveNames();
+            }
+
+            int steamCloudSaveFiles = CountSteamCloudSaveFiles();
+            int suspiciousCloudSaves = CountSuspiciousSteamCloudSaveNames();
+
+            if (busyUi)
+            {
+                Log("INFO Save hygiene summary: continue=" + (continueExists ? "present" : "missing")
+                    + " local_saves=" + saveCount
+                    + " suspicious_local=" + suspiciousLocalSaves
+                    + " steam_cloud_files=" + steamCloudSaveFiles
+                    + " suspicious_cloud=" + suspiciousCloudSaves + ".");
+                if (versionMismatch)
+                    Log("WARN Active continue save version differs from installed CK3 version.");
+                if (suspiciousLocalSaves > 0)
+                    Log("WARN Recovery/autosave/desync-like local saves are still visible.");
+                if (suspiciousCloudSaves > 0)
+                    Log("WARN Recovery/autosave/desync-like Steam Cloud saves are still visible.");
+                Log("INFO Full save hygiene details are kept in the generated reports.");
+                return;
+            }
+
             if (File.Exists(continuePath))
             {
                 string text = File.ReadAllText(continuePath);
@@ -746,10 +783,7 @@ namespace CK3MPS
                 foreach (string line in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
                     Log("  " + line.Trim());
 
-                string installedVersion = DetectInstalledVersion();
-                string activeSaveVersion = DetectActiveSaveVersion();
-                if (!String.IsNullOrEmpty(installedVersion) && !String.IsNullOrEmpty(activeSaveVersion)
-                    && !String.Equals(installedVersion, activeSaveVersion, StringComparison.OrdinalIgnoreCase))
+                if (versionMismatch)
                     Log("Warning: active continue save version differs from installed CK3 version.");
             }
             else
@@ -757,7 +791,6 @@ namespace CK3MPS
                 Log("continue_game.json not found.");
             }
 
-            string saveDir = Path.Combine(ck3Docs, "save games");
             if (Directory.Exists(saveDir))
             {
                 FileInfo[] saves = new DirectoryInfo(saveDir).GetFiles("*.ck3");
