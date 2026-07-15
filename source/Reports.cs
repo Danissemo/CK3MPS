@@ -1038,12 +1038,28 @@ namespace CK3MPS
 
         private void CheckLauncherRuntimeHygiene()
         {
-            // Apply/cleanup actions are safest while CK3 and the Paradox launcher are closed.
-            // Steam may stay open because the app edits CK3-specific Steam metadata safely.
-            Check("Paradox Launcher is closed", !ProcessRunningContains("dowser") && !ProcessRunningContains("paradox launcher"));
-            Check("CK3 is closed", !ProcessRunningExact("ck3"));
-            Log("INFO Steam may stay open, but Steam overlay should be disabled for CK3 if OOS continues.");
-            Log("INFO Keep only one launcher path for CK3: Steam -> Paradox Launcher -> vanilla CK3.");
+            string path = StabilizerFile("ck3_stabilizer_runtime_hygiene.txt");
+            string snapshot = BuildRuntimeHygieneSnapshotText();
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                snapshot,
+                "FILE Runtime hygiene snapshot written: ",
+                "INFO Runtime hygiene snapshot already up to date: ",
+                true);
+            LogTextSnapshot("Runtime hygiene", snapshot);
+        }
+
+        private string BuildRuntimeHygieneSnapshotText()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS runtime hygiene");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine((!ProcessRunningContains("dowser") && !ProcessRunningContains("paradox launcher") ? "OK   " : "WARN ") + "Paradox Launcher is " + (!ProcessRunningContains("dowser") && !ProcessRunningContains("paradox launcher") ? "closed" : "running"));
+            sb.AppendLine((!ProcessRunningExact("ck3") ? "OK   " : "WARN ") + "CK3 is " + (!ProcessRunningExact("ck3") ? "closed" : "running"));
+            sb.AppendLine("INFO Steam may stay open, but Steam overlay should be disabled for CK3 if OOS continues.");
+            sb.AppendLine("INFO Keep only one launcher path for CK3: Steam -> Paradox Launcher -> vanilla CK3.");
+            return sb.ToString();
         }
 
         private bool ProcessRunningExact(string name)

@@ -23,34 +23,43 @@ namespace CK3MPS
 
         private void RunNetworkDiagnostics()
         {
-            LogSection("Adaptive network diagnostics");
-            NetworkRouteProfile profile = AnalyzeNetworkRouteProfile(true);
+            string path = StabilizerFile("ck3_stabilizer_network_diagnostics.txt");
+            string snapshot = BuildNetworkDiagnosticsSnapshotText();
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                snapshot,
+                "FILE Network diagnostics snapshot written: ",
+                "INFO Network diagnostics snapshot already up to date: ",
+                true);
+            LogTextSnapshot("Adaptive network diagnostics", snapshot);
+        }
 
-            Log("");
-            Log("ROUTE SUMMARY");
-            Log("  up_adapters=" + profile.UpAdapters + " gateway_adapters=" + profile.GatewayAdapters + " ipv6_gateways=" + profile.Ipv6GatewayAdapters + " physical_routes=" + profile.PhysicalRoutes + " vpn_routes=" + profile.VpnRoutes + " wifi_routes=" + profile.WifiRoutes + " pppoe_routes=" + profile.PppoeRoutes + " mobile_routes=" + profile.MobileRoutes + " low_speed_routes=" + profile.LowSpeedRoutes);
-            Log("  private_ipv4=" + profile.PrivateIpv4Addresses + " cgnat_ipv4=" + profile.CgnatAddresses + " local_dns=" + profile.LocalDnsServers + " public_dns=" + profile.PublicDnsServers + " proxy=" + (profile.ProxyDetected ? "yes" : "no"));
-            LogAdaptiveNetworkPlan(profile);
-
-            Log("");
-            Log("PING BASELINE");
-            PingAndLog("Cloudflare DNS 1.1.1.1", "1.1.1.1");
-            PingAndLog("Google DNS 8.8.8.8", "8.8.8.8");
-            Log("QUALITY BASELINE");
-            Log("  packet_loss=" + profile.PacketLossPercent + "% avg_ping=" + profile.AveragePingMs + "ms max_jitter=" + profile.MaxJitterMs + "ms");
-
-            Log("");
-            Log("TCP/IP PROFILE");
-            string tcp = RunCommand("netsh.exe", "interface tcp show global", true);
-            LogTcpGlobalSummary(tcp);
-
-            Log("");
-            Log("MTU PROFILE");
-            RunCommand("netsh.exe", "interface ipv4 show subinterfaces", true);
-
-            Log("");
-            Log("SERVICE REACHABILITY");
-            CheckOnlineServices();
+        private string BuildNetworkDiagnosticsSnapshotText()
+        {
+            NetworkRouteProfile profile = AnalyzeNetworkRouteProfile(false);
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS adaptive network diagnostics");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("ROUTE SUMMARY");
+            sb.AppendLine("INFO up_adapters=" + profile.UpAdapters + " gateway_adapters=" + profile.GatewayAdapters + " ipv6_gateways=" + profile.Ipv6GatewayAdapters + " physical_routes=" + profile.PhysicalRoutes + " vpn_routes=" + profile.VpnRoutes + " wifi_routes=" + profile.WifiRoutes + " pppoe_routes=" + profile.PppoeRoutes + " mobile_routes=" + profile.MobileRoutes + " low_speed_routes=" + profile.LowSpeedRoutes);
+            sb.AppendLine("INFO private_ipv4=" + profile.PrivateIpv4Addresses + " cgnat_ipv4=" + profile.CgnatAddresses + " local_dns=" + profile.LocalDnsServers + " public_dns=" + profile.PublicDnsServers + " proxy=" + (profile.ProxyDetected ? "yes" : "no"));
+            foreach (string line in BuildAdaptiveNetworkPlanLines(profile))
+                sb.AppendLine(line);
+            sb.AppendLine();
+            sb.AppendLine("QUALITY BASELINE");
+            sb.AppendLine("INFO packet_loss=" + profile.PacketLossPercent + "% avg_ping=" + profile.AveragePingMs + "ms max_jitter=" + profile.MaxJitterMs + "ms");
+            sb.AppendLine();
+            sb.AppendLine("TCP/IP PROFILE");
+            string tcp = RunCommandQuiet("netsh.exe", "interface tcp show global");
+            foreach (string line in BuildTcpGlobalSummaryLines(tcp))
+                sb.AppendLine(line);
+            sb.AppendLine();
+            sb.AppendLine("MTU PROFILE");
+            string mtu = RunCommandQuiet("netsh.exe", "interface ipv4 show subinterfaces");
+            foreach (string line in SplitCommandOutputLines(mtu))
+                sb.AppendLine("INFO " + line);
+            return sb.ToString();
         }
 
         private NetworkRouteProfile AnalyzeNetworkRouteProfile(bool logAdapters)
@@ -504,7 +513,26 @@ namespace CK3MPS
 
         private void CheckOverlaysAndVpn()
         {
-            Log("INFO Process overlay/background scan");
+            string path = StabilizerFile("ck3_stabilizer_overlay_scan.txt");
+            string snapshot = BuildOverlayAndVpnSnapshotText();
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                snapshot,
+                "FILE Overlay/background snapshot written: ",
+                "INFO Overlay/background snapshot already up to date: ",
+                true);
+            LogTextSnapshot("Overlay, VPN and background scan", snapshot);
+        }
+
+        private string BuildOverlayAndVpnSnapshotText()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS overlay and background scan");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("PROCESS OVERLAYS");
+
+            List<string> found = new List<string>();
             string[] watch = new[]
             {
                 "Discord", "obs", "GameBar", "GameBarFTServer", "NVIDIA Share", "NVIDIA Overlay",
@@ -519,17 +547,32 @@ namespace CK3MPS
                 {
                     if (name.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        Log("Overlay/background app running: " + name + ". If OOS persists, disable its overlay for CK3.");
+                        found.Add(name);
                         break;
                     }
                 }
             }
 
-            CheckWindowsServiceHygiene();
+            found.Sort(StringComparer.OrdinalIgnoreCase);
+            if (found.Count == 0)
+                sb.AppendLine("INFO No watched overlay/background apps are running.");
+            else
+                foreach (string name in found)
+                    sb.AppendLine("WARN Overlay/background app running: " + name + ". If OOS persists, disable its overlay for CK3.");
 
-            string power = RunCommand("powercfg.exe", "/getactivescheme", false);
-            if (power.IndexOf("power saver", StringComparison.OrdinalIgnoreCase) >= 0 || power.IndexOf("ÑÐºÐ¾Ð½Ð¾Ð¼", StringComparison.OrdinalIgnoreCase) >= 0)
-                Log("Warning: Power Saver plan detected. Use Balanced/High performance for hosting.");
+            sb.AppendLine();
+            sb.AppendLine("WINDOWS SERVICE HYGIENE");
+            foreach (string line in BuildWindowsServiceHygieneLines())
+                sb.AppendLine(line);
+
+            string power = RunCommandQuiet("powercfg.exe", "/getactivescheme");
+            sb.AppendLine();
+            sb.AppendLine("POWER PLAN");
+            foreach (string line in SplitCommandOutputLines(power))
+                sb.AppendLine("INFO " + line);
+            if (power.IndexOf("power saver", StringComparison.OrdinalIgnoreCase) >= 0 || power.IndexOf("econom", StringComparison.OrdinalIgnoreCase) >= 0)
+                sb.AppendLine("WARN Power Saver plan detected. Use Balanced/High performance for hosting.");
+            return sb.ToString();
         }
 
         private void CheckWindowsServiceHygiene()
@@ -546,6 +589,35 @@ namespace CK3MPS
             LogServiceState("WinHTTP Auto Proxy", "WinHttpAutoProxySvc", false);
             LogServiceState("EA Background Service", "EABackgroundService", false);
             LogServiceState("ASUS fan control", "AsusFanControlService", false);
+        }
+
+        private List<string> BuildWindowsServiceHygieneLines()
+        {
+            List<string> lines = new List<string>();
+            lines.Add(BuildServiceStateLine("Steam Client Service", "Steam Client Service", false));
+            lines.Add(BuildServiceStateLine("Windows Firewall", "MpsSvc", true));
+            lines.Add(BuildServiceStateLine("Base Filtering Engine", "BFE", true));
+            lines.Add(BuildServiceStateLine("DNS Client", "Dnscache", true));
+            lines.Add(BuildServiceStateLine("Network Location Awareness", "NlaSvc", true));
+            lines.Add(BuildServiceStateLine("Windows Time", "W32Time", true));
+            lines.Add(BuildServiceStateLine("VPN Remote Access", "RasMan", false));
+            lines.Add(BuildServiceStateLine("VPN SSTP", "SstpSvc", false));
+            lines.Add(BuildServiceStateLine("WinHTTP Auto Proxy", "WinHttpAutoProxySvc", false));
+            lines.Add(BuildServiceStateLine("EA Background Service", "EABackgroundService", false));
+            lines.Add(BuildServiceStateLine("ASUS fan control", "AsusFanControlService", false));
+            return lines;
+        }
+
+        private string BuildServiceStateLine(string label, string serviceName, bool shouldRun)
+        {
+            string output = RunCommandQuiet("sc.exe", "query \"" + serviceName + "\"");
+            if (String.IsNullOrEmpty(output) || output.IndexOf("does not exist", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "INFO " + label + ": not installed";
+
+            bool running = output.IndexOf("RUNNING", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (shouldRun && !running)
+                return "WARN " + label + ": not running";
+            return "INFO " + label + ": " + (running ? "running" : "not running");
         }
 
         private bool RequiredWindowsNetworkServicesOk()
@@ -586,10 +658,77 @@ namespace CK3MPS
 
         private void CheckOnlineServices()
         {
-            CheckTcpAndLog("Paradox API", "api.paradox-interactive.com", 443);
-            CheckTcpAndLog("Paradox accounts", "accounts.paradoxplaza.com", 443);
-            CheckTcpAndLog("Steam store", "store.steampowered.com", 443);
-            CheckTcpAndLog("Steam community", "steamcommunity.com", 443);
+            string path = StabilizerFile("ck3_stabilizer_online_services.txt");
+            string snapshot = BuildOnlineServicesSnapshotText();
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                snapshot,
+                "FILE Online services snapshot written: ",
+                "INFO Online services snapshot already up to date: ",
+                true);
+            LogTextSnapshot("Online services reachability", snapshot);
+        }
+
+        private string BuildOnlineServicesSnapshotText()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS online services reachability");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine(BuildTcpStatusLine("Paradox API", "api.paradox-interactive.com", 443));
+            sb.AppendLine(BuildTcpStatusLine("Paradox accounts", "accounts.paradoxplaza.com", 443));
+            sb.AppendLine(BuildTcpStatusLine("Steam store", "store.steampowered.com", 443));
+            sb.AppendLine(BuildTcpStatusLine("Steam community", "steamcommunity.com", 443));
+            return sb.ToString();
+        }
+
+        private string BuildTcpStatusLine(string label, string host, int port)
+        {
+            return "INFO TCP " + label + " " + host + ":" + port + " " + (TcpOk(host, port) ? "OK" : "FAILED");
+        }
+
+        private IEnumerable<string> BuildAdaptiveNetworkPlanLines(NetworkRouteProfile profile)
+        {
+            List<string> lines = new List<string>();
+            if (profile.HasMultipleGateways)
+                lines.Add("WARN Multiple active gateway routes detected. Disable unused Ethernet/Wi-Fi/VPN routes during CK3 if possible.");
+            if (profile.HasWifi)
+                lines.Add("WARN Wi-Fi route detected. Hosting is usually more stable on Ethernet.");
+            if (profile.HasVpn)
+                lines.Add("WARN VPN/virtual route detected. Every player should intentionally use the same route policy.");
+            if (profile.HasPppoe)
+                lines.Add("INFO PPPoE route detected. CK3MPS keeps MTU/offload changes conservative.");
+            if (profile.HasMobile)
+                lines.Add("WARN Mobile/tethering route detected. Expect higher jitter and possible CGNAT.");
+            if (profile.HasLowSpeed)
+                lines.Add("WARN Low-speed route detected. Keep heavy downloads/streams off during CK3.");
+            if (profile.ProxyDetected)
+                lines.Add("WARN Windows proxy is active. Disable it for testing if auth or lobby access is unstable.");
+            if (profile.HasDnsFilteringSignal)
+                lines.Add("INFO Local/filtering DNS is present. This is fine if intentional, but can affect reachability diagnostics.");
+            if (profile.HasIpv6OnlyOrDsLiteSignal)
+                lines.Add("INFO IPv6-only / DS-Lite signal detected. CK3MPS avoids aggressive MTU changes here.");
+            if (lines.Count == 0)
+                lines.Add("INFO Single clean route profile detected.");
+            return lines;
+        }
+
+        private IEnumerable<string> BuildTcpGlobalSummaryLines(string tcp)
+        {
+            List<string> lines = new List<string>();
+            foreach (string line in SplitCommandOutputLines(tcp))
+                lines.Add("INFO " + line);
+            if (lines.Count == 0)
+                lines.Add("WARN TCP global settings could not be read.");
+            return lines;
+        }
+
+        private IEnumerable<string> SplitCommandOutputLines(string text)
+        {
+            List<string> lines = new List<string>();
+            foreach (string line in (text ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+                lines.Add(line.Trim());
+            return lines;
         }
 
         private void CheckSaveHygiene()

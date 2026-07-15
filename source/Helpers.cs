@@ -455,12 +455,27 @@ namespace CK3MPS
             StringBuilder sb = new StringBuilder();
             foreach (string line in normalized.Split(new[] { '\n' }, StringSplitOptions.None))
             {
-                if (line.StartsWith("Generated: ", StringComparison.Ordinal))
+                if (line.StartsWith("Generated: ", StringComparison.Ordinal)
+                    || line.StartsWith("Reason: ", StringComparison.Ordinal))
                     continue;
                 sb.AppendLine(line);
             }
 
             return sb.ToString().Trim();
+        }
+
+        private void LogTextSnapshot(string title, string text)
+        {
+            if (!String.IsNullOrEmpty(title))
+                LogSection(title);
+
+            foreach (string line in (text ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+            {
+                if (String.IsNullOrWhiteSpace(line))
+                    Log("");
+                else
+                    Log(line);
+            }
         }
 
         private void ApplyPreset(string preset)

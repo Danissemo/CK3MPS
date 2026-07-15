@@ -422,18 +422,26 @@ namespace CK3MPS
                 case 1:
                 case 2:
                     return false;
+                case 4:
+                    return NetworkDiagnosticsNeedsUpdate();
                 case 5:
                     return FirewallRulesNeedUpdate();
                 case 6:
                     return !WindowsGameNetworkProfileOk();
                 case 7:
                     return PowerAdapterProfileNeedsUpdate();
+                case 8:
+                    return OverlayAndVpnSnapshotNeedsUpdate();
+                case 9:
+                    return OnlineServicesSnapshotNeedsUpdate();
                 case 10:
                     return HasSteamAndLauncherBackupTargets();
                 case 11:
                     return SteamSettingsNeedUpdate();
                 case 12:
                     return LauncherRebuildHasTargets();
+                case 13:
+                    return RuntimeHygieneSnapshotNeedsUpdate();
                 case 14:
                     return DlcLoadNeedsRewrite();
                 case 15:
@@ -528,12 +536,20 @@ namespace CK3MPS
                     return "the selected Windows game/network registry profile already matches.";
                 case 7:
                     return "the selected power profile values already match or no power change is needed right now.";
+                case 4:
+                    return "adapter, route, MTU, DNS and TCP diagnostics already match the last saved snapshot.";
+                case 8:
+                    return "overlay/background process and service snapshot already matches the last saved snapshot.";
+                case 9:
+                    return "Paradox/Steam reachability status already matches the last saved snapshot.";
                 case 10:
                     return "no selected file-changing launcher or CK3 step currently needs a backup.";
                 case 11:
                     return "Steam launch options already keep -noasync, risky launch flags are absent, and Steam Cloud is already off or hidden.";
                 case 12:
                     return "no launcher database or launcher cache target exists to rebuild.";
+                case 13:
+                    return "runtime hygiene status already matches the last saved snapshot.";
                 case 14:
                     return "dlc_load.json already contains no active mods, no disabled DLC entries, and no UTF-8 BOM.";
                 case 15:
@@ -583,7 +599,7 @@ namespace CK3MPS
                     details.Add("Run DNS cache flush only.");
                     break;
                 case 4:
-                    details.Add("Read adapter, route, MTU, DNS and TCP state and write diagnostics only.");
+                    details.Add("Update network diagnostics snapshot `" + StabilizerFile("ck3_stabilizer_network_diagnostics.txt") + "` only if adapter, route, MTU, DNS or TCP state changed.");
                     break;
                 case 5:
                     details.Add("Ensure firewall rule `CK3MPS - CK3 Inbound` allows `" + ck3Exe + "`.");
@@ -629,10 +645,10 @@ namespace CK3MPS
                         details.Add("Apply the current power scheme again with `powercfg /setactive SCHEME_CURRENT`.");
                     break;
                 case 8:
-                    details.Add("Scan overlay, VPN and related background processes and log findings only.");
+                    details.Add("Update overlay/background snapshot `" + StabilizerFile("ck3_stabilizer_overlay_scan.txt") + "` only if watched processes, services or power-plan state changed.");
                     break;
                 case 9:
-                    details.Add("Check Steam/Paradox online service reachability and log the result only.");
+                    details.Add("Update online reachability snapshot `" + StabilizerFile("ck3_stabilizer_online_services.txt") + "` only if Paradox/Steam reachability status changed.");
                     break;
                 case 10:
                     foreach (string path in EnumerateSteamAndLauncherBackupTargets())
@@ -649,7 +665,7 @@ namespace CK3MPS
                         details.Add("Move `" + path + "` to quarantine so Paradox Launcher rebuilds a fresh copy.");
                     break;
                 case 13:
-                    details.Add("Check whether CK3 and Paradox Launcher are closed and write runtime hygiene notes only.");
+                    details.Add("Update runtime hygiene snapshot `" + StabilizerFile("ck3_stabilizer_runtime_hygiene.txt") + "` only if CK3/Launcher running state changed.");
                     break;
                 case 14:
                     details.Add("Rewrite `dlc_load.json` to exactly `{\"enabled_mods\":[],\"disabled_dlcs\":[]}` with UTF-8 no BOM.");
@@ -735,6 +751,26 @@ namespace CK3MPS
         private bool RuntimeVerificationReportNeedsUpdate()
         {
             return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_runtime_verification.txt"), BuildRuntimeVerificationReportText(), true);
+        }
+
+        private bool NetworkDiagnosticsNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_network_diagnostics.txt"), BuildNetworkDiagnosticsSnapshotText(), true);
+        }
+
+        private bool OverlayAndVpnSnapshotNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_overlay_scan.txt"), BuildOverlayAndVpnSnapshotText(), true);
+        }
+
+        private bool OnlineServicesSnapshotNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_online_services.txt"), BuildOnlineServicesSnapshotText(), true);
+        }
+
+        private bool RuntimeHygieneSnapshotNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_runtime_hygiene.txt"), BuildRuntimeHygieneSnapshotText(), true);
         }
 
         private bool StableGameRuleProfileNeedsUpdate()
