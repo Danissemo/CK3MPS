@@ -582,6 +582,7 @@ namespace CK3MPS
 
         private void SetBusy(bool busy)
         {
+            busyUi = busy;
             stabilizeButton.Enabled = !busy;
             checkButton.Enabled = !busy;
             openFolderButton.Enabled = !busy;
@@ -611,6 +612,11 @@ namespace CK3MPS
             restoreSelectAllBox.Enabled = !busy;
             portableModeBox.Enabled = !busy && !portableModeChangeInProgress;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+            if (!busy)
+            {
+                FlushLiveLogBuffer();
+                ScrollLogToBottom();
+            }
         }
 
         private void OpenReportsLocation()
@@ -928,7 +934,7 @@ namespace CK3MPS
             AppendLiveLogLine(text);
         }
 
-        private static void AppendLogLineTo(RichTextBox box, string text, Color color)
+        private void AppendLogLineTo(RichTextBox box, string text, Color color)
         {
             box.SelectionStart = box.TextLength;
             box.SelectionLength = 0;
@@ -936,12 +942,15 @@ namespace CK3MPS
             box.AppendText(text + Environment.NewLine);
             box.SelectionColor = box.ForeColor;
             box.SelectionStart = box.TextLength;
-            box.ScrollToCaret();
+            uiLogLinesSinceLastScroll++;
+            if (!busyUi || uiLogLinesSinceLastScroll >= 12)
+                ScrollLogToBottom();
         }
 
         private void ClearLogViews()
         {
             logBox.Clear();
+            uiLogLinesSinceLastScroll = 0;
         }
 
         private string LiveLogsFolder()
@@ -988,12 +997,40 @@ namespace CK3MPS
                 EnsureLiveLogFileCreated();
                 if (String.IsNullOrEmpty(liveLogFilePath))
                     return;
-                File.AppendAllText(liveLogFilePath, (text ?? "") + Environment.NewLine, Utf8NoBom);
+                liveLogBuffer.Append(text ?? "");
+                liveLogBuffer.Append(Environment.NewLine);
+                if (!busyUi || liveLogBuffer.Length >= 4096)
+                    FlushLiveLogBuffer();
             }
             catch
             {
                 // Live log file must never break the UI log path.
             }
+        }
+
+        private void FlushLiveLogBuffer()
+        {
+            try
+            {
+                if (liveLogBuffer.Length == 0)
+                    return;
+                EnsureLiveLogFileCreated();
+                if (String.IsNullOrEmpty(liveLogFilePath))
+                    return;
+                File.AppendAllText(liveLogFilePath, liveLogBuffer.ToString(), Utf8NoBom);
+                liveLogBuffer.Clear();
+            }
+            catch
+            {
+                // Live log file must never break the UI log path.
+            }
+        }
+
+        private void ScrollLogToBottom()
+        {
+            logBox.SelectionStart = logBox.TextLength;
+            logBox.ScrollToCaret();
+            uiLogLinesSinceLastScroll = 0;
         }
 
         private Color LogColorForLine(string formatted, string original)

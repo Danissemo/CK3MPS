@@ -26,11 +26,20 @@ namespace CK3MPS
         private bool ConfirmStabilizationPreview()
         {
             List<PreviewLine> previewLines = BuildStabilizationPreviewLines();
-            string preview = BuildStabilizationPreviewText(previewLines);
+            int changeCount = 0;
+            int reportCount = 0;
+            foreach (PreviewLine line in previewLines)
+            {
+                if (line.Text.StartsWith("- ", StringComparison.Ordinal))
+                {
+                    if (line.Tone == "report")
+                        reportCount++;
+                    else if (line.Tone == "change" || line.Tone == "move" || line.Tone == "safe")
+                        changeCount++;
+                }
+            }
             LogSection("Stabilization preview");
-            foreach (string line in preview.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
-                if (!String.IsNullOrWhiteSpace(line))
-                    Log("INFO " + line);
+            Log("INFO Preview prepared. Planned changes/checks: " + CountPlannedStabilizeSteps() + " | change items: " + changeCount + " | report items: " + reportCount + ".");
             return ShowPreviewDialog(previewLines, true) == DialogResult.Yes;
         }
 

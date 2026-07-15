@@ -8,10 +8,12 @@ namespace CK3MPS
     {
         private void ConfigureStepToolTipBehavior()
         {
-            stepToolTip.InitialDelay = 120;
-            stepToolTip.ReshowDelay = 40;
-            stepToolTip.AutoPopDelay = 2500;
+            stepToolTip.InitialDelay = 40;
+            stepToolTip.ReshowDelay = 20;
+            stepToolTip.AutoPopDelay = 8000;
             stepToolTip.ShowAlways = false;
+            stepToolTip.UseAnimation = false;
+            stepToolTip.UseFading = false;
         }
 
         private void BuildChecklistGroups()
@@ -178,6 +180,14 @@ namespace CK3MPS
             row.HelpButton.BackColor = Color.FromArgb(240, 242, 245);
             row.HelpButton.ForeColor = Color.FromArgb(50, 65, 85);
             stepToolTip.SetToolTip(row.HelpButton, row.HelpText);
+            row.HelpButton.MouseEnter += delegate
+            {
+                stepToolTip.Show(row.HelpText, row.HelpButton, row.HelpButton.Width + 8, -2, stepToolTip.AutoPopDelay);
+            };
+            row.HelpButton.MouseMove += delegate
+            {
+                stepToolTip.Show(row.HelpText, row.HelpButton, row.HelpButton.Width + 8, -2, stepToolTip.AutoPopDelay);
+            };
             row.HelpButton.MouseLeave += delegate { stepToolTip.Hide(row.HelpButton); };
             row.RowPanel.Controls.Add(row.HelpButton);
 
