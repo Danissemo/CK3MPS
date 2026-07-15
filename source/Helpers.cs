@@ -1193,6 +1193,21 @@ namespace CK3MPS
                 progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
         }
 
+        private void SetProgressStyleSafe(ProgressBarStyle style)
+        {
+            if (InvokeRequired)
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    progress.Style = style;
+                    progress.MarqueeAnimationSpeed = style == ProgressBarStyle.Marquee ? 30 : 0;
+                });
+            else
+            {
+                progress.Style = style;
+                progress.MarqueeAnimationSpeed = style == ProgressBarStyle.Marquee ? 30 : 0;
+            }
+        }
+
         private DialogResult ShowMessageBoxSafe(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
             if (InvokeRequired)

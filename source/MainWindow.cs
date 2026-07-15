@@ -934,10 +934,12 @@ namespace CK3MPS
         {
             SetStatusText(label + "...");
             LogSection(label);
+            SetProgressStyleSafe(ProgressBarStyle.Marquee);
             FlushPendingUiLogLines();
             if (!InvokeRequired)
                 Application.DoEvents();
             action();
+            SetProgressStyleSafe(ProgressBarStyle.Blocks);
             FlushPendingUiLogLines();
             IncrementProgressValueSafe();
             if (!InvokeRequired)
