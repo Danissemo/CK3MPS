@@ -1,0 +1,28 @@
+name: UI regression
+description: Report a visual or workflow regression in the CK3MPS interface.
+title: "[UI Regression]: "
+labels: ["bug", "ui"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: CK3MPS version
+      placeholder: v0.3
+    validations:
+      required: true
+  - type: textarea
+    id: regression
+    attributes:
+      label: UI problem
+      description: Describe the layout, label, button, tooltip, or tab regression.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or visual note
+      description: Attach a screenshot or describe what looks wrong if available.

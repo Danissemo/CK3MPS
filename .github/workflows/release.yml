@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build release artifacts
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1 -UpdateReleaseArtifacts
+          ./scripts/test.ps1
+          ./scripts/check-version-consistency.ps1
+          ./scripts/check-repo-clean.ps1
+          ./scripts/validate-release.ps1
+          ./scripts/package-release.ps1
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "notes=docs/release-notes-$version.md" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.version }}
+          name: CK3MPS ${{ steps.meta.outputs.version }}
+          body_path: ${{ steps.meta.outputs.notes }}
+          files: |
+            release/CK3MPS.exe
+            release/CK3MPS.exe.sha256
+            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.version }}.zip
+            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.version }}.zip.sha256

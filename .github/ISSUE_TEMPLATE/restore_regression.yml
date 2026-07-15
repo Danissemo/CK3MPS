@@ -1,0 +1,29 @@
+name: Restore regression
+description: Report a restore, rollback, or default-restore regression.
+title: "[Restore Regression]: "
+labels: ["bug", "restore"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: CK3MPS version
+      placeholder: v0.3
+    validations:
+      required: true
+  - type: textarea
+    id: area
+    attributes:
+      label: Restore area
+      description: Describe whether this affected CK3 files, launcher files, registry values, or restore-point related actions.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

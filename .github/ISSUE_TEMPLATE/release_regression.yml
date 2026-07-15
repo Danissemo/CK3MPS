@@ -1,0 +1,32 @@
+name: Release regression
+description: Report a problem that appeared in a published release package or release process.
+title: "[Release Regression]: "
+labels: ["bug", "release"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Release version
+      placeholder: v0.3
+    validations:
+      required: true
+  - type: textarea
+    id: regression
+    attributes:
+      label: What regressed
+      description: Describe what worked before and what regressed in the release.
+    validations:
+      required: true
+  - type: textarea
+    id: assets
+    attributes:
+      label: Asset or package involved
+      description: Mention whether the issue is in `CK3MPS.exe`, the zip package, checksums, release notes, screenshots, or release metadata.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Download the release asset.
+        2. Open or run it.
+        3. Observe the release-specific problem.
