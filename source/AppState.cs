@@ -131,14 +131,7 @@ namespace CK3MPS
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool hasFreshCheckOnlyScan;
         private string freshCheckOnlyScanKey = "";
-        private bool hasPlanningSnapshot;
-        private string planningSnapshotKey = "";
-        private readonly bool[] planningShouldRun = new bool[ExpectedStepCount];
-        private readonly bool[] planningDetailsReady = new bool[ExpectedStepCount];
-        private readonly List<string>[] planningDetails = new List<string>[ExpectedStepCount];
-        private int planningPlannedStepCount;
-        private bool planningPathValidationRequired;
-        private bool planningQuarantineRequired;
+        private SessionScanSnapshot sessionScanSnapshot;
 
         private sealed class StepGroupUi
         {
@@ -179,6 +172,27 @@ namespace CK3MPS
                 Text = text ?? "";
                 Color = color;
             }
+        }
+
+        private sealed class StepPlanSnapshot
+        {
+            public int Index;
+            public bool Selected;
+            public bool ShouldRun;
+            public bool ChangesState;
+            public bool NeedsQuarantine;
+            public string SkipReason = "";
+            public List<string> PreviewDetails = new List<string>();
+        }
+
+        private sealed class SessionScanSnapshot
+        {
+            public string ScanKey = "";
+            public int SelectedChecklistCount;
+            public int PlannedStepCount;
+            public bool PathValidationRequired;
+            public bool QuarantineRequired;
+            public readonly StepPlanSnapshot[] Steps = new StepPlanSnapshot[ExpectedStepCount];
         }
 
         private readonly string[] suspectBinaryFiles = new[]

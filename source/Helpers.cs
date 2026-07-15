@@ -1413,13 +1413,13 @@ namespace CK3MPS
         private void StoreFreshCheckOnlySessionSnapshot()
         {
             MarkFreshCheckOnlyScan();
-            InvalidatePlanningSnapshot();
-            EnsurePlanningSnapshot();
+            sessionScanSnapshot = BuildSessionScanSnapshot(BuildCheckOnlyScanKey());
         }
 
         private bool HasReusableFreshCheckOnlyScan()
         {
             return hasFreshCheckOnlyScan
+                && sessionScanSnapshot != null
                 && String.Equals(freshCheckOnlyScanKey, BuildCheckOnlyScanKey(), StringComparison.Ordinal);
         }
 
@@ -1465,17 +1465,7 @@ namespace CK3MPS
 
         private void InvalidatePlanningSnapshot()
         {
-            hasPlanningSnapshot = false;
-            planningSnapshotKey = "";
-            planningPlannedStepCount = 0;
-            planningPathValidationRequired = false;
-            planningQuarantineRequired = false;
-            for (int i = 0; i < planningDetails.Length; i++)
-            {
-                planningShouldRun[i] = false;
-                planningDetailsReady[i] = false;
-                planningDetails[i] = null;
-            }
+            sessionScanSnapshot = null;
         }
 
         private string FormatLogLine(string message)

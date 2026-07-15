@@ -178,10 +178,10 @@ namespace CK3MPS
 
         private List<PreviewLine> BuildStabilizationPreviewLines()
         {
-            EnsurePlanningSnapshot();
+            SessionScanSnapshot snapshot = EnsurePlanningSnapshot();
             List<PreviewLine> lines = new List<PreviewLine>();
-            int selectedOptional = CountSelectedChecklistSteps();
-            int plannedSteps = CountPlannedStabilizeSteps();
+            int selectedOptional = snapshot.SelectedChecklistCount;
+            int plannedSteps = snapshot.PlannedStepCount;
             List<int> changingSteps = new List<int>();
             List<int> reportSteps = new List<int>();
             List<int> skippedSteps = new List<int>();
@@ -213,11 +213,11 @@ namespace CK3MPS
 
             lines.Add(new PreviewLine("blank", ""));
             lines.Add(new PreviewLine("header", "Core actions that will run"));
-            if (ShouldRunPathValidationCoreStep())
+            if (snapshot.PathValidationRequired)
                 lines.Add(new PreviewLine("safe", "- Validate the selected CK3 folders and confirm CK3/Paradox Launcher are closed."));
-            if (ShouldRunQuarantineCoreStep())
+            if (snapshot.QuarantineRequired)
                 lines.Add(new PreviewLine("safe", "- Create or reuse the current quarantine run and record rollback data before changing files, registry values or system snapshots."));
-            if (!ShouldRunPathValidationCoreStep() && !ShouldRunQuarantineCoreStep())
+            if (!snapshot.PathValidationRequired && !snapshot.QuarantineRequired)
                 lines.Add(new PreviewLine("warn", "- No selected step needs to run right now."));
 
             lines.Add(new PreviewLine("blank", ""));
@@ -384,29 +384,22 @@ namespace CK3MPS
 
         private int CountSelectedChecklistSteps()
         {
-            int count = 0;
-            for (int i = 0; i < steps.Items.Count; i++)
-                if (IsStepChecked(i))
-                    count++;
-            return count;
+            return EnsurePlanningSnapshot().SelectedChecklistCount;
         }
 
         private int CountPlannedStabilizeSteps()
         {
-            EnsurePlanningSnapshot();
-            return planningPlannedStepCount;
+            return EnsurePlanningSnapshot().PlannedStepCount;
         }
 
         private bool ShouldRunPathValidationCoreStep()
         {
-            EnsurePlanningSnapshot();
-            return planningPathValidationRequired;
+            return EnsurePlanningSnapshot().PathValidationRequired;
         }
 
         private bool ShouldRunQuarantineCoreStep()
         {
-            EnsurePlanningSnapshot();
-            return planningQuarantineRequired;
+            return EnsurePlanningSnapshot().QuarantineRequired;
         }
 
         private bool ShouldRunSelectedStabilizeStep(int index)
@@ -414,11 +407,8 @@ namespace CK3MPS
             if (!IsStepChecked(index))
                 return false;
 
-            EnsurePlanningSnapshot();
-            if (index >= 0 && index < planningShouldRun.Length)
-                return planningShouldRun[index];
-
-            return ComputeShouldRunSelectedStabilizeStep(index);
+            StepPlanSnapshot step = GetSessionStepSnapshot(index);
+            return step != null ? step.ShouldRun : ComputeShouldRunSelectedStabilizeStep(index);
         }
 
         private bool ComputeShouldRunSelectedStabilizeStep(int index)
@@ -533,6 +523,15 @@ namespace CK3MPS
 
         private string GetStabilizeStepSkipReason(int index)
         {
+            StepPlanSnapshot step = GetSessionStepSnapshot(index);
+            if (step != null && !String.IsNullOrEmpty(step.SkipReason))
+                return step.SkipReason;
+
+            return GetStabilizeStepSkipReasonCore(index);
+        }
+
+        private string GetStabilizeStepSkipReasonCore(int index)
+        {
             switch (index)
             {
                 case 5:
@@ -596,17 +595,10 @@ namespace CK3MPS
 
         private List<string> BuildStepPreviewDetails(int index)
         {
-            EnsurePlanningSnapshot();
-            if (index >= 0 && index < planningDetails.Length && planningDetailsReady[index] && planningDetails[index] != null)
-                return new List<string>(planningDetails[index]);
-
-            List<string> details = ComputeStepPreviewDetails(index);
-            if (index >= 0 && index < planningDetails.Length)
-            {
-                planningDetails[index] = new List<string>(details);
-                planningDetailsReady[index] = true;
-            }
-            return details;
+            StepPlanSnapshot step = GetSessionStepSnapshot(index);
+            if (step != null && step.PreviewDetails != null)
+                return new List<string>(step.PreviewDetails);
+            return ComputeStepPreviewDetails(index);
         }
 
         private List<string> ComputeStepPreviewDetails(int index)
@@ -772,35 +764,67 @@ namespace CK3MPS
             return details;
         }
 
-        private void EnsurePlanningSnapshot()
+        private StepPlanSnapshot GetSessionStepSnapshot(int index)
         {
-            string key = BuildCheckOnlyScanKey();
-            if (hasPlanningSnapshot && String.Equals(planningSnapshotKey, key, StringComparison.Ordinal))
-                return;
+            SessionScanSnapshot snapshot = EnsurePlanningSnapshot();
+            if (snapshot == null || index < 0 || index >= snapshot.Steps.Length)
+                return null;
+            return snapshot.Steps[index];
+        }
 
-            planningSnapshotKey = key;
-            hasPlanningSnapshot = true;
-            planningPlannedStepCount = 0;
-            planningPathValidationRequired = false;
-            planningQuarantineRequired = false;
-            for (int i = 0; i < planningShouldRun.Length; i++)
+        private SessionScanSnapshot BuildSessionScanSnapshot(string key)
+        {
+            SessionScanSnapshot snapshot = new SessionScanSnapshot();
+            snapshot.ScanKey = key ?? "";
+
+            for (int i = 0; i < steps.Items.Count && i < snapshot.Steps.Length; i++)
             {
-                planningShouldRun[i] = ComputeShouldRunSelectedStabilizeStep(i);
-                planningDetailsReady[i] = false;
-                planningDetails[i] = null;
-                if (!IsStepChecked(i) || i == 1 || i == 2 || !planningShouldRun[i])
+                StepPlanSnapshot step = new StepPlanSnapshot();
+                step.Index = i;
+                step.Selected = IsStepChecked(i);
+                step.ChangesState = StepChangesState(i);
+                step.NeedsQuarantine = StepNeedsQuarantine(i);
+                snapshot.Steps[i] = step;
+
+                if (!step.Selected)
                     continue;
 
-                planningPlannedStepCount++;
-                planningPathValidationRequired = true;
-                if (StepNeedsQuarantine(i))
-                    planningQuarantineRequired = true;
+                snapshot.SelectedChecklistCount++;
+                step.ShouldRun = ComputeShouldRunSelectedStabilizeStep(i);
+                if (step.ShouldRun)
+                {
+                    if (i != 1 && i != 2)
+                    {
+                        snapshot.PlannedStepCount++;
+                        snapshot.PathValidationRequired = true;
+                        if (step.NeedsQuarantine)
+                            snapshot.QuarantineRequired = true;
+                    }
+
+                    step.PreviewDetails = ComputeStepPreviewDetails(i);
+                }
+                else
+                {
+                    step.SkipReason = GetStabilizeStepSkipReasonCore(i);
+                }
             }
 
-            if (planningPathValidationRequired)
-                planningPlannedStepCount++;
-            if (planningQuarantineRequired)
-                planningPlannedStepCount++;
+            if (snapshot.PathValidationRequired)
+                snapshot.PlannedStepCount++;
+            if (snapshot.QuarantineRequired)
+                snapshot.PlannedStepCount++;
+
+            return snapshot;
+        }
+
+        private SessionScanSnapshot EnsurePlanningSnapshot()
+        {
+            string key = BuildCheckOnlyScanKey();
+            if (sessionScanSnapshot != null && String.Equals(sessionScanSnapshot.ScanKey, key, StringComparison.Ordinal))
+                return sessionScanSnapshot;
+
+            sessionScanSnapshot = BuildSessionScanSnapshot(key);
+            return sessionScanSnapshot;
         }
 
         private bool RuntimeVerificationReportNeedsUpdate()
