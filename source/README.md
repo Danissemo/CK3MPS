@@ -5,7 +5,8 @@ The code is split by what each part does so the project is easy to inspect witho
 - `Start.cs` - starts the app and asks Windows for administrator rights.
 - `AppState.cs` - stores app paths, version, shared fields and startup setup.
 - `MainWindow.cs` - builds the visible window, buttons, presets and progress bar.
-- `CheckOnly.cs` - runs checks without changing settings.
+- `CheckOnly.cs` - runs the read-only Scan flow without changing settings.
+- `Preview.cs` - builds the Review window and detailed before-apply plan text.
 - `Launchers.cs` - handles Steam and Paradox Launcher setup.
 - `GameSettings.cs` - applies CK3 settings and protects them from rollback.
 - `Cleanup.cs` - cleans CK3 documents, cache, reports, mods and suspicious files.
