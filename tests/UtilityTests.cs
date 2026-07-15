@@ -82,10 +82,10 @@ internal static class UtilityTests
     {
         string hashA = new string('A', 64).ToLowerInvariant();
         string hashB = new string('B', 64).ToLowerInvariant();
-        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA, "CK3MPS-v0.2.zip") == hashA, "single-hash checksum asset is accepted");
-        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  CK3MPS-v0.2.zip\r\n" + hashB + "  CK3MPS.exe", "CK3MPS-v0.2.zip") == hashA, "named checksum line matches the requested asset");
-        Assert(ChecksumUtilities.ExtractExpectedSha256("CK3MPS.exe " + hashB + "\r\nCK3MPS-v0.2.zip " + hashA, "CK3MPS.exe") == hashB, "reversed checksum line matches the requested asset");
-        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  other-file.zip", "CK3MPS-v0.2.zip") == "", "foreign checksum line is rejected");
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA, "CK3MPS-v0.3.zip") == hashA, "single-hash checksum asset is accepted");
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  CK3MPS-v0.3.zip\r\n" + hashB + "  CK3MPS.exe", "CK3MPS-v0.3.zip") == hashA, "named checksum line matches the requested asset");
+        Assert(ChecksumUtilities.ExtractExpectedSha256("CK3MPS.exe " + hashB + "\r\nCK3MPS-v0.3.zip " + hashA, "CK3MPS.exe") == hashB, "reversed checksum line matches the requested asset");
+        Assert(ChecksumUtilities.ExtractExpectedSha256(hashA + "  other-file.zip", "CK3MPS-v0.3.zip") == "", "foreign checksum line is rejected");
     }
 
     private static void TestRecommendedPresetSafety()
@@ -104,10 +104,10 @@ internal static class UtilityTests
 
     private static void TestVersionComparison()
     {
-        Assert(VersionUtilities.IsNewerRelease("v0.2-beta", "v0.1-beta"), "v0.2 should be newer than v0.1");
+        Assert(VersionUtilities.IsNewerRelease("v0.3", "v0.2"), "v0.3 should be newer than v0.2");
         Assert(VersionUtilities.IsNewerRelease("v1.0.1", "v1.0.0"), "patch version should compare");
-        Assert(!VersionUtilities.IsNewerRelease("v0.1-beta", "v0.1-beta"), "same version should not be newer");
-        Assert(!VersionUtilities.IsNewerRelease("v0.1-beta", "v0.2-beta"), "older version should not be newer");
+        Assert(!VersionUtilities.IsNewerRelease("v0.3", "v0.3"), "same version should not be newer");
+        Assert(!VersionUtilities.IsNewerRelease("v0.2", "v0.3"), "older version should not be newer");
     }
 
     private static void TestPathNormalizationAndValidation()
