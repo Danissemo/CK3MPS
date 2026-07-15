@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.3
+
 - Reworked the main workflow around `Scan`, `Review`, and `Apply Settings`, with session reuse so a fresh scan can feed apply without repeating the same heavy checks.
 - Reduced unnecessary work by skipping already-applied settings, avoiding restore/history writes when nothing actually changed, and keeping life logs/report writes focused on real actions.
 - Improved firewall, runtime verification, support package, and parity-manifest behavior so repeated runs do not keep rewriting unchanged state.

@@ -10,8 +10,9 @@ Recommended first run:
 
 1. Close CK3 and Paradox Launcher.
 2. Select `Recommended`.
-3. Click `Stabilize CK3`.
-4. Run `Check Only`.
+3. Click `Scan`.
+4. Open `Review`.
+5. Click `Apply Settings`.
 
 CK3MPS writes compact reports to:
 

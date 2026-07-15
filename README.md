@@ -22,9 +22,9 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 | --- | --- |
 | ![Main window](assets/screenshots/main-window.png) | ![Restore](assets/screenshots/restore.png) |
 
-| Check only | Generated report |
+| Scan | Generated report |
 | --- | --- |
-| ![Check only](assets/screenshots/check-only.png) | ![Report](assets/screenshots/report.png) |
+| ![Scan](assets/screenshots/check-only.png) | ![Report](assets/screenshots/report.png) |
 
 ## What It Does
 
@@ -40,7 +40,7 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 CK3MPS is built for local Windows machines and should be run intentionally.
 
 - Run it as administrator when applying stabilization.
-- Use **Check Only** when you only want diagnostics.
+- Run **Scan** when you only want diagnostics and review without applying changes.
 - Keep your CK3 saves. The cleanup logic is designed to preserve saves.
 - Close CK3 before applying game or launcher settings.
 - Review any warning in the final readiness report before starting multiplayer.
@@ -57,9 +57,10 @@ CK3MPS is built for local Windows machines and should be run intentionally.
 1. Close CK3 and Paradox Launcher.
 2. Run `CK3MPS.exe` as administrator.
 3. Select **Recommended** for a balanced MP setup, or **Maximum** for the broadest stabilization pass.
-4. Run **Stabilize CK3**.
-5. Run **Check Only**.
-6. Start CK3 and re-check if you want to confirm settings persisted after launch.
+4. Run **Scan**.
+5. Open **Review** and inspect the planned actions.
+6. Run **Apply Settings**.
+7. Start CK3 and re-scan if you want to confirm settings persisted after launch.
 
 ## Presets
 
@@ -89,7 +90,7 @@ Requirements:
 - .NET Framework 4.8 targeting pack
 
 ```powershell
-.\scripts\build.ps1
+.\scripts\build.ps1 -UpdateReleaseArtifacts
 ```
 
 The runnable executable is copied to:
