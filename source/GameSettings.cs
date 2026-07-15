@@ -66,6 +66,8 @@ namespace CK3MPS
 
         private string CurrentGraphicsProfile()
         {
+            if (executionSnapshotActive)
+                return String.IsNullOrEmpty(executionGraphicsProfile) ? "Stability Low" : executionGraphicsProfile;
             string value = Convert.ToString(graphicsProfileBox.SelectedItem);
             return String.IsNullOrEmpty(value) ? "Stability Low" : value;
         }

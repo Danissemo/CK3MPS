@@ -815,6 +815,7 @@ namespace CK3MPS
                 }
 
                 bool shouldStartGuard = IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16);
+                CaptureExecutionSnapshot();
                 await Task.Run(delegate
                 {
                     RunCoreStabilizeStep(1, "Safety: checking paths", CheckBasePaths, ShouldRunPathValidationCoreStep());
@@ -878,6 +879,7 @@ namespace CK3MPS
             }
             finally
             {
+                ClearExecutionSnapshot();
                 SetBusy(false);
             }
         }
@@ -899,6 +901,7 @@ namespace CK3MPS
                     return;
                 }
 
+                CaptureExecutionSnapshot();
                 await Task.Run(delegate { RunCheckOnlyScanCore(true, true); });
                 SetStatusText("Check complete. Every checklist item was checked in read-only mode.");
                 AppendRunHistory("check_only", lastReadinessFailures == 0 ? "ready" : "completed_with_blockers");
@@ -910,6 +913,7 @@ namespace CK3MPS
             }
             finally
             {
+                ClearExecutionSnapshot();
                 SetBusy(false);
             }
         }

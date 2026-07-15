@@ -610,6 +610,8 @@ namespace CK3MPS
 
         private bool IsStepChecked(int index)
         {
+            if (executionSnapshotActive && index >= 0 && index < executionStepChecks.Length)
+                return executionStepChecks[index];
             return index >= 0 && index < steps.Items.Count && steps.GetItemChecked(index);
         }
 
@@ -1359,11 +1361,37 @@ namespace CK3MPS
             sb.AppendLine("root=" + NullText(stabilizerRoot));
             sb.AppendLine("game=" + NullText(ck3Install));
             sb.AppendLine("settings=" + NullText(ck3Docs));
-            sb.AppendLine("preset=" + NullText(Convert.ToString(presetBox.SelectedItem)));
+            sb.AppendLine("preset=" + NullText(CurrentPresetName()));
             sb.AppendLine("graphics=" + CurrentGraphicsProfile());
             for (int i = 0; i < steps.Items.Count; i++)
                 sb.AppendLine("step_" + i + "=" + (IsStepChecked(i) ? "1" : "0"));
             return sb.ToString();
+        }
+
+        private string CurrentPresetName()
+        {
+            if (executionSnapshotActive)
+                return executionPreset;
+            return Convert.ToString(presetBox.SelectedItem);
+        }
+
+        private void CaptureExecutionSnapshot()
+        {
+            executionSnapshotActive = false;
+            executionPreset = Convert.ToString(presetBox.SelectedItem) ?? "";
+            executionGraphicsProfile = Convert.ToString(graphicsProfileBox.SelectedItem) ?? "";
+            Array.Clear(executionStepChecks, 0, executionStepChecks.Length);
+            for (int i = 0; i < steps.Items.Count && i < executionStepChecks.Length; i++)
+                executionStepChecks[i] = steps.GetItemChecked(i);
+            executionSnapshotActive = true;
+        }
+
+        private void ClearExecutionSnapshot()
+        {
+            executionSnapshotActive = false;
+            executionPreset = "";
+            executionGraphicsProfile = "";
+            Array.Clear(executionStepChecks, 0, executionStepChecks.Length);
         }
 
         private void InvalidatePlanningSnapshot()

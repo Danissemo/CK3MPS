@@ -121,6 +121,10 @@ namespace CK3MPS
         private bool uiLogFlushScheduled;
         private int uiLogLinesSinceLastScroll;
         private bool busyUi;
+        private bool executionSnapshotActive;
+        private string executionPreset = "";
+        private string executionGraphicsProfile = "";
+        private readonly bool[] executionStepChecks = new bool[ExpectedStepCount];
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool hasFreshCheckOnlyScan;
         private string freshCheckOnlyScanKey = "";
