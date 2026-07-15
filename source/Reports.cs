@@ -112,36 +112,45 @@ namespace CK3MPS
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_clean_save_note.txt");
-                string bestClean = FindBestCleanManualSave();
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 clean save launch note");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine();
-                sb.AppendLine("Do not use Continue for serious MP if it points to autosave/recovery/backup/desync-like state.");
-                sb.AppendLine("Maximum moves autosave/recovery/backup/desync-like save files to quarantine when a clean manual save exists.");
-                sb.AppendLine("Maximum also reports Steam Cloud remote save cache and quarantines suspicious remote saves when Steam is closed.");
-                sb.AppendLine("Recommended clean manual save: " + NullText(Path.GetFileName(bestClean)));
-                sb.AppendLine("Recommended clean manual save path: " + NullText(bestClean));
-                sb.AppendLine("Recommended clean manual save hash: " + FileHashOrMissing(bestClean));
-                sb.AppendLine("Recommended clean manual save readable: " + YesNo(BestCleanSaveReadable()));
-                sb.AppendLine("Recommended clean manual save version: " + NullText(ExtractSaveMetaValue(bestClean, "version")));
-                sb.AppendLine("Recommended clean manual save date: " + NullText(ExtractSaveMetaValue(bestClean, "meta_date")));
-                sb.AppendLine("Recommended clean manual save player: " + NullText(ExtractSaveMetaValue(bestClean, "meta_player_name")));
-                sb.AppendLine("Recommended clean manual save title: " + NullText(ExtractSaveMetaValue(bestClean, "meta_title_name")));
-                sb.AppendLine();
-                sb.AppendLine("Start flow");
-                sb.AppendLine("- Open CK3.");
-                sb.AppendLine("- Use Load Game, not Continue.");
-                sb.AppendLine("- Load the recommended local manual save.");
-                sb.AppendLine("- Create a fresh multiplayer lobby and wait for all players before unpausing.");
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Clean save launch note written: " + path);
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildCleanSaveLaunchNoteText(),
+                    "FILE Clean save launch note written: ",
+                    "INFO Clean save launch note already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
                 Log("WARN Clean save launch note could not be written: " + ex.Message);
             }
+        }
+
+        private string BuildCleanSaveLaunchNoteText()
+        {
+            string bestClean = FindBestCleanManualSave();
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 clean save launch note");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("Do not use Continue for serious MP if it points to autosave/recovery/backup/desync-like state.");
+            sb.AppendLine("Maximum moves autosave/recovery/backup/desync-like save files to quarantine when a clean manual save exists.");
+            sb.AppendLine("Maximum also reports Steam Cloud remote save cache and quarantines suspicious remote saves when Steam is closed.");
+            sb.AppendLine("Recommended clean manual save: " + NullText(Path.GetFileName(bestClean)));
+            sb.AppendLine("Recommended clean manual save path: " + NullText(bestClean));
+            sb.AppendLine("Recommended clean manual save hash: " + FileHashOrMissing(bestClean));
+            sb.AppendLine("Recommended clean manual save readable: " + YesNo(BestCleanSaveReadable()));
+            sb.AppendLine("Recommended clean manual save version: " + NullText(ExtractSaveMetaValue(bestClean, "version")));
+            sb.AppendLine("Recommended clean manual save date: " + NullText(ExtractSaveMetaValue(bestClean, "meta_date")));
+            sb.AppendLine("Recommended clean manual save player: " + NullText(ExtractSaveMetaValue(bestClean, "meta_player_name")));
+            sb.AppendLine("Recommended clean manual save title: " + NullText(ExtractSaveMetaValue(bestClean, "meta_title_name")));
+            sb.AppendLine();
+            sb.AppendLine("Start flow");
+            sb.AppendLine("- Open CK3.");
+            sb.AppendLine("- Use Load Game, not Continue.");
+            sb.AppendLine("- Load the recommended local manual save.");
+            sb.AppendLine("- Create a fresh multiplayer lobby and wait for all players before unpausing.");
+            return sb.ToString();
         }
 
         private void CheckLatestOosReportReadOnly()
@@ -162,6 +171,29 @@ namespace CK3MPS
         {
             string latest = FindLatestOosMetadataFile();
             string output = StabilizerFile("ck3_stabilizer_latest_oos_summary.txt");
+            List<string> signalLines;
+            string summary = BuildLatestOosSummaryText(latest, out signalLines);
+            WriteTextFileIfMeaningfullyChanged(
+                output,
+                summary,
+                String.IsNullOrEmpty(latest) ? "OK   No OOS metadata found. Empty OOS summary written: " : "OK   Latest OOS summary written: ",
+                String.IsNullOrEmpty(latest) ? "INFO No OOS metadata summary change needed: " : "INFO Latest OOS summary already up to date: ",
+                true);
+            WriteOosHistoryTimeline();
+
+            if (String.IsNullOrEmpty(latest))
+                return;
+
+            LogOosMetadataSummary(latest);
+            foreach (string line in signalLines)
+                Log("INFO " + line);
+            foreach (string line in BuildOosActionPlan(signalLines))
+                Log("INFO Action: " + line);
+        }
+
+        private string BuildLatestOosSummaryText(string latest, out List<string> signalLines)
+        {
+            signalLines = new List<string>();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 latest OOS summary");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -171,10 +203,7 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(latest))
             {
                 sb.AppendLine("No OOS metadata found in active OOS folder or latest quarantine.");
-                File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
-                WriteOosHistoryTimeline();
-                Log("OK   No OOS metadata found. Empty OOS summary written: " + output);
-                return;
+                return sb.ToString();
             }
 
             sb.AppendLine("Metadata: " + latest);
@@ -183,22 +212,14 @@ namespace CK3MPS
                 sb.AppendLine(line);
             sb.AppendLine();
             sb.AppendLine("Nearby log analysis");
-            List<string> signalLines = new List<string>(AnalyzeOosSiblingLogs(latest));
+            signalLines = new List<string>(AnalyzeOosSiblingLogs(latest));
             foreach (string line in signalLines)
                 sb.AppendLine(line);
             sb.AppendLine();
             sb.AppendLine("Suggested action");
             foreach (string line in BuildOosActionPlan(signalLines))
                 sb.AppendLine(line);
-
-            File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
-            Log("OK   Latest OOS summary written: " + output);
-            WriteOosHistoryTimeline();
-            LogOosMetadataSummary(latest);
-            foreach (string line in signalLines)
-                Log("INFO " + line);
-            foreach (string line in BuildOosActionPlan(signalLines))
-                Log("INFO Action: " + line);
+            return sb.ToString();
         }
 
         private string FindLatestOosMetadataFile()
@@ -262,6 +283,16 @@ namespace CK3MPS
         private void WriteOosHistoryTimeline()
         {
             string path = StabilizerFile("ck3_stabilizer_oos_history.txt");
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                BuildOosHistoryTimelineText(),
+                "FILE OOS history timeline written: ",
+                "INFO OOS history timeline already up to date: ",
+                true);
+        }
+
+        private string BuildOosHistoryTimelineText()
+        {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 OOS history timeline");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -283,9 +314,7 @@ namespace CK3MPS
                     sb.AppendLine("- " + line);
                 sb.AppendLine();
             }
-
-            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-            Log("FILE OOS history timeline written: " + path);
+            return sb.ToString();
         }
 
         private IEnumerable<string> BuildOosTypeSummary(List<string> files)
@@ -463,6 +492,17 @@ namespace CK3MPS
         private void WriteMultiplayerParityManifest()
         {
             string path = StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt");
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                BuildMultiplayerParityManifestText(),
+                "OK   MP parity manifest written: ",
+                "INFO MP parity manifest already up to date: ",
+                true);
+            WriteOosRiskScoreReport();
+        }
+
+        private string BuildMultiplayerParityManifestText()
+        {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 multiplayer parity manifest");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -539,14 +579,25 @@ namespace CK3MPS
             sb.AppendLine("- appmanifest_1158310.acf: " + FileHashOrMissing(appManifest));
             sb.AppendLine("- dlc_load.json: " + FileHashOrMissing(Path.Combine(ck3Docs, "dlc_load.json")));
             sb.AppendLine("- pdx_settings.txt: " + FileHashOrMissing(Path.Combine(ck3Docs, "pdx_settings.txt")));
-            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-            Log("OK   MP parity manifest written: " + path);
-            WriteOosRiskScoreReport();
+            return sb.ToString();
         }
 
         private void WriteOosRiskScoreReport()
         {
             string path = StabilizerFile("ck3_stabilizer_oos_risk_score.txt");
+            string content = BuildOosRiskScoreReportText();
+            string level = ExtractRiskLevel(content);
+            string score = ExtractRiskValue(content);
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                content,
+                "RISK  OOS risk score: " + level + " (" + score + "). Report: ",
+                "INFO OOS risk score already up to date: ",
+                true);
+        }
+
+        private string BuildOosRiskScoreReportText()
+        {
             List<string> risks = new List<string>();
             int score = 0;
 
@@ -602,8 +653,19 @@ namespace CK3MPS
             foreach (string action in BuildRiskActionPlan(risks))
                 sb.AppendLine("- " + action);
             sb.AppendLine("- Check ck3_stabilizer_session_verdict.txt before launching the serious MP session.");
-            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-            Log("RISK  OOS risk score: " + level + " (" + score + "). Report: " + path);
+            return sb.ToString();
+        }
+
+        private string ExtractRiskLevel(string text)
+        {
+            Match match = Regex.Match(text ?? "", @"(?im)^Risk:\s+([A-Z]+)\s+\(");
+            return match.Success ? match.Groups[1].Value : "UNKNOWN";
+        }
+
+        private string ExtractRiskValue(string text)
+        {
+            Match match = Regex.Match(text ?? "", @"(?im)^Risk:\s+[A-Z]+\s+\((\d+)\)");
+            return match.Success ? match.Groups[1].Value : "?";
         }
 
         private IEnumerable<string> BuildRiskActionPlan(List<string> risks)
@@ -651,6 +713,16 @@ namespace CK3MPS
             WriteCleanSaveLaunchNote();
 
             string index = StabilizerFile("ck3_stabilizer_evidence_pack_index.txt");
+            WriteTextFileIfMeaningfullyChanged(
+                index,
+                BuildOosEvidencePackIndexText(),
+                "FILE OOS evidence pack index written: ",
+                "INFO OOS evidence pack index already up to date: ",
+                true);
+        }
+
+        private string BuildOosEvidencePackIndexText()
+        {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 OOS evidence summary");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -689,16 +761,10 @@ namespace CK3MPS
             sb.AppendLine("- system.log: " + FileTimeHashLine(Path.Combine(ck3Docs, "logs", "system.log")));
             string latestOos = FindLatestOosMetadataFile();
             if (!String.IsNullOrEmpty(latestOos))
-            {
                 sb.AppendLine("- latest OOS metadata: " + latestOos + " | " + FileTimeHashLine(latestOos));
-            }
             else
-            {
                 sb.AppendLine("- latest OOS metadata: (none)");
-            }
-
-            File.WriteAllText(index, sb.ToString(), Encoding.UTF8);
-            Log("FILE OOS evidence pack index written: " + index);
+            return sb.ToString();
         }
 
         private void CopyEvidenceFile(string source, string packDir, StringBuilder sb)

@@ -438,6 +438,10 @@ namespace CK3MPS
                     return DlcLoadNeedsRewrite();
                 case 15:
                     return PdxSettingsNeedsRewrite();
+                case 16:
+                    return RuntimeVerificationReportNeedsUpdate();
+                case 17:
+                    return StableGameRuleProfileNeedsUpdate();
                 case 18:
                     return Directory.Exists(Path.Combine(ck3Docs, "player"));
                 case 19:
@@ -452,6 +456,14 @@ namespace CK3MPS
                     return SaveHygieneNeedsChanges();
                 case 24:
                     return FolderCleanupNeedsChanges();
+                case 25:
+                    return LatestOosSummaryNeedsUpdate() || OosHistoryTimelineNeedsUpdate();
+                case 26:
+                    return OosEvidencePackNeedsUpdate();
+                case 27:
+                    return OosPreventionProtocolNeedsUpdate();
+                case 28:
+                    return MultiplayerParityOutputsNeedUpdate();
                 default:
                     return true;
             }
@@ -526,6 +538,10 @@ namespace CK3MPS
                     return "dlc_load.json already contains no active mods, no disabled DLC entries, and no UTF-8 BOM.";
                 case 15:
                     return "pdx_settings.txt already matches the selected CK3MPS profile for " + CurrentGraphicsProfile() + ".";
+                case 16:
+                    return "runtime verification output already matches the current runtime and profile state.";
+                case 17:
+                    return "the in-game MP rules reference file is already up to date.";
                 case 18:
                     return "the CK3 player UI state folder is already absent.";
                 case 19:
@@ -540,6 +556,14 @@ namespace CK3MPS
                     return "no suspicious Continue pointer, local save or Steam Cloud save needs quarantine right now.";
                 case 24:
                     return "the selected CK3 Documents cleanup targets are already absent and CK3 profile files are already stable.";
+                case 25:
+                    return "the latest OOS summary and history already match current OOS evidence.";
+                case 26:
+                    return "the evidence pack files already match the current host-side state.";
+                case 27:
+                    return "the OOS prevention protocol is already up to date.";
+                case 28:
+                    return "the parity manifest and OOS risk report already match the current machine state.";
             }
 
             return "already in target state.";
@@ -635,10 +659,10 @@ namespace CK3MPS
                         details.Add(detail);
                     break;
                 case 16:
-                    details.Add("Write runtime verification and settings-guard report files under `" + stabilizerRoot + "`.");
+                    details.Add("Update `" + StabilizerFile("ck3_stabilizer_runtime_verification.txt") + "` only if the runtime/profile snapshot changed.");
                     break;
                 case 17:
-                    details.Add("Write the in-game MP rules reference file `" + StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt") + "`.");
+                    details.Add("Update the in-game MP rules reference file `" + StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt") + "` only if its guidance content changed.");
                     break;
                 case 18:
                     details.Add("Move `" + Path.Combine(ck3Docs, "player") + "` to quarantine so CK3 recreates fresh UI state.");
@@ -673,20 +697,122 @@ namespace CK3MPS
                     details.Add("Write the folder cleanup report `" + StabilizerFile("ck3_stabilizer_folder_cleanup.txt") + "`.");
                     break;
                 case 25:
-                    details.Add("Analyze the latest OOS metadata and write the summary report if OOS evidence exists.");
+                    if (LatestOosSummaryNeedsUpdate())
+                        details.Add("Update the latest OOS summary `" + StabilizerFile("ck3_stabilizer_latest_oos_summary.txt") + "` from the newest OOS metadata and nearby logs.");
+                    if (OosHistoryTimelineNeedsUpdate())
+                        details.Add("Update the OOS history timeline `" + StabilizerFile("ck3_stabilizer_oos_history.txt") + "` from all discovered OOS metadata files.");
                     break;
                 case 26:
-                    details.Add("Write the evidence pack index `" + StabilizerFile("ck3_stabilizer_evidence_pack_index.txt") + "`.");
+                    if (PortableTransferNotesNeedUpdate())
+                        details.Add("Update portable transfer notes `" + StabilizerFile("ck3_stabilizer_portable_notes.txt") + "`.");
+                    if (ExpectedProfileSnapshotForEvidencePackNeedsUpdate())
+                        details.Add("Update expected profile snapshot `" + StabilizerFile("ck3_stabilizer_expected_profile_hashes.txt") + "` for reason `evidence pack`.");
+                    if (RuntimeVerificationReportNeedsUpdate())
+                        details.Add("Update runtime verification report `" + StabilizerFile("ck3_stabilizer_runtime_verification.txt") + "`.");
+                    if (PreSessionPlanNeedsUpdate())
+                        details.Add("Update pre-session plan `" + StabilizerFile("ck3_stabilizer_pre_session_plan.txt") + "`.");
+                    if (SessionVerdictReportNeedsUpdate())
+                        details.Add("Update session verdict `" + StabilizerFile("ck3_stabilizer_session_verdict.txt") + "`.");
+                    if (CleanSaveLaunchNoteNeedsUpdate())
+                        details.Add("Update clean save launch note `" + StabilizerFile("ck3_stabilizer_clean_save_note.txt") + "`.");
+                    if (OosEvidencePackIndexNeedsUpdate())
+                        details.Add("Update evidence pack index `" + StabilizerFile("ck3_stabilizer_evidence_pack_index.txt") + "`.");
                     break;
                 case 27:
-                    details.Add("Write the OOS prevention protocol `" + StabilizerFile("ck3_stabilizer_oos_protocol.txt") + "`.");
+                    details.Add("Update the OOS prevention protocol `" + StabilizerFile("ck3_stabilizer_oos_protocol.txt") + "` only if the protocol text changed.");
                     break;
                 case 28:
-                    details.Add("Write the multiplayer parity manifest `" + StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt") + "` and risk score report.");
+                    if (MultiplayerParityManifestNeedsUpdate())
+                        details.Add("Update multiplayer parity manifest `" + StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt") + "`.");
+                    if (OosRiskScoreReportNeedsUpdate())
+                        details.Add("Update OOS risk score report `" + StabilizerFile("ck3_stabilizer_oos_risk_score.txt") + "`.");
                     break;
             }
 
             return details;
+        }
+
+        private bool RuntimeVerificationReportNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_runtime_verification.txt"), BuildRuntimeVerificationReportText(), true);
+        }
+
+        private bool StableGameRuleProfileNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt"), BuildStableGameRuleProfileText(), true);
+        }
+
+        private bool LatestOosSummaryNeedsUpdate()
+        {
+            List<string> signalLines;
+            string latest = FindLatestOosMetadataFile();
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_latest_oos_summary.txt"), BuildLatestOosSummaryText(latest, out signalLines), true);
+        }
+
+        private bool OosHistoryTimelineNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_oos_history.txt"), BuildOosHistoryTimelineText(), true);
+        }
+
+        private bool PortableTransferNotesNeedUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_portable_notes.txt"), BuildPortableTransferNotesText(), true);
+        }
+
+        private bool ExpectedProfileSnapshotForEvidencePackNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_expected_profile_hashes.txt"), BuildExpectedProfileSnapshotText("evidence pack"), true);
+        }
+
+        private bool PreSessionPlanNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_pre_session_plan.txt"), BuildPreSessionPlanText(), true);
+        }
+
+        private bool SessionVerdictReportNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_session_verdict.txt"), BuildSessionVerdictReportText(), true);
+        }
+
+        private bool CleanSaveLaunchNoteNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_clean_save_note.txt"), BuildCleanSaveLaunchNoteText(), true);
+        }
+
+        private bool OosEvidencePackIndexNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"), BuildOosEvidencePackIndexText(), true);
+        }
+
+        private bool OosEvidencePackNeedsUpdate()
+        {
+            return PortableTransferNotesNeedUpdate()
+                || ExpectedProfileSnapshotForEvidencePackNeedsUpdate()
+                || RuntimeVerificationReportNeedsUpdate()
+                || PreSessionPlanNeedsUpdate()
+                || SessionVerdictReportNeedsUpdate()
+                || CleanSaveLaunchNoteNeedsUpdate()
+                || OosEvidencePackIndexNeedsUpdate();
+        }
+
+        private bool OosPreventionProtocolNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_oos_protocol.txt"), BuildOosPreventionProtocolText(), true);
+        }
+
+        private bool MultiplayerParityManifestNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt"), BuildMultiplayerParityManifestText(), true);
+        }
+
+        private bool OosRiskScoreReportNeedsUpdate()
+        {
+            return FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_oos_risk_score.txt"), BuildOosRiskScoreReportText(), true);
+        }
+
+        private bool MultiplayerParityOutputsNeedUpdate()
+        {
+            return MultiplayerParityManifestNeedsUpdate() || OosRiskScoreReportNeedsUpdate();
         }
 
         private bool FirewallRulesNeedUpdate()

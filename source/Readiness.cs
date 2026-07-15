@@ -19,6 +19,17 @@ namespace CK3MPS
         private void WriteOosPreventionProtocol()
         {
             string path = StabilizerFile("ck3_stabilizer_oos_protocol.txt");
+            string content = BuildOosPreventionProtocolText();
+            WriteTextFileIfMeaningfullyChanged(
+                path,
+                content,
+                "OK   OOS prevention protocol written: ",
+                "INFO OOS prevention protocol already up to date: ",
+                true);
+        }
+
+        private string BuildOosPreventionProtocolText()
+        {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 OOS prevention protocol");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -54,8 +65,7 @@ namespace CK3MPS
             sb.AppendLine("- Check oos_metadata_1.txt first for OOS type and machine IDs.");
             sb.AppendLine("- Run the OOS metadata analyzer and compare its action plan against the newest OOS folder.");
             sb.AppendLine("- Roll back to the earliest clean save before relation/modifier divergence.");
-            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-            Log("OK   OOS prevention protocol written: " + path);
+            return sb.ToString();
         }
 
         private void SetRegistryDword(RegistryKey root, string subKey, string name, int value)
@@ -204,31 +214,12 @@ namespace CK3MPS
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_portable_notes.txt");
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3MPS portable notes");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine();
-                sb.AppendLine("This exe is standalone for normal use on another Windows PC.");
-                sb.AppendLine("Run as administrator once if firewall/registry/adapter steps should be applied fully.");
-                sb.AppendLine();
-                sb.AppendLine("Detected on this PC");
-                sb.AppendLine("- Steam root: " + NullText(steamRoot));
-                sb.AppendLine("- CK3 install: " + NullText(ck3Install));
-                sb.AppendLine("- App manifest: " + NullText(appManifest));
-                sb.AppendLine("- Local config: " + NullText(localConfig));
-                sb.AppendLine("- Shared config: " + NullText(sharedConfig));
-                sb.AppendLine("- Steam libraries: " + String.Join("; ", DetectSteamLibraries().ToArray()));
-                sb.AppendLine("- CK3 currently running: " + YesNo(ProcessRunningExact("ck3")));
-                sb.AppendLine("- Paradox Launcher currently running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
-                sb.AppendLine();
-                sb.AppendLine("Before MP on another PC");
-                sb.AppendLine("- Run Maximum once.");
-                sb.AppendLine("- Open ck3_stabilizer_mp_parity_manifest.txt and compare Local parity fingerprint with every player.");
-                sb.AppendLine("- If CK3 is installed in a custom Steam library, this version scans libraryfolders.vdf automatically.");
-                sb.AppendLine("- Do not copy this PC's Documents CK3 folder blindly to another player; compare reports instead.");
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Portable transfer notes written: " + path);
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildPortableTransferNotesText(),
+                    "FILE Portable transfer notes written: ",
+                    "INFO Portable transfer notes already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
@@ -236,22 +227,65 @@ namespace CK3MPS
             }
         }
 
+        private string BuildPortableTransferNotesText()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS portable notes");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("This exe is standalone for normal use on another Windows PC.");
+            sb.AppendLine("Run as administrator once if firewall/registry/adapter steps should be applied fully.");
+            sb.AppendLine();
+            sb.AppendLine("Detected on this PC");
+            sb.AppendLine("- Steam root: " + NullText(steamRoot));
+            sb.AppendLine("- CK3 install: " + NullText(ck3Install));
+            sb.AppendLine("- App manifest: " + NullText(appManifest));
+            sb.AppendLine("- Local config: " + NullText(localConfig));
+            sb.AppendLine("- Shared config: " + NullText(sharedConfig));
+            sb.AppendLine("- Steam libraries: " + String.Join("; ", DetectSteamLibraries().ToArray()));
+            sb.AppendLine("- CK3 currently running: " + YesNo(ProcessRunningExact("ck3")));
+            sb.AppendLine("- Paradox Launcher currently running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
+            sb.AppendLine();
+            sb.AppendLine("Before MP on another PC");
+            sb.AppendLine("- Run Maximum once.");
+            sb.AppendLine("- Open ck3_stabilizer_mp_parity_manifest.txt and compare Local parity fingerprint with every player.");
+            sb.AppendLine("- If CK3 is installed in a custom Steam library, this version scans libraryfolders.vdf automatically.");
+            sb.AppendLine("- Do not copy this PC's Documents CK3 folder blindly to another player; compare reports instead.");
+            return sb.ToString();
+        }
+
         private void WriteRuntimeVerificationReport()
         {
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_runtime_verification.txt");
-                string debugLog = Path.Combine(ck3Docs, "logs", "debug.log");
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 runtime verification");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine();
-                sb.AppendLine("Current process state");
-                sb.AppendLine("- CK3 running: " + YesNo(ProcessRunningExact("ck3")));
-                sb.AppendLine("- Paradox Launcher running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
-                sb.AppendLine();
-                sb.AppendLine("Last known runtime signals from debug.log");
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildRuntimeVerificationReportText(),
+                    "FILE Runtime verification report written: ",
+                    "INFO Runtime verification report already up to date: ",
+                    true);
+            }
+            catch (Exception ex)
+            {
+                Log("WARN Runtime verification report could not be written: " + ex.Message);
+            }
+        }
+
+        private string BuildRuntimeVerificationReportText()
+        {
+            string debugLog = Path.Combine(ck3Docs, "logs", "debug.log");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 runtime verification");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("Current process state");
+            sb.AppendLine("- CK3 running: " + YesNo(ProcessRunningExact("ck3")));
+            sb.AppendLine("- Paradox Launcher running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
+            sb.AppendLine();
+            sb.AppendLine("Last known runtime signals from debug.log");
             sb.AppendLine("- Reached frontend/main menu: " + YesNo(LogContains(debugLog, "Setting idler 'Frontend'")));
             sb.AppendLine("- Login succeeded: " + YesNo(LogContains(debugLog, "Login succeeded")));
             sb.AppendLine("- Quit from inside game: " + YesNo(LogContains(debugLog, "Quit from inside game")));
@@ -265,20 +299,14 @@ namespace CK3MPS
             sb.AppendLine("- Last shadow telemetry: " + LastLogLineContaining(debugLog, "[telemetry] shadowmap_resolution:"));
             sb.AppendLine();
             sb.AppendLine("Profile drift check");
-                sb.AppendLine("- Core stable settings now: " + YesNo(StableCriticalSettingsOk()));
-                sb.AppendLine("- Full exact settings now: " + YesNo(StableSettingsOk()));
-                sb.AppendLine("- No active mods now: " + YesNo(NoActiveMods()));
-                sb.AppendLine("- No disabled DLCs now: " + YesNo(NoDisabledDlcs()));
-                sb.AppendLine("- Launch options stable now: " + YesNo(HasNoAsync() && !HasRiskyLaunchOptions()));
-                sb.AppendLine("- Save launch hygiene stable now: " + YesNo(SaveLaunchHygieneOk()));
-                sb.AppendLine("- Expected profile hashes match: " + YesNo(File.Exists(StabilizerFile("ck3_stabilizer_expected_profile_hashes.txt")) && ExpectedProfileSnapshotMatches()));
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Runtime verification report written: " + path);
-            }
-            catch (Exception ex)
-            {
-                Log("WARN Runtime verification report could not be written: " + ex.Message);
-            }
+            sb.AppendLine("- Core stable settings now: " + YesNo(StableCriticalSettingsOk()));
+            sb.AppendLine("- Full exact settings now: " + YesNo(StableSettingsOk()));
+            sb.AppendLine("- No active mods now: " + YesNo(NoActiveMods()));
+            sb.AppendLine("- No disabled DLCs now: " + YesNo(NoDisabledDlcs()));
+            sb.AppendLine("- Launch options stable now: " + YesNo(HasNoAsync() && !HasRiskyLaunchOptions()));
+            sb.AppendLine("- Save launch hygiene stable now: " + YesNo(SaveLaunchHygieneOk()));
+            sb.AppendLine("- Expected profile hashes match: " + YesNo(File.Exists(StabilizerFile("ck3_stabilizer_expected_profile_hashes.txt")) && ExpectedProfileSnapshotMatches()));
+            return sb.ToString();
         }
 
         private void WritePreSessionPlan()
@@ -286,42 +314,12 @@ namespace CK3MPS
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_pre_session_plan.txt");
-                string bestClean = FindBestCleanManualSave();
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 MP pre-session plan");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine();
-                sb.AppendLine("Start decision");
-                if (ActiveContinueSaveNameSuspicious())
-                    sb.AppendLine("- DO NOT start serious MP from current Continue: " + NullText(DetectActiveSaveTitle()));
-                else if (String.IsNullOrEmpty(DetectActiveSaveTitle()))
-                    sb.AppendLine("- Continue pointer is absent. Use Load Game and choose the recommended clean manual save.");
-                else
-                    sb.AppendLine("- Current Continue name is not suspicious: " + NullText(DetectActiveSaveTitle()));
-                sb.AppendLine("- Best clean manual local save candidate: " + NullText(Path.GetFileName(bestClean)));
-                sb.AppendLine("- Candidate path: " + NullText(bestClean));
-                sb.AppendLine("- Candidate hash: " + FileHashOrMissing(bestClean));
-                sb.AppendLine("- Candidate readable: " + YesNo(BestCleanSaveReadable()));
-                sb.AppendLine("- Candidate version: " + NullText(ExtractSaveMetaValue(bestClean, "version")));
-                sb.AppendLine("- Candidate date: " + NullText(ExtractSaveMetaValue(bestClean, "meta_date")));
-                sb.AppendLine("- Candidate player: " + NullText(ExtractSaveMetaValue(bestClean, "meta_player_name")));
-                sb.AppendLine("- Candidate title: " + NullText(ExtractSaveMetaValue(bestClean, "meta_title_name")));
-                sb.AppendLine();
-                sb.AppendLine("Before unpause");
-                sb.AppendLine("- Every player sends ck3_stabilizer_mp_parity_manifest.txt.");
-                sb.AppendLine("- Compare Local parity fingerprint: " + BuildLocalParityFingerprint());
-                sb.AppendLine("- Confirm all players have -noasync, no debug/developer launch options, no active mods, no disabled DLC mismatch, same Steam build and public branch.");
-                sb.AppendLine("- Host loads a local manual save, creates a fresh lobby, waits for everyone, then unpauses.");
-                sb.AppendLine("- Stay speed 1-2 for the first in-game month.");
-                sb.AppendLine();
-                sb.AppendLine("Stop conditions");
-                sb.AppendLine("- Fingerprint mismatch.");
-                sb.AppendLine("- Any player has active mods, disabled DLC mismatch, or debug/developer launch options.");
-                sb.AppendLine("- Host is about to load autosave/recovery/backup/desync-like save.");
-                sb.AppendLine("- CK3 or launcher rewrites profile and expected hashes no longer match.");
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Pre-session plan written: " + path);
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildPreSessionPlanText(),
+                    "FILE Pre-session plan written: ",
+                    "INFO Pre-session plan already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
@@ -329,39 +327,87 @@ namespace CK3MPS
             }
         }
 
+        private string BuildPreSessionPlanText()
+        {
+            string bestClean = FindBestCleanManualSave();
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 MP pre-session plan");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("Start decision");
+            if (ActiveContinueSaveNameSuspicious())
+                sb.AppendLine("- DO NOT start serious MP from current Continue: " + NullText(DetectActiveSaveTitle()));
+            else if (String.IsNullOrEmpty(DetectActiveSaveTitle()))
+                sb.AppendLine("- Continue pointer is absent. Use Load Game and choose the recommended clean manual save.");
+            else
+                sb.AppendLine("- Current Continue name is not suspicious: " + NullText(DetectActiveSaveTitle()));
+            sb.AppendLine("- Best clean manual local save candidate: " + NullText(Path.GetFileName(bestClean)));
+            sb.AppendLine("- Candidate path: " + NullText(bestClean));
+            sb.AppendLine("- Candidate hash: " + FileHashOrMissing(bestClean));
+            sb.AppendLine("- Candidate readable: " + YesNo(BestCleanSaveReadable()));
+            sb.AppendLine("- Candidate version: " + NullText(ExtractSaveMetaValue(bestClean, "version")));
+            sb.AppendLine("- Candidate date: " + NullText(ExtractSaveMetaValue(bestClean, "meta_date")));
+            sb.AppendLine("- Candidate player: " + NullText(ExtractSaveMetaValue(bestClean, "meta_player_name")));
+            sb.AppendLine("- Candidate title: " + NullText(ExtractSaveMetaValue(bestClean, "meta_title_name")));
+            sb.AppendLine();
+            sb.AppendLine("Before unpause");
+            sb.AppendLine("- Every player sends ck3_stabilizer_mp_parity_manifest.txt.");
+            sb.AppendLine("- Compare Local parity fingerprint: " + BuildLocalParityFingerprint());
+            sb.AppendLine("- Confirm all players have -noasync, no debug/developer launch options, no active mods, no disabled DLC mismatch, same Steam build and public branch.");
+            sb.AppendLine("- Host loads a local manual save, creates a fresh lobby, waits for everyone, then unpauses.");
+            sb.AppendLine("- Stay speed 1-2 for the first in-game month.");
+            sb.AppendLine();
+            sb.AppendLine("Stop conditions");
+            sb.AppendLine("- Fingerprint mismatch.");
+            sb.AppendLine("- Any player has active mods, disabled DLC mismatch, or debug/developer launch options.");
+            sb.AppendLine("- Host is about to load autosave/recovery/backup/desync-like save.");
+            sb.AppendLine("- CK3 or launcher rewrites profile and expected hashes no longer match.");
+            return sb.ToString();
+        }
+
         private void WriteSessionVerdictReport()
         {
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_session_verdict.txt");
-                List<string> blockers = BuildSessionBlockers();
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 MP session verdict");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine();
-                sb.AppendLine("Verdict: " + (blockers.Count == 0 ? "GO" : "NO-GO"));
-                sb.AppendLine();
-                if (blockers.Count == 0)
-                {
-                    sb.AppendLine("No local blockers detected. Start from a fresh lobby and compare parity manifests before unpause.");
-                }
-                else
-                {
-                    sb.AppendLine("Blockers");
-                    foreach (string blocker in blockers)
-                        sb.AppendLine("- " + blocker);
-                }
-                sb.AppendLine();
-                sb.AppendLine("Recommended clean save: " + NullText(Path.GetFileName(FindBestCleanManualSave())));
-                sb.AppendLine("Local parity fingerprint: " + BuildLocalParityFingerprint());
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Session verdict report written: " + path);
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildSessionVerdictReportText(),
+                    "FILE Session verdict report written: ",
+                    "INFO Session verdict report already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
                 Log("WARN Session verdict report could not be written: " + ex.Message);
             }
+        }
+
+        private string BuildSessionVerdictReportText()
+        {
+            List<string> blockers = BuildSessionBlockers();
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 MP session verdict");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("Verdict: " + (blockers.Count == 0 ? "GO" : "NO-GO"));
+            sb.AppendLine();
+            if (blockers.Count == 0)
+            {
+                sb.AppendLine("No local blockers detected. Start from a fresh lobby and compare parity manifests before unpause.");
+            }
+            else
+            {
+                sb.AppendLine("Blockers");
+                foreach (string blocker in blockers)
+                    sb.AppendLine("- " + blocker);
+            }
+            sb.AppendLine();
+            sb.AppendLine("Recommended clean save: " + NullText(Path.GetFileName(FindBestCleanManualSave())));
+            sb.AppendLine("Local parity fingerprint: " + BuildLocalParityFingerprint());
+            return sb.ToString();
         }
 
         private List<string> BuildSessionBlockers()

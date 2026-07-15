@@ -360,34 +360,12 @@ namespace CK3MPS
             try
             {
                 string report = StabilizerFile("ck3_stabilizer_settings_guard.txt");
-                string settings = Path.Combine(ck3Docs, "pdx_settings.txt");
-                string dlc = Path.Combine(ck3Docs, "dlc_load.json");
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 settings guard");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine("Reason: " + reason);
-                sb.AppendLine();
-                sb.AppendLine("Current status");
-                sb.AppendLine("- pdx_settings core stable: " + YesNo(StableCriticalSettingsOk()));
-                sb.AppendLine("- pdx_settings full exact profile: " + YesNo(StableSettingsOk()));
-                sb.AppendLine("- dlc_load no active mods: " + YesNo(NoActiveMods()));
-                sb.AppendLine("- dlc_load no disabled DLCs: " + YesNo(NoDisabledDlcs()));
-                sb.AppendLine("- Steam launch options stable: " + YesNo(HasNoAsync() && !HasRiskyLaunchOptions()));
-                sb.AppendLine("- Steam launch options: " + NullText(ExtractSteamLaunchOptions()));
-                sb.AppendLine("- Save launch hygiene stable: " + YesNo(SaveLaunchHygieneOk()));
-                sb.AppendLine("- Active continue title: " + NullText(DetectActiveSaveTitle()));
-                sb.AppendLine("- Suspicious save names: " + CountSuspiciousSaveNames());
-                sb.AppendLine("- CK3 running: " + YesNo(ProcessRunningExact("ck3")));
-                sb.AppendLine("- Paradox Launcher running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
-                sb.AppendLine();
-                sb.AppendLine("Tracked files");
-                sb.AppendLine("- pdx_settings.txt: " + FileTimeHashLine(settings));
-                sb.AppendLine("- dlc_load.json: " + FileTimeHashLine(dlc));
-                sb.AppendLine();
-                sb.AppendLine("If these settings change after game launch, leave this app open and the guard will restore them automatically.");
-                File.WriteAllText(report, sb.ToString(), Encoding.UTF8);
-                Log("FILE Settings guard report written: " + report);
+                WriteTextFileIfMeaningfullyChanged(
+                    report,
+                    BuildSettingsGuardReportText(reason),
+                    "FILE Settings guard report written: ",
+                    "INFO Settings guard report already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
@@ -395,30 +373,70 @@ namespace CK3MPS
             }
         }
 
+        private string BuildSettingsGuardReportText(string reason)
+        {
+            string settings = Path.Combine(ck3Docs, "pdx_settings.txt");
+            string dlc = Path.Combine(ck3Docs, "dlc_load.json");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 settings guard");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Reason: " + reason);
+            sb.AppendLine();
+            sb.AppendLine("Current status");
+            sb.AppendLine("- pdx_settings core stable: " + YesNo(StableCriticalSettingsOk()));
+            sb.AppendLine("- pdx_settings full exact profile: " + YesNo(StableSettingsOk()));
+            sb.AppendLine("- dlc_load no active mods: " + YesNo(NoActiveMods()));
+            sb.AppendLine("- dlc_load no disabled DLCs: " + YesNo(NoDisabledDlcs()));
+            sb.AppendLine("- Steam launch options stable: " + YesNo(HasNoAsync() && !HasRiskyLaunchOptions()));
+            sb.AppendLine("- Steam launch options: " + NullText(ExtractSteamLaunchOptions()));
+            sb.AppendLine("- Save launch hygiene stable: " + YesNo(SaveLaunchHygieneOk()));
+            sb.AppendLine("- Active continue title: " + NullText(DetectActiveSaveTitle()));
+            sb.AppendLine("- Suspicious save names: " + CountSuspiciousSaveNames());
+            sb.AppendLine("- CK3 running: " + YesNo(ProcessRunningExact("ck3")));
+            sb.AppendLine("- Paradox Launcher running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
+            sb.AppendLine();
+            sb.AppendLine("Tracked files");
+            sb.AppendLine("- pdx_settings.txt: " + FileTimeHashLine(settings));
+            sb.AppendLine("- dlc_load.json: " + FileTimeHashLine(dlc));
+            sb.AppendLine();
+            sb.AppendLine("If these settings change after game launch, leave this app open and the guard will restore them automatically.");
+            return sb.ToString();
+        }
+
         private void WriteExpectedProfileSnapshot(string reason)
         {
             try
             {
                 string path = StabilizerFile("ck3_stabilizer_expected_profile_hashes.txt");
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3 expected stable profile hashes");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine("Reason: " + reason);
-                sb.AppendLine();
-                sb.AppendLine("pdx_settings.sha256=" + FileHashOrMissing(Path.Combine(ck3Docs, "pdx_settings.txt")));
-                sb.AppendLine("dlc_load.sha256=" + FileHashOrMissing(Path.Combine(ck3Docs, "dlc_load.json")));
-                sb.AppendLine("steam_localconfig.sha256=" + FileHashOrMissing(localConfig));
-                sb.AppendLine("steam_sharedconfig.sha256=" + FileHashOrMissing(sharedConfig));
-                sb.AppendLine("launch_options=" + ExtractSteamLaunchOptions());
-                sb.AppendLine("local_parity_fingerprint=" + BuildLocalParityFingerprint());
-                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-                Log("FILE Expected profile hash snapshot written: " + path);
+                WriteTextFileIfMeaningfullyChanged(
+                    path,
+                    BuildExpectedProfileSnapshotText(reason),
+                    "FILE Expected profile hash snapshot written: ",
+                    "INFO Expected profile hash snapshot already up to date: ",
+                    true);
             }
             catch (Exception ex)
             {
                 Log("WARN Expected profile snapshot could not be written: " + ex.Message);
             }
+        }
+
+        private string BuildExpectedProfileSnapshotText(string reason)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3 expected stable profile hashes");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Reason: " + reason);
+            sb.AppendLine();
+            sb.AppendLine("pdx_settings.sha256=" + FileHashOrMissing(Path.Combine(ck3Docs, "pdx_settings.txt")));
+            sb.AppendLine("dlc_load.sha256=" + FileHashOrMissing(Path.Combine(ck3Docs, "dlc_load.json")));
+            sb.AppendLine("steam_localconfig.sha256=" + FileHashOrMissing(localConfig));
+            sb.AppendLine("steam_sharedconfig.sha256=" + FileHashOrMissing(sharedConfig));
+            sb.AppendLine("launch_options=" + ExtractSteamLaunchOptions());
+            sb.AppendLine("local_parity_fingerprint=" + BuildLocalParityFingerprint());
+            return sb.ToString();
         }
 
         private bool ExpectedProfileSnapshotMatches()
@@ -460,6 +478,16 @@ namespace CK3MPS
         private void WriteStableGameRuleProfile()
         {
             string profile = StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt");
+            WriteTextFileIfMeaningfullyChanged(
+                profile,
+                BuildStableGameRuleProfileText(),
+                "In-game MP settings profile written: ",
+                "INFO In-game MP settings profile already up to date: ",
+                true);
+        }
+
+        private string BuildStableGameRuleProfileText()
+        {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 in-game MP stability profile");
             sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -490,8 +518,7 @@ namespace CK3MPS
             sb.AppendLine("- Speed 1-2 for the first month after load");
             sb.AppendLine("- Do not change UI presets/outliner/game settings mid-session");
             sb.AppendLine("- Host makes local manual saves");
-            File.WriteAllText(profile, sb.ToString(), Encoding.UTF8);
-            Log("In-game MP settings profile written: " + profile);
+            return sb.ToString();
         }
     }
 }

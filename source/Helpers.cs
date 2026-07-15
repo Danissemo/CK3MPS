@@ -398,6 +398,71 @@ namespace CK3MPS
             return info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") + " | " + FileSizeOrMissing(path) + " | " + FileHashOrMissing(path);
         }
 
+        private bool FileMeaningfullyDiffers(string path, string content, bool ignoreGeneratedLine)
+        {
+            if (!File.Exists(path))
+                return true;
+
+            try
+            {
+                string existing = File.ReadAllText(path, Encoding.UTF8);
+                return !String.Equals(
+                    NormalizeComparableText(existing, ignoreGeneratedLine),
+                    NormalizeComparableText(content, ignoreGeneratedLine),
+                    StringComparison.Ordinal);
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private bool WriteTextFileIfMeaningfullyChanged(string path, string content, string writtenMessage, string unchangedMessage, bool ignoreGeneratedLine)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (!String.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
+
+                if (!FileMeaningfullyDiffers(path, content, ignoreGeneratedLine))
+                {
+                    if (!String.IsNullOrEmpty(unchangedMessage))
+                        Log(unchangedMessage + path);
+                    return false;
+                }
+
+                File.WriteAllText(path, content, Utf8NoBom);
+                if (!String.IsNullOrEmpty(writtenMessage))
+                    Log(writtenMessage + path);
+                return true;
+            }
+            catch
+            {
+                throw;
+            }
+        }
+
+        private string NormalizeComparableText(string text, bool ignoreGeneratedLine)
+        {
+            if (text == null)
+                text = "";
+
+            string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+            if (!ignoreGeneratedLine)
+                return normalized.Trim();
+
+            StringBuilder sb = new StringBuilder();
+            foreach (string line in normalized.Split(new[] { '\n' }, StringSplitOptions.None))
+            {
+                if (line.StartsWith("Generated: ", StringComparison.Ordinal))
+                    continue;
+                sb.AppendLine(line);
+            }
+
+            return sb.ToString().Trim();
+        }
+
         private void ApplyPreset(string preset)
         {
             if (String.IsNullOrEmpty(preset) || steps.Items.Count == 0)
