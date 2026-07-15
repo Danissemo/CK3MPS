@@ -637,7 +637,7 @@ namespace CK3MPS
         {
             if (InvokeRequired)
             {
-                Invoke((MethodInvoker)delegate { SetBusy(busy); });
+                BeginInvoke((MethodInvoker)delegate { SetBusy(busy); });
                 return;
             }
 
@@ -1023,11 +1023,12 @@ namespace CK3MPS
         {
             if (InvokeRequired)
             {
-                Invoke((MethodInvoker)delegate { ClearLogViews(); });
+                BeginInvoke((MethodInvoker)delegate { ClearLogViews(); });
                 return;
             }
 
             pendingUiLogLines.Clear();
+            uiLogFlushScheduled = false;
             logBox.Clear();
             uiLogLinesSinceLastScroll = 0;
         }
@@ -1036,12 +1037,19 @@ namespace CK3MPS
         {
             if (InvokeRequired)
             {
-                Invoke((MethodInvoker)delegate { FlushPendingUiLogLines(); });
+                lock (uiLogSync)
+                {
+                    if (uiLogFlushScheduled)
+                        return;
+                    uiLogFlushScheduled = true;
+                }
+                BeginInvoke((MethodInvoker)delegate { FlushPendingUiLogLines(); });
                 return;
             }
 
             lock (uiLogSync)
             {
+                uiLogFlushScheduled = false;
                 if (pendingUiLogLines.Count == 0)
                     return;
 
@@ -1129,7 +1137,7 @@ namespace CK3MPS
         {
             if (InvokeRequired)
             {
-                Invoke((MethodInvoker)delegate { ScrollLogToBottom(); });
+                BeginInvoke((MethodInvoker)delegate { ScrollLogToBottom(); });
                 return;
             }
 
@@ -1142,7 +1150,7 @@ namespace CK3MPS
         private void SetStatusText(string text)
         {
             if (InvokeRequired)
-                Invoke((MethodInvoker)delegate { statusLabel.Text = text; });
+                BeginInvoke((MethodInvoker)delegate { statusLabel.Text = text; });
             else
                 statusLabel.Text = text;
         }
@@ -1151,7 +1159,7 @@ namespace CK3MPS
         {
             int safeValue = Math.Max(1, value);
             if (InvokeRequired)
-                Invoke((MethodInvoker)delegate { progress.Maximum = safeValue; });
+                BeginInvoke((MethodInvoker)delegate { progress.Maximum = safeValue; });
             else
                 progress.Maximum = safeValue;
         }
@@ -1159,7 +1167,7 @@ namespace CK3MPS
         private void SetProgressValueSafe(int value)
         {
             if (InvokeRequired)
-                Invoke((MethodInvoker)delegate { progress.Value = Math.Max(progress.Minimum, Math.Min(progress.Maximum, value)); });
+                BeginInvoke((MethodInvoker)delegate { progress.Value = Math.Max(progress.Minimum, Math.Min(progress.Maximum, value)); });
             else
                 progress.Value = Math.Max(progress.Minimum, Math.Min(progress.Maximum, value));
         }
@@ -1167,7 +1175,7 @@ namespace CK3MPS
         private void IncrementProgressValueSafe()
         {
             if (InvokeRequired)
-                Invoke((MethodInvoker)delegate { progress.Value = Math.Min(progress.Maximum, progress.Value + 1); });
+                BeginInvoke((MethodInvoker)delegate { progress.Value = Math.Min(progress.Maximum, progress.Value + 1); });
             else
                 progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
         }

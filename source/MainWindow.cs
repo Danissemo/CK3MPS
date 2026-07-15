@@ -931,11 +931,13 @@ namespace CK3MPS
             SetStatusText(label + "...");
             LogSection(label);
             FlushPendingUiLogLines();
-            Application.DoEvents();
+            if (!InvokeRequired)
+                Application.DoEvents();
             action();
             FlushPendingUiLogLines();
             IncrementProgressValueSafe();
-            Application.DoEvents();
+            if (!InvokeRequired)
+                Application.DoEvents();
         }
 
     }

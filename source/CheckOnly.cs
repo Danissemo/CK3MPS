@@ -46,7 +46,8 @@ namespace CK3MPS
             string item = StepTitle(index);
             SetStatusText("Checking: " + item);
             LogSection(item);
-            Application.DoEvents();
+            if (!InvokeRequired)
+                Application.DoEvents();
 
             switch (index)
             {
@@ -160,7 +161,8 @@ namespace CK3MPS
 
             if (advanceProgress)
                 IncrementProgressValueSafe();
-            Application.DoEvents();
+            if (!InvokeRequired)
+                Application.DoEvents();
         }
 
         private void CheckBasePaths()

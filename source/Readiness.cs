@@ -1427,7 +1427,8 @@ namespace CK3MPS
                     return true;
 
                 FlushPendingUiLogLines();
-                Application.DoEvents();
+                if (!InvokeRequired)
+                    Application.DoEvents();
                 if (sw.ElapsedMilliseconds >= timeoutMs)
                     return false;
             }
