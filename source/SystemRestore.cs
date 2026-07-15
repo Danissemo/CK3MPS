@@ -36,7 +36,7 @@ namespace CK3MPS
 
             if (!WindowsRestorePointInfrastructureOk())
             {
-                DialogResult result = MessageBox.Show(
+                DialogResult result = ShowMessageBoxSafe(
                     "Windows System Restore is not ready. CK3MPS can try to enable System Protection for the system drive and repair the VSS services before creating a restore point.\r\n\r\nContinue?",
                     "CK3MPS restore point",
                     MessageBoxButtons.YesNo,

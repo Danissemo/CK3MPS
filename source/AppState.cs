@@ -117,6 +117,7 @@ namespace CK3MPS
         private bool liveLogWritesEnabled;
         private readonly StringBuilder liveLogBuffer = new StringBuilder();
         private readonly List<PendingUiLogLine> pendingUiLogLines = new List<PendingUiLogLine>();
+        private readonly object uiLogSync = new object();
         private int uiLogLinesSinceLastScroll;
         private bool busyUi;
         private readonly HashSet<string> checkedRestoreEntryIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

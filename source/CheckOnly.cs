@@ -44,7 +44,7 @@ namespace CK3MPS
         private void RunCheckStep(int index, bool advanceProgress)
         {
             string item = StepTitle(index);
-            statusLabel.Text = "Checking: " + item;
+            SetStatusText("Checking: " + item);
             LogSection(item);
             Application.DoEvents();
 
@@ -159,7 +159,7 @@ namespace CK3MPS
             }
 
             if (advanceProgress)
-                progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
+                IncrementProgressValueSafe();
             Application.DoEvents();
         }
 

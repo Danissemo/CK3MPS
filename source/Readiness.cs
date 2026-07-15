@@ -611,8 +611,8 @@ namespace CK3MPS
             else
                 Log("INFO Final readiness summary | checklist failed checks: " + failed);
 
-            progress.Value = progress.Maximum;
-            statusLabel.Text = failed == 0 ? "READY for stable CK3 MP profile." : "Not ready. Failed checks before final summary: " + failed;
+            SetProgressValueSafe(Int32.MaxValue);
+            SetStatusText(failed == 0 ? "READY for stable CK3 MP profile." : "Not ready. Failed checks before final summary: " + failed);
             lastReadinessFailures = failed;
             Log(failed == 0 ? "RESULT READY." : "RESULT NOT READY. Failed checks before final summary: " + failed);
         }

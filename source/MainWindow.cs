@@ -746,12 +746,12 @@ namespace CK3MPS
                 Log("WARN Last checklist item is not the expected MP parity block.");
         }
 
-        private void RunStabilize()
+        private async void RunStabilize()
         {
             SetBusy(true);
             ClearLogViews();
-            progress.Value = 0;
-            progress.Maximum = 1;
+            SetProgressValueSafe(0);
+            SetProgressMaximumSafe(1);
 
             try
             {
@@ -761,14 +761,14 @@ namespace CK3MPS
 
                 if (!ValidateBeforeRun())
                 {
-                    statusLabel.Text = "Stopped: fix folder paths before running Stabilize.";
+                    SetStatusText("Stopped: fix folder paths before running Stabilize.");
                     AppendRunHistory("stabilize", "stopped_path_validation");
                     return;
                 }
 
                 if (CountSelectedSteps() == 0)
                 {
-                    statusLabel.Text = "No steps selected.";
+                    SetStatusText("No steps selected.");
                     Log("No steps selected. Choose a preset or tick steps manually.");
                     AppendRunHistory("stabilize", "stopped_no_steps");
                     return;
@@ -787,12 +787,12 @@ namespace CK3MPS
                 }
 
                 int plannedSteps = CountPlannedStabilizeSteps();
-                progress.Maximum = Math.Max(1, plannedSteps);
+                SetProgressMaximumSafe(plannedSteps);
                 Log("Planned steps after current-state filtering: " + plannedSteps);
 
                 if (plannedSteps == 0)
                 {
-                    statusLabel.Text = "All selected items are already applied.";
+                    SetStatusText("All selected items are already applied.");
                     Log("INFO All selected items are already in the target state. No changes were needed.");
                     AppendRunHistory("stabilize", "stopped_no_changes_needed");
                     return;
@@ -808,57 +808,61 @@ namespace CK3MPS
 
                 if (!ConfirmStabilizationPreview())
                 {
-                    statusLabel.Text = "Stopped: preview was not confirmed.";
+                    SetStatusText("Stopped: preview was not confirmed.");
                     Log("INFO Stabilize stopped before changes: preview was not confirmed.");
                     AppendRunHistory("stabilize", "stopped_preview_not_confirmed");
                     return;
                 }
 
-                RunCoreStabilizeStep(1, "Safety: checking paths", CheckBasePaths, ShouldRunPathValidationCoreStep());
-                RunCoreStabilizeStep(2, "Safety: creating quarantine", CreateQuarantine, ShouldRunQuarantineCoreStep());
-                RunPlannedStabilizeStep(0, "Safety: creating Windows restore point", CreateWindowsRestorePoint);
-                RunPlannedStabilizeStep(3, "Windows network: flushing DNS cache", FlushDnsCache);
-                RunPlannedStabilizeStep(4, "Windows network: diagnosing adapters and routes", RunNetworkDiagnostics);
-                RunPlannedStabilizeStep(5, "Windows firewall: adding CK3 rules", EnsureFirewallRules);
-                RunPlannedStabilizeStep(6, "Windows registry: applying game/network profile", ApplyWindowsGameNetworkProfile);
-                RunPlannedStabilizeStep(7, "Windows adapters: tuning power profile", ApplyPowerAdapterProfile);
-                RunPlannedStabilizeStep(8, "Windows apps: checking overlays and VPNs", CheckOverlaysAndVpn);
-                RunPlannedStabilizeStep(9, "Windows network: checking online services", CheckOnlineServices);
-                RunPlannedStabilizeStep(10, "Launchers: backing up settings", BackupSteamAndLauncherSettings);
-                RunPlannedStabilizeStep(11, "Steam: stabilizing CK3 settings", StabilizeSteamSettings);
-                RunPlannedStabilizeStep(12, "Paradox Launcher: rebuilding database", RebuildParadoxLauncherDatabase);
-                RunPlannedStabilizeStep(13, "Launchers: checking runtime hygiene", CheckLauncherRuntimeHygiene);
-                RunPlannedStabilizeStep(14, "CK3 external profile: writing no-mod profile", ForceNoMods);
-                RunPlannedStabilizeStep(15, "CK3 external settings: stabilizing settings", StabilizePdxSettings);
-                RunPlannedStabilizeStep(16, "CK3 runtime verification: writing launch report", WriteRuntimeVerificationReport);
-                RunPlannedStabilizeStep(17, "CK3 in-game rules: writing game-rule profile", WriteStableGameRuleProfile);
-                RunPlannedStabilizeStep(18, "CK3 user state: clearing player UI state", ClearPlayerState);
-                RunPlannedStabilizeStep(19, "CK3 reports: archiving OOS and crashes", ArchiveReports);
-                RunPlannedStabilizeStep(20, "CK3 cache: clearing CK3 and launcher caches", ClearCaches);
-                RunPlannedStabilizeStep(21, "CK3 mods: quarantining .mod descriptors", QuarantineModDescriptors);
-                RunPlannedStabilizeStep(22, "CK3 binaries: inspecting non-vanilla files", QuarantineLoaderFiles);
-                RunPlannedStabilizeStep(23, "CK3 saves: stabilizing save launch hygiene", StabilizeSaveHygiene);
-                RunPlannedStabilizeStep(24, "CK3 folder cleanup: removing nonessential files", CleanCk3DocumentsFolder);
-                RunPlannedStabilizeStep(25, "OOS reports: analyzing latest metadata", AnalyzeLatestOosReport);
-                RunPlannedStabilizeStep(26, "OOS evidence: writing support package index", WriteOosEvidencePack);
-                RunPlannedStabilizeStep(27, "OOS protocol: writing prevention rules", WriteOosPreventionProtocol);
-                RunPlannedStabilizeStep(28, "MP parity: writing comparison manifest", WriteMultiplayerParityManifest);
-                if (IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16))
+                bool shouldStartGuard = IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16);
+                await Task.Run(delegate
+                {
+                    RunCoreStabilizeStep(1, "Safety: checking paths", CheckBasePaths, ShouldRunPathValidationCoreStep());
+                    RunCoreStabilizeStep(2, "Safety: creating quarantine", CreateQuarantine, ShouldRunQuarantineCoreStep());
+                    RunPlannedStabilizeStep(0, "Safety: creating Windows restore point", CreateWindowsRestorePoint);
+                    RunPlannedStabilizeStep(3, "Windows network: flushing DNS cache", FlushDnsCache);
+                    RunPlannedStabilizeStep(4, "Windows network: diagnosing adapters and routes", RunNetworkDiagnostics);
+                    RunPlannedStabilizeStep(5, "Windows firewall: adding CK3 rules", EnsureFirewallRules);
+                    RunPlannedStabilizeStep(6, "Windows registry: applying game/network profile", ApplyWindowsGameNetworkProfile);
+                    RunPlannedStabilizeStep(7, "Windows adapters: tuning power profile", ApplyPowerAdapterProfile);
+                    RunPlannedStabilizeStep(8, "Windows apps: checking overlays and VPNs", CheckOverlaysAndVpn);
+                    RunPlannedStabilizeStep(9, "Windows network: checking online services", CheckOnlineServices);
+                    RunPlannedStabilizeStep(10, "Launchers: backing up settings", BackupSteamAndLauncherSettings);
+                    RunPlannedStabilizeStep(11, "Steam: stabilizing CK3 settings", StabilizeSteamSettings);
+                    RunPlannedStabilizeStep(12, "Paradox Launcher: rebuilding database", RebuildParadoxLauncherDatabase);
+                    RunPlannedStabilizeStep(13, "Launchers: checking runtime hygiene", CheckLauncherRuntimeHygiene);
+                    RunPlannedStabilizeStep(14, "CK3 external profile: writing no-mod profile", ForceNoMods);
+                    RunPlannedStabilizeStep(15, "CK3 external settings: stabilizing settings", StabilizePdxSettings);
+                    RunPlannedStabilizeStep(16, "CK3 runtime verification: writing launch report", WriteRuntimeVerificationReport);
+                    RunPlannedStabilizeStep(17, "CK3 in-game rules: writing game-rule profile", WriteStableGameRuleProfile);
+                    RunPlannedStabilizeStep(18, "CK3 user state: clearing player UI state", ClearPlayerState);
+                    RunPlannedStabilizeStep(19, "CK3 reports: archiving OOS and crashes", ArchiveReports);
+                    RunPlannedStabilizeStep(20, "CK3 cache: clearing CK3 and launcher caches", ClearCaches);
+                    RunPlannedStabilizeStep(21, "CK3 mods: quarantining .mod descriptors", QuarantineModDescriptors);
+                    RunPlannedStabilizeStep(22, "CK3 binaries: inspecting non-vanilla files", QuarantineLoaderFiles);
+                    RunPlannedStabilizeStep(23, "CK3 saves: stabilizing save launch hygiene", StabilizeSaveHygiene);
+                    RunPlannedStabilizeStep(24, "CK3 folder cleanup: removing nonessential files", CleanCk3DocumentsFolder);
+                    RunPlannedStabilizeStep(25, "OOS reports: analyzing latest metadata", AnalyzeLatestOosReport);
+                    RunPlannedStabilizeStep(26, "OOS evidence: writing support package index", WriteOosEvidencePack);
+                    RunPlannedStabilizeStep(27, "OOS protocol: writing prevention rules", WriteOosPreventionProtocol);
+                    RunPlannedStabilizeStep(28, "MP parity: writing comparison manifest", WriteMultiplayerParityManifest);
+                    LogSection("Final readiness summary");
+                    RunReadinessChecks(true);
+                    LogSection("Automatic report");
+                    WriteStabilityReport();
+                });
+                if (shouldStartGuard)
                     StartSettingsGuard();
-                LogSection("Final readiness summary");
-                RunReadinessChecks(true);
-                LogSection("Automatic report");
-                WriteStabilityReport();
 
                 if (lastReadinessFailures == 0)
                 {
-                    statusLabel.Text = "Done. CK3 profile is prepared for stable vanilla multiplayer.";
+                    SetStatusText("Done. CK3 profile is prepared for stable vanilla multiplayer.");
                     Log("Done. Use host local save, no hotjoin, speed 1-2 after load.");
                     AppendRunHistory("stabilize", "ready");
                 }
                 else
                 {
-                    statusLabel.Text = "Completed with blockers. Fix failed readiness checks before serious MP.";
+                    SetStatusText("Completed with blockers. Fix failed readiness checks before serious MP.");
                     Log("RESULT Completed with blockers. Fix failed readiness checks before serious MP.");
                     AppendRunHistory("stabilize", "completed_with_blockers");
                 }
@@ -867,7 +871,7 @@ namespace CK3MPS
             }
             catch (Exception ex)
             {
-                statusLabel.Text = "Failed: " + ex.Message;
+                SetStatusText("Failed: " + ex.Message);
                 Log("ERROR: " + ex);
                 AppendRunHistory("stabilize", "failed");
                 MessageBox.Show(ex.Message, "CK3MPS", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -878,25 +882,25 @@ namespace CK3MPS
             }
         }
 
-        private void RunCheckOnly()
+        private async void RunCheckOnly()
         {
             SetBusy(true);
             ClearLogViews();
-            progress.Value = 0;
-            progress.Maximum = steps.Items.Count;
+            SetProgressValueSafe(0);
+            SetProgressMaximumSafe(steps.Items.Count);
             try
             {
                 LogSection("Check only started");
                 Log("Mode: read-only scan of every checklist item. No files or settings will be changed.");
                 if (!ValidateBeforeRun())
                 {
-                    statusLabel.Text = "Check stopped: fix folder paths first.";
+                    SetStatusText("Check stopped: fix folder paths first.");
                     AppendRunHistory("check_only", "stopped_path_validation");
                     return;
                 }
 
-                RunCheckOnlyScanCore(true, true);
-                statusLabel.Text = "Check complete. Every checklist item was checked in read-only mode.";
+                await Task.Run(delegate { RunCheckOnlyScanCore(true, true); });
+                SetStatusText("Check complete. Every checklist item was checked in read-only mode.");
                 AppendRunHistory("check_only", lastReadinessFailures == 0 ? "ready" : "completed_with_blockers");
             }
             catch (Exception ex)
@@ -924,13 +928,13 @@ namespace CK3MPS
 
         private void RunStep(int index, string label, Action action)
         {
-            statusLabel.Text = label + "...";
+            SetStatusText(label + "...");
             LogSection(label);
             FlushPendingUiLogLines();
             Application.DoEvents();
             action();
             FlushPendingUiLogLines();
-            progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
+            IncrementProgressValueSafe();
             Application.DoEvents();
         }
 

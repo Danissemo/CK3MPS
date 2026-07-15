@@ -635,6 +635,12 @@ namespace CK3MPS
 
         private void SetBusy(bool busy)
         {
+            if (InvokeRequired)
+            {
+                Invoke((MethodInvoker)delegate { SetBusy(busy); });
+                return;
+            }
+
             busyUi = busy;
             stabilizeButton.Enabled = !busy;
             checkButton.Enabled = !busy;
@@ -984,15 +990,18 @@ namespace CK3MPS
 
         private void AppendLogLine(string text, Color color)
         {
-            if (busyUi)
+            lock (uiLogSync)
             {
-                pendingUiLogLines.Add(new PendingUiLogLine(text, color));
-                if (pendingUiLogLines.Count >= 10)
-                    FlushPendingUiLogLines();
-            }
-            else
-            {
-                AppendLogLineTo(logBox, text, color);
+                if (busyUi)
+                {
+                    pendingUiLogLines.Add(new PendingUiLogLine(text, color));
+                    if (pendingUiLogLines.Count >= 10)
+                        FlushPendingUiLogLines();
+                }
+                else
+                {
+                    AppendLogLineTo(logBox, text, color);
+                }
             }
             AppendLiveLogLine(text);
         }
@@ -1012,6 +1021,12 @@ namespace CK3MPS
 
         private void ClearLogViews()
         {
+            if (InvokeRequired)
+            {
+                Invoke((MethodInvoker)delegate { ClearLogViews(); });
+                return;
+            }
+
             pendingUiLogLines.Clear();
             logBox.Clear();
             uiLogLinesSinceLastScroll = 0;
@@ -1019,13 +1034,22 @@ namespace CK3MPS
 
         private void FlushPendingUiLogLines()
         {
-            if (pendingUiLogLines.Count == 0)
+            if (InvokeRequired)
+            {
+                Invoke((MethodInvoker)delegate { FlushPendingUiLogLines(); });
                 return;
+            }
 
-            foreach (PendingUiLogLine line in pendingUiLogLines)
-                AppendLogLineTo(logBox, line.Text, line.Color);
+            lock (uiLogSync)
+            {
+                if (pendingUiLogLines.Count == 0)
+                    return;
 
-            pendingUiLogLines.Clear();
+                foreach (PendingUiLogLine line in pendingUiLogLines)
+                    AppendLogLineTo(logBox, line.Text, line.Color);
+
+                pendingUiLogLines.Clear();
+            }
         }
 
         private string LiveLogsFolder()
@@ -1103,10 +1127,56 @@ namespace CK3MPS
 
         private void ScrollLogToBottom()
         {
+            if (InvokeRequired)
+            {
+                Invoke((MethodInvoker)delegate { ScrollLogToBottom(); });
+                return;
+            }
+
             FlushPendingUiLogLines();
             logBox.SelectionStart = logBox.TextLength;
             logBox.ScrollToCaret();
             uiLogLinesSinceLastScroll = 0;
+        }
+
+        private void SetStatusText(string text)
+        {
+            if (InvokeRequired)
+                Invoke((MethodInvoker)delegate { statusLabel.Text = text; });
+            else
+                statusLabel.Text = text;
+        }
+
+        private void SetProgressMaximumSafe(int value)
+        {
+            int safeValue = Math.Max(1, value);
+            if (InvokeRequired)
+                Invoke((MethodInvoker)delegate { progress.Maximum = safeValue; });
+            else
+                progress.Maximum = safeValue;
+        }
+
+        private void SetProgressValueSafe(int value)
+        {
+            if (InvokeRequired)
+                Invoke((MethodInvoker)delegate { progress.Value = Math.Max(progress.Minimum, Math.Min(progress.Maximum, value)); });
+            else
+                progress.Value = Math.Max(progress.Minimum, Math.Min(progress.Maximum, value));
+        }
+
+        private void IncrementProgressValueSafe()
+        {
+            if (InvokeRequired)
+                Invoke((MethodInvoker)delegate { progress.Value = Math.Min(progress.Maximum, progress.Value + 1); });
+            else
+                progress.Value = Math.Min(progress.Maximum, progress.Value + 1);
+        }
+
+        private DialogResult ShowMessageBoxSafe(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            if (InvokeRequired)
+                return (DialogResult)Invoke(new Func<DialogResult>(delegate { return MessageBox.Show(text, caption, buttons, icon); }));
+            return MessageBox.Show(text, caption, buttons, icon);
         }
 
         private Color LogColorForLine(string formatted, string original)
