@@ -16,20 +16,6 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
-        private void RunOptionalStep(int index, string label, Action action, bool alwaysRun)
-        {
-            if (alwaysRun)
-                SetStepChecked(index, true);
-
-            if (!alwaysRun && !IsStepChecked(index))
-            {
-                Log("Skipped: " + StepTitle(index));
-                return;
-            }
-
-            RunStep(index, label, action);
-        }
-
         private void RunCoreStabilizeStep(int index, string label, Action action, bool shouldRun)
         {
             if (!shouldRun)

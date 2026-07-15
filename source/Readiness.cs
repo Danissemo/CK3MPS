@@ -567,7 +567,7 @@ namespace CK3MPS
             }
         }
 
-        private void RunReadinessChecks(bool markFinalStep, bool includeRestorePointCheck)
+        private void RunReadinessChecks(bool includeRestorePointCheck)
         {
             int failed = 0;
             lastReadinessFailures = 0;
@@ -611,15 +611,7 @@ namespace CK3MPS
             else
                 Log("INFO Final readiness summary | checklist failed checks: " + failed);
 
-            if (markFinalStep)
-            {
-                progress.Value = progress.Maximum;
-            }
-            else
-            {
-                progress.Value = progress.Maximum;
-            }
-
+            progress.Value = progress.Maximum;
             statusLabel.Text = failed == 0 ? "READY for stable CK3 MP profile." : "Not ready. Failed checks before final summary: " + failed;
             lastReadinessFailures = failed;
             Log(failed == 0 ? "RESULT READY." : "RESULT NOT READY. Failed checks before final summary: " + failed);

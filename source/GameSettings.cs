@@ -21,16 +21,6 @@ namespace CK3MPS
             ApplyStablePdxSettings(true, "pdx_settings.txt stabilized.");
         }
 
-        private void ApplyInGameMpSettings()
-        {
-            if (ProcessRunningExact("ck3") || ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher"))
-                Log("WARN  CK3 or Paradox Launcher is running. These settings are safest when applied before launching the game.");
-            ApplyStablePdxSettings(true, "In-game settings file rewritten with MP stability profile.");
-            WriteSettingsGuardReport("after manual apply");
-            Log("In-game settings applied: autosave off, cloud save off, save-on-exit off, Vulkan, fullscreen, VSync on, adaptive FPS off, 60 FPS cap, English, graphics profile=" + CurrentGraphicsProfile() + ".");
-            Log("INFO These settings are read by CK3 on launch. Restart CK3 after applying; keep the stabilizer open during first launch if you want rollback guard protection.");
-        }
-
         private void ApplyStablePdxSettings(bool backup, string successMessage)
         {
             string path = Path.Combine(ck3Docs, "pdx_settings.txt");

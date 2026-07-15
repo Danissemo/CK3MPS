@@ -95,15 +95,6 @@ namespace CK3MPS
             return RunPowerShellScriptExitCode(script, 60000) == 0;
         }
 
-        private string LatestRestorePointSummary()
-        {
-            string script =
-                "$ErrorActionPreference = 'Stop'\r\n" +
-                "$rp = Get-ComputerRestorePoint | Sort-Object CreationTime -Descending | Select-Object -First 1\r\n" +
-                "if ($rp) { $rp.CreationTime + ' | ' + $rp.Description + ' | type=' + $rp.RestorePointType }\r\n";
-            return RunPowerShellScriptQuiet(script, 60000).Trim();
-        }
-
         private async Task RefreshRestorePointsListAsync()
         {
             if (restorePointsLoading)

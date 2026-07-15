@@ -846,7 +846,7 @@ namespace CK3MPS
                 if (IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16))
                     StartSettingsGuard();
                 LogSection("Final readiness summary");
-                RunReadinessChecks(true, true);
+                RunReadinessChecks(true);
                 LogSection("Automatic report");
                 WriteStabilityReport();
 
@@ -916,7 +916,7 @@ namespace CK3MPS
                 RunCheckStep(i, advanceProgress);
 
             LogSection("Final readiness summary");
-            RunReadinessChecks(false, false);
+            RunReadinessChecks(false);
             if (writeReport)
                 WriteCheckOnlyReport();
             MarkFreshCheckOnlyScan();

@@ -333,18 +333,6 @@ namespace CK3MPS
             }
         }
 
-        private void QuarantineLoaderFilesUnsafeLegacy()
-        {
-            if (String.IsNullOrEmpty(ck3Bin) || !Directory.Exists(ck3Bin))
-            {
-                Log("CK3 binaries folder not found, loader check skipped.");
-                return;
-            }
-
-            foreach (string name in suspectBinaryFiles)
-                MoveToQuarantine(Path.Combine(ck3Bin, name), Path.Combine(lastQuarantine, "binaries"));
-        }
-
     }
 }
 
