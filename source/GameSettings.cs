@@ -292,7 +292,7 @@ namespace CK3MPS
 
             if (!RuntimeLogExistsAfterSettings())
             {
-                Log("INFO Last CK3 launch log is older than the current applied profile. Launch CK3 once after Stabilize, then run Check Only again for runtime confirmation.");
+                Log("INFO Last CK3 launch log is older than the current applied profile. Launch CK3 once after Apply Settings, then run Scan again for runtime confirmation.");
                 return;
             }
 

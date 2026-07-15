@@ -60,7 +60,7 @@ namespace CK3MPS
 
         private void CheckWindowsRestorePointReadOnly()
         {
-            Log("INFO Check Only does not query Windows restore points.");
+            Log("INFO Scan does not query Windows restore points.");
             Log("INFO Stabilize can create a restore point before CK3MPS changes when this step is selected.");
         }
 

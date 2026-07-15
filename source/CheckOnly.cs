@@ -61,7 +61,7 @@ namespace CK3MPS
                     CheckQuarantineReadOnly();
                     break;
                 case 3:
-                    Log("[INFO] DNS cache flush is a write action, so Check only does not run it.");
+                    Log("[INFO] DNS cache flush is a write action, so Scan does not run it.");
                     Check("Network ping baseline", NetworkBaselineOk());
                     break;
                 case 4:
@@ -195,7 +195,7 @@ namespace CK3MPS
         private void CheckQuarantineReadOnly()
         {
             Check("CK3 Documents folder is available for quarantine", Directory.Exists(ck3Docs));
-            Log("[INFO] Check only does not create a new quarantine folder.");
+            Log("[INFO] Scan does not create a new quarantine folder.");
             string latest = GetKnownQuarantine();
             Check("Latest quarantine folder exists", !String.IsNullOrEmpty(latest) && Directory.Exists(latest));
             if (!String.IsNullOrEmpty(latest))

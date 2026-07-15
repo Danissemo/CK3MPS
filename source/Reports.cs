@@ -957,7 +957,7 @@ namespace CK3MPS
             Check("Windows power scheme detected", !String.IsNullOrEmpty(scheme));
             Check("At least one active network route exists", HasAnyActiveNetworkRoute());
             RunCommand("powercfg.exe", "/query SCHEME_CURRENT SUB_PCIEXPRESS ASPM", true);
-            Log("INFO Check only does not change power or adapter settings.");
+            Log("INFO Scan does not change power or adapter settings.");
         }
 
         private bool PowerAdapterProfileOk()

@@ -978,7 +978,7 @@ namespace CK3MPS
             SetProgressMaximumSafe(steps.Items.Count);
             try
             {
-                LogSection("Check only started");
+                LogSection("Scan started");
                 Log("Mode: read-only scan of every checklist item. No files or settings will be changed.");
                 if (!ValidateBeforeRun())
                 {

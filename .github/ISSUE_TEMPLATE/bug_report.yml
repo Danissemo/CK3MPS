@@ -15,7 +15,7 @@ body:
     id: version
     attributes:
       label: CK3MPS version
-      placeholder: v0.1 beta
+      placeholder: v0.3
     validations:
       required: true
   - type: input
@@ -42,7 +42,9 @@ body:
         1. Close CK3.
         2. Run CK3MPS as admin.
         3. Select Recommended.
-        4. Click Stabilize CK3.
+        4. Click Scan.
+        5. Open Review.
+        6. Click Apply Settings.
   - type: textarea
     id: report
     attributes:

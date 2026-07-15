@@ -586,7 +586,7 @@ namespace CK3MPS
             if (includeRestorePointCheck)
                 failed += CheckStepResult(0, WindowsRestorePointInfrastructureOk());
             else
-                Log("INFO Readiness skipped Windows restore point infrastructure in Check Only mode.");
+                Log("INFO Readiness skipped Windows restore point infrastructure in Scan mode.");
             failed += CheckStepResult(1, Directory.Exists(ck3Docs) && !IsGameRunning() && VersionParityBaselineOk() && SteamUpdateComplete());
             failed += CheckStepResult(2, !String.IsNullOrEmpty(GetKnownQuarantine()) && Directory.Exists(GetKnownQuarantine()));
             failed += CheckStepResult(3, NetworkBaselineOk());

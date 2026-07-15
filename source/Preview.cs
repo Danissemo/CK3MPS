@@ -39,7 +39,7 @@ namespace CK3MPS
                 }
             }
             LogSection("Stabilization preview");
-            Log("INFO Preview prepared. Planned changes/checks: " + CountPlannedStabilizeSteps() + " | change items: " + changeCount + " | report items: " + reportCount + ".");
+            Log("INFO Review prepared. Planned changes/checks: " + CountPlannedStabilizeSteps() + " | change items: " + changeCount + " | report items: " + reportCount + ".");
             return ShowPreviewDialog(previewLines, true) == DialogResult.Yes;
         }
 
