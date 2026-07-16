@@ -340,10 +340,15 @@ internal static class ParityRoomLanRegressionHarness
         object session = StartSession(context);
         int port = GetFieldValue<int>(context.SessionType, session, "JoinPort");
         context.StopHost.Invoke(context.Form, new object[] { session });
-        using (System.Net.Sockets.TcpListener replacement = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port))
+
+        System.Net.Sockets.TcpListener replacement = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port);
+        try
         {
             replacement.Start();
             Assert(((IPEndPoint)replacement.LocalEndpoint).Port == port, "stopping the parity host should release its loopback port");
+        }
+        finally
+        {
             replacement.Stop();
         }
     }
