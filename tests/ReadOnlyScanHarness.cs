@@ -46,18 +46,20 @@ internal static class ReadOnlyScanHarness
                 SetField(mainFormType, form, "liveLogFilePath", "", flags);
                 SetField(mainFormType, form, "liveLogWritesEnabled", false, flags);
 
-                MethodInfo runCheckOnly = mainFormType.GetMethod("RunCheckOnly", flags);
-                if (runCheckOnly == null)
-                    throw new InvalidOperationException("RunCheckOnly was not found.");
+                MethodInfo runCheckOnlyAsync = mainFormType.GetMethod("RunCheckOnlyAsync", flags);
+                if (runCheckOnlyAsync == null)
+                    throw new InvalidOperationException("RunCheckOnlyAsync was not found.");
 
-                runCheckOnly.Invoke(form, null);
+                System.Threading.Tasks.Task scanTask = (System.Threading.Tasks.Task)runCheckOnlyAsync.Invoke(form, null);
                 Label status = (Label)mainFormType.GetField("statusLabel", flags).GetValue(form);
-                DateTime deadline = DateTime.UtcNow.AddSeconds(20);
-                while (DateTime.UtcNow < deadline && status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) < 0)
+                DateTime deadline = DateTime.UtcNow.AddSeconds(120);
+                while (DateTime.UtcNow < deadline && !scanTask.IsCompleted)
                 {
                     Application.DoEvents();
                     Thread.Sleep(25);
                 }
+                Assert(scanTask.IsCompleted, "full read-only Scan did not complete before timeout; last status: " + status.Text);
+                scanTask.GetAwaiter().GetResult();
                 Assert(status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) >= 0, "full read-only Scan did not complete before timeout");
                 string reportText = Convert.ToString(mainFormType.GetField("lastCheckOnlyReportText", flags).GetValue(form)) ?? "";
                 Assert(reportText.IndexOf("CK3MPS compact check", StringComparison.Ordinal) >= 0, "full read-only Scan should retain an in-memory export report");

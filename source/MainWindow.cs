@@ -1038,6 +1038,11 @@ namespace CK3MPS
 
         private async void RunCheckOnly()
         {
+            await RunCheckOnlyAsync();
+        }
+
+        private async Task RunCheckOnlyAsync()
+        {
             int finalizeGeneration = ++deferredFinalizeGeneration;
             SetBusy(true);
             ClearLogViews();
@@ -1057,6 +1062,7 @@ namespace CK3MPS
                 await Task.Run(delegate { RunCheckOnlyScanCore(false, true); });
                 string[] runLogLines = SnapshotRunLogLines();
                 int readinessFailures = lastReadinessFailures;
+                lastCheckOnlyReportText = BuildCheckOnlyReportText(readinessFailures, runLogLines);
                 SetStatusText("Scan complete. Apply Settings is now available for this session.");
                 string historyResult = readinessFailures == 0 ? "ready" : "completed_with_blockers";
                 string historyLine = BuildRunHistoryLine(
