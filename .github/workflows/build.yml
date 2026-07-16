@@ -37,8 +37,22 @@ jobs:
         run: ./scripts/test-transactional-hardening.ps1
 
       - name: Strict mutation review
+        id: static_review
+        continue-on-error: true
         shell: pwsh
-        run: ./scripts/check-static-danger-strict.ps1
+        run: ./scripts/check-static-danger-ci.ps1
+
+      - name: Upload static review diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: static-review-${{ github.run_id }}
+          path: .artifacts/static-danger-output.txt
+
+      - name: Stop after static review failure
+        if: steps.static_review.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Strict mutation review failed. See the uploaded diagnostics artifact.'
 
       - name: Validate release metadata
         shell: pwsh
