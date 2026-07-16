@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) {
 # Pinning the complete reviewed blob means any edit forces an explicit security
 # review and a deliberate hash update instead of silently inheriting permission.
 $ReviewedBlobs = [ordered]@{
-    'source/AppConfig.cs' = '187e66749af2a63356071c57c1d26973e3047fd60'
+    'source/AppConfig.cs' = '87e66749af2a63356071c57c1d26973e3047fd60'
     'source/Cleanup.cs' = '9240e1fe9fc3f50c9fb770f0475adc1ce08a11f3'
     'source/GameSettings.cs' = '50c83c7ffca2ad4fe742fd517bdb10d7236eb29e'
     'source/Helpers.cs' = 'cd912feb9ce896f5d3c64683d7d98130d6171371'
