@@ -23,22 +23,17 @@ foreach ($relativePath in $ReviewedBlobs.Keys) {
         throw "Reviewed mutation file is missing: $relativePath"
     }
 
-    # Use the staged Git object, not checkout bytes, so CRLF/LF conversion
-    # cannot change the reviewed identity.
-    $indexLines = @(git -C $Root ls-files --stage -- $relativePath)
-    if ($LASTEXITCODE -ne 0) { throw "Could not read the Git index entry for $relativePath" }
-    if ($indexLines.Count -ne 1) {
-        throw "Expected one Git index entry for $relativePath, found $($indexLines.Count)"
+    # Resolve the blob from the checked-out commit tree, not from working-tree
+    # bytes. This keeps the reviewed identity independent of CRLF conversion.
+    $actual = git -C $Root rev-parse "HEAD:$relativePath"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($actual)) {
+        throw "Could not calculate the committed Git blob hash for $relativePath"
     }
 
-    $parts = $indexLines[0] -split '\s+', 4
-    if ($parts.Count -lt 4 -or $parts[1] -notmatch '^[0-9a-f]{40}$') {
-        throw "Invalid Git index entry for $relativePath: $($indexLines[0])"
+    $actual = $actual.Trim()
+    if ($actual -notmatch '^[0-9a-f]{40}$') {
+        throw "Invalid committed Git blob hash for ${relativePath}: $actual"
     }
-
-    $actual = $parts[1]
-    git -C $Root cat-file -e ('{0}^{{blob}}' -f $actual)
-    if ($LASTEXITCODE -ne 0) { throw "Git object for $relativePath is not a valid blob: $actual" }
 
     $expected = $ReviewedBlobs[$relativePath]
     if ($actual -ne $expected) {
