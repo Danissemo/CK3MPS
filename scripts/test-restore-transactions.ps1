@@ -28,23 +28,25 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 # The .NET Framework compiler treats a parameterless anonymous method as
 # compatible with both ThreadStart and ParameterizedThreadStart. Generate a
 # compile-only copy with an explicit ThreadStart type; the reviewed C# test file
-# and its behavior remain unchanged.
+# and its behavior remain unchanged. Accept an already-disambiguated checkout
+# so this wrapper stays compatible with temporary base-branch CI diagnostics.
 $sourceText = Get-Content -LiteralPath $HarnessSource -Raw
 $openNeedle = 'Thread worker = new Thread(delegate'
 $openReplacement = 'Thread worker = new Thread(new ThreadStart(delegate'
 $openIndex = $sourceText.IndexOf($openNeedle, [System.StringComparison]::Ordinal)
-if ($openIndex -lt 0) {
+if ($openIndex -ge 0) {
+    $sourceText = $sourceText.Remove($openIndex, $openNeedle.Length).Insert($openIndex, $openReplacement)
+
+    $closeNeedle = '            });'
+    $closeReplacement = '            }));'
+    $closeIndex = $sourceText.IndexOf($closeNeedle, $openIndex, [System.StringComparison]::Ordinal)
+    if ($closeIndex -lt 0) {
+        throw 'Could not locate the restore harness worker-thread closure.'
+    }
+    $sourceText = $sourceText.Remove($closeIndex, $closeNeedle.Length).Insert($closeIndex, $closeReplacement)
+} elseif ($sourceText.IndexOf($openReplacement, [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Could not locate the restore harness worker-thread constructor.'
 }
-$sourceText = $sourceText.Remove($openIndex, $openNeedle.Length).Insert($openIndex, $openReplacement)
-
-$closeNeedle = '            });'
-$closeReplacement = '            }));'
-$closeIndex = $sourceText.IndexOf($closeNeedle, $openIndex, [System.StringComparison]::Ordinal)
-if ($closeIndex -lt 0) {
-    throw 'Could not locate the restore harness worker-thread closure.'
-}
-$sourceText = $sourceText.Remove($closeIndex, $closeNeedle.Length).Insert($closeIndex, $closeReplacement)
 Set-Content -LiteralPath $CompileSource -Value $sourceText -Encoding UTF8
 
 & $Csc /nologo `
