@@ -1210,7 +1210,7 @@ namespace CK3MPS
                 return new AtomicWriteResult { Status = AtomicWriteStatus.IoError, Message = "Target directory is missing." };
 
             Directory.CreateDirectory(dir);
-            string tempPath = Path.Combine(dir, Path.GetFileName(target) + ".tmp-" + Guid.NewGuid().ToString("N"));
+            string tempPath = Path.Combine(dir, ".tmp-" + Guid.NewGuid().ToString("N").Substring(0, 12));
             try
             {
                 if (!SnapshotMatches(target, expectedSnapshot))
