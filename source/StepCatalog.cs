@@ -5,6 +5,7 @@ namespace CK3MPS
 {
     internal static class StepCatalog
     {
+        public const int Count = 29;
         public const int CreateRestorePoint = 0;
         public const int CheckPathsAndProcesses = 1;
         public const int CreateQuarantine = 2;
@@ -92,6 +93,11 @@ namespace CK3MPS
             WritePreventionRules,
             WriteParityManifest
         };
+
+        public static int[] RecommendedIndices()
+        {
+            return (int[])Recommended.Clone();
+        }
 
         public static bool Validate(IList actualLabels, int[] recommendedIndices, out string error)
         {

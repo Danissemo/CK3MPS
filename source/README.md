@@ -39,7 +39,21 @@ For a fuller architectural walkthrough, see [docs/CODEBASE.md](../docs/CODEBASE.
 - `SystemRestore.cs`
   Windows restore-point integration: create, list, refresh, delete, and infrastructure checks/repair.
 - `Updates.cs`
-  GitHub release lookup, checksum-aware update download, and external updater-script generation.
+  GitHub release lookup and safe hand-off to the official releases page. Automatic in-place installation is intentionally disabled.
+- `SaveAnalysis.cs`
+  Bounded save parsing, rule checks, host-save scoring, and safe-copy preparation.
+- `OosDeepAnalysis.cs`
+  Deep OOS evidence parsing, contamination scoring, recovery recommendations, and incident history support.
+- `Workflow.cs`
+  Scenario UI, host/save/OOS workflow, parity comparison, and authenticated parity-room transport.
+- `TransactionalOperations.cs`
+  Crash-recoverable portable-mode migration with staging and a two-root journal.
+- `RestoreTransactions.cs`
+  Atomic directory replacement and rollback-capable multi-item restore transactions.
+- `WorkflowAnalysisCoordinator.cs`
+  Cancelable workflow refreshes and immutable per-refresh analysis snapshots.
+- `StepCatalog.cs`
+  Named IDs and validation for the 29 checklist actions.
 - `Helpers.cs`
   Shared operational helpers used across the app: file writes, snapshots, presets, logs, path selection, live log persistence, and scan/apply session state.
 - `Utilities.cs`

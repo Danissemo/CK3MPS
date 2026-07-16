@@ -411,18 +411,18 @@ How:
 
 What:
 
-- GitHub release checking and updater bootstrap
+- GitHub release checking and safe navigation to the official release
 
 Why:
 
-- the app can self-detect newer published releases and download them safely
+- the app can detect newer published releases without performing an unsafe in-place self-update
 
 How:
 
 - queries the GitHub releases API
-- selects the matching asset and checksum
-- validates SHA256 before starting updater flow
-- generates a PowerShell updater script
+- compares the latest release tag with the running version
+- opens the official release page after explicit user action
+- keeps automatic in-place installation disabled
 
 ## `Helpers.cs`
 
@@ -532,3 +532,11 @@ If you are new to the code:
 7. `Readiness.cs`
 
 That order gives the clearest picture of startup, shared state, UI, read-only analysis, before-apply planning, rollback, and final verdict generation.
+
+## Transactional Safety
+
+- Portable-mode migration copies into a staging tree, records progress in both state roots, verifies content, commits the destination, and recovers or finishes cleanup on the next startup.
+- Directory restore stages and verifies the backup before swapping sibling directories with atomic renames.
+- Multi-item restore captures reverse snapshots and the restore manifest, then rolls back already-applied entries if a later entry fails.
+- Workflow refreshes use cancellation tokens and generation/scenario checks. One immutable host/save/OOS/incident snapshot feeds steps, verdict, summary, and recommendation for a refresh.
+- Parity room listens on the detected primary IPv4 interface for LAN sessions. Payload encryption, authentication, replay checks, size limits, peer limits, and rate limits remain mandatory.

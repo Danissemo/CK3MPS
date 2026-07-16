@@ -75,6 +75,9 @@ namespace CK3MPS
         {
             try
             {
+                bool? recoveredPortableMode = TransactionalStateMigration.Recover(nonPortableStabilizerRoot, portableStabilizerRoot);
+                if (recoveredPortableMode.HasValue)
+                    portableMode = recoveredPortableMode.Value;
                 LoadLegacyPathOverrides();
                 if (File.Exists(PortableAppConfigFile()))
                     LoadConfigFile(PortableAppConfigFile());
@@ -214,40 +217,44 @@ namespace CK3MPS
 
         private async Task SetPortableModeAsync(bool enabled)
         {
-            if (portableMode == enabled && String.Equals(stabilizerRoot, RuntimeModeUtilities.ResolveStabilizerRoot(nonPortableStabilizerRoot, portableStabilizerRoot, enabled), StringComparison.OrdinalIgnoreCase))
+            string resolvedRoot = RuntimeModeUtilities.ResolveStabilizerRoot(nonPortableStabilizerRoot, portableStabilizerRoot, enabled);
+            if (portableMode == enabled && String.Equals(stabilizerRoot, resolvedRoot, StringComparison.OrdinalIgnoreCase))
                 return;
 
+            bool oldPortableMode = portableMode;
             string oldRoot = stabilizerRoot;
             string oldLiveLogPath = liveLogFilePath;
+            bool migrationCommitted = false;
 
             portableModeChangeInProgress = true;
             portableModeBox.Enabled = false;
             try
             {
-                portableMode = enabled;
                 InvalidateFreshCheckOnlyScan();
-                RefreshStabilizerRoot();
-                string newRoot = stabilizerRoot;
                 statusLabel.Text = "Moving CK3MPS state for portable mode...";
+                await Task.Run(delegate { TransactionalStateMigration.Migrate(oldRoot, resolvedRoot, enabled); });
+                migrationCommitted = true;
 
-                await Task.Run(delegate { MoveStabilizerRootContents(oldRoot, newRoot); });
-
-                RelinkLiveLogPath(oldRoot, newRoot, oldLiveLogPath);
+                portableMode = enabled;
+                RefreshStabilizerRoot();
+                RelinkLiveLogPath(oldRoot, stabilizerRoot, oldLiveLogPath);
                 SaveAppConfig();
 
                 statusLabel.Text = enabled
                     ? "Portable mode enabled. CK3MPS state was moved next to the exe."
                     : "Portable mode disabled. CK3MPS state was moved back to Documents.";
-                Log("INFO Portable mode " + (enabled ? "enabled" : "disabled") + ". State root: " + newRoot);
-                LogVerbose("Portable mode migration: " + oldRoot + " -> " + newRoot);
+                Log("INFO Portable mode " + (enabled ? "enabled" : "disabled") + ". State root: " + stabilizerRoot);
+                LogVerbose("Portable mode migration: " + oldRoot + " -> " + stabilizerRoot);
                 LogVerbose("Settings file: " + AppConfigFile());
             }
             catch
             {
-                portableMode = !enabled;
+                portableMode = migrationCommitted ? enabled : oldPortableMode;
                 RefreshStabilizerRoot();
                 UpdateSettingsUi();
-                statusLabel.Text = "Portable mode change failed.";
+                statusLabel.Text = migrationCommitted
+                    ? "Portable mode moved successfully, but settings refresh failed. Restart CK3MPS to finish."
+                    : "Portable mode change failed and was rolled back.";
                 throw;
             }
             finally
@@ -255,92 +262,6 @@ namespace CK3MPS
                 portableModeChangeInProgress = false;
                 portableModeBox.Enabled = true;
             }
-        }
-
-        private void MoveStabilizerRootContents(string sourceRoot, string targetRoot)
-        {
-            MutationAudit.RecordMutation("state-migration", sourceRoot + " -> " + targetRoot);
-            if (String.IsNullOrEmpty(sourceRoot) || String.IsNullOrEmpty(targetRoot)
-                || String.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase)
-                || !Directory.Exists(sourceRoot))
-                return;
-
-            string normalizedSource;
-            string normalizedTarget;
-            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(sourceRoot, out normalizedSource)
-                || !PathContainmentUtilities.TryNormalizeAbsolutePath(targetRoot, out normalizedTarget)
-                || PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalizedSource)
-                || PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalizedTarget))
-                throw new InvalidOperationException("Portable state migration refuses malformed or reparse-point roots.");
-            if (PathContainmentUtilities.IsWithinRoot(normalizedSource, normalizedTarget)
-                || PathContainmentUtilities.IsWithinRoot(normalizedTarget, normalizedSource))
-                throw new InvalidOperationException("Portable state roots must not contain one another.");
-
-            Directory.CreateDirectory(normalizedTarget);
-            List<string> sourceFiles = new List<string>();
-            CollectMigrationFiles(normalizedSource, sourceFiles);
-
-            foreach (string sourceFile in sourceFiles)
-            {
-                string relative = sourceFile.Substring(normalizedSource.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string targetFile = Path.Combine(normalizedTarget, relative);
-                if (File.Exists(targetFile))
-                {
-                    if (!FileContentsEqual(sourceFile, targetFile))
-                        throw new IOException("Portable migration conflict; both state roots contain different data: " + relative);
-                    continue;
-                }
-
-                string targetDir = Path.GetDirectoryName(targetFile);
-                if (!String.IsNullOrEmpty(targetDir))
-                    Directory.CreateDirectory(targetDir);
-                string tempFile = targetFile + ".migration-" + Guid.NewGuid().ToString("N") + ".tmp";
-                try
-                {
-                    File.Copy(sourceFile, tempFile, false);
-                    if (!FileContentsEqual(sourceFile, tempFile))
-                        throw new IOException("Portable migration verification failed: " + relative);
-                    File.Move(tempFile, targetFile);
-                }
-                finally
-                {
-                    SafeAtomicFile.TryDeleteTempFile(tempFile);
-                }
-            }
-
-            foreach (string sourceFile in sourceFiles)
-            {
-                string relative = sourceFile.Substring(normalizedSource.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string targetFile = Path.Combine(normalizedTarget, relative);
-                if (!File.Exists(targetFile) || !FileContentsEqual(sourceFile, targetFile))
-                    throw new IOException("Portable migration destination changed before source cleanup: " + relative);
-            }
-
-            foreach (string sourceFile in sourceFiles)
-                File.Delete(sourceFile);
-            DeleteEmptyMigrationDirectories(normalizedSource);
-        }
-
-        private void CollectMigrationFiles(string root, List<string> files)
-        {
-            if (!Directory.Exists(root))
-                return;
-            if (PathContainmentUtilities.ContainsReparsePointInExistingSegments(root))
-                throw new InvalidOperationException("Portable migration encountered a reparse-point directory: " + root);
-            files.AddRange(Directory.GetFiles(root, "*", SearchOption.TopDirectoryOnly));
-            foreach (string directory in Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly))
-                CollectMigrationFiles(directory, files);
-        }
-
-        private void DeleteEmptyMigrationDirectories(string path)
-        {
-            if (!Directory.Exists(path))
-                return;
-            foreach (string directory in Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly))
-                DeleteEmptyMigrationDirectories(directory);
-            if (Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly).Length == 0
-                && Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length == 0)
-                Directory.Delete(path, false);
         }
 
         private void RelinkLiveLogPath(string oldRoot, string newRoot, string oldLiveLogPath)

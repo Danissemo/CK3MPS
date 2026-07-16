@@ -53,11 +53,13 @@ namespace CK3MPS
                 CopyToStage(journal);
                 journal.Phase = "Copied";
                 PersistJournal(journal);
+                ThrowIfMigrationFault("copied");
 
                 CommitStagedFiles(journal);
                 WritePortableModeSetting(Path.Combine(target, "settings.ini"), desiredPortableMode);
                 journal.Phase = "Committed";
                 PersistJournal(journal);
+                ThrowIfMigrationFault("committed");
 
                 journal.Phase = "Cleanup";
                 PersistJournal(journal);
@@ -119,6 +121,12 @@ namespace CK3MPS
             return null;
         }
 
+        private static void ThrowIfMigrationFault(string phase)
+        {
+            string requested = Environment.GetEnvironmentVariable("CK3MPS_TEST_MIGRATION_FAULT");
+            if (String.Equals(requested, phase, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Injected state migration fault at phase: " + phase);
+        }
         private static void ValidateRoots(string sourceRoot, string targetRoot, out string source, out string target)
         {
             if (!PathContainmentUtilities.TryNormalizeAbsolutePath(sourceRoot, out source)

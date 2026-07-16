@@ -9,7 +9,9 @@ $Targets = @(
 )
 
 $ExcludedRelativePaths = @(
-    "scripts/check-static-danger.ps1"
+    "scripts/check-static-danger.ps1",
+    "scripts/apply-runtime-hardening.ps1",
+    "scripts/apply-runtime-hardening-fixes.ps1"
 )
 
 $DangerRules = @(
@@ -76,6 +78,14 @@ $Allowlist = @(
     @{ Path = "source/Start.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "UAC relaunch entrypoint." },
     @{ Path = "source/SystemRestore.cs"; Rule = "Process.Start"; LinePattern = '^using \(Process process = Process\.Start\(psi\)\)$'; Reason = "Starts tightly-scoped PowerShell subprocess for system restore operations." },
     @{ Path = "source/Updates.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "Opens only the vetted official GitHub release page; automatic installation is disabled." },
+    @{ Path = "source/TransactionalOperations.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\(source, staged, false\);$'; Reason = "Copies validated app-owned state into a transaction staging tree." },
+    @{ Path = "source/TransactionalOperations.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\(staged, target\);$'; Reason = "Commits a verified staged state file without overwrite." },
+    @{ Path = "source/TransactionalOperations.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((target|source|path)\);$'; Reason = "Rolls back created targets, cleans committed source files, or removes app-owned journals." },
+    @{ Path = "source/TransactionalOperations.cs"; Rule = "Directory.Delete"; LinePattern = '^Directory\.Delete\((path, (true|false)|current, false)\);$'; Reason = "Cleans only validated staging or empty app-state directories." },
+    @{ Path = "source/RestoreTransactions.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((manifest, manifestBackup|normalized, record\.BackupPath|backupPath, temp), false\);$'; Reason = "Captures and verifies rollback snapshots inside the app-owned transaction root." },
+    @{ Path = "source/RestoreTransactions.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((target|manifest)\);$'; Reason = "Removes only revalidated restore targets or a newly-created manifest during rollback." },
+    @{ Path = "source/RestoreTransactions.cs"; Rule = "Directory.Move"; LinePattern = '^Directory\.Move\((target, rollback|stage, target|rollback, target)\);$'; Reason = "Uses same-parent renames for atomic directory commit and rollback." },
+    @{ Path = "source/RestoreTransactions.cs"; Rule = "Directory.Delete"; LinePattern = '^Directory\.Delete\((target|rollback|stage|path), true\);$|^Directory\.Delete\(parent, false\);$'; Reason = "Cleans validated restore staging, rollback, or empty transaction directories." },
     @{ Path = "source/Utilities.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\((tempPath, targetPath|source, destination)\);$'; Reason = "SafeAtomicFile commit and bounded history rotation use same-directory rename." },
     @{ Path = "source/Utilities.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((path|destination)\);$'; Reason = "SafeAtomicFile temp cleanup and bounded history rotation." },
     @{ Path = "source/Utilities.cs"; Rule = "File.ReadAllText"; LinePattern = '^string existing = expected\.Exists \? File\.ReadAllText\(target, effectiveEncoding\) : "";$'; Reason = "Append reads only the bounded current history file after snapshot verification." },

@@ -29,12 +29,12 @@ namespace CK3MPS
                 for (int i = 0; i < ExpectedStepCount; i++)
                     stepRows.Add(null);
 
-                AddStepGroup("Safety Options", new[] { 0, 1, 2 });
-                AddStepGroup("Windows and Network Settings", new[] { 3, 4, 5, 6, 7, 8, 9 });
-                AddStepGroup("Launch Settings", new[] { 10, 11, 12, 13 });
-                AddStepGroup("Game Settings", new[] { 14, 15, 16, 17 });
-                AddStepGroup("Files and Cache", new[] { 18, 19, 20, 21, 22, 23, 24 });
-                AddStepGroup("Diagnostics", new[] { 25, 26, 27, 28 });
+                AddStepGroup("Safety Options", new[] { StepCatalog.CreateRestorePoint, StepCatalog.CheckPathsAndProcesses, StepCatalog.CreateQuarantine });
+                AddStepGroup("Windows and Network Settings", new[] { StepCatalog.FlushDns, StepCatalog.DiagnoseNetwork, StepCatalog.AddFirewallRules, StepCatalog.ApplyWindowsProfile, StepCatalog.TunePowerAdapters, StepCatalog.CheckOverlaysVpn, StepCatalog.CheckOnlineServices });
+                AddStepGroup("Launch Settings", new[] { StepCatalog.BackupLauncherSettings, StepCatalog.StabilizeSteamSettings, StepCatalog.RebuildLauncherDatabase, StepCatalog.CheckRuntimeHygiene });
+                AddStepGroup("Game Settings", new[] { StepCatalog.ForceNoMods, StepCatalog.StabilizePdxSettings, StepCatalog.ConfirmLaunchedProfile, StepCatalog.WriteCampaignProfile });
+                AddStepGroup("Files and Cache", new[] { StepCatalog.ClearPlayerState, StepCatalog.ArchiveReports, StepCatalog.ClearCaches, StepCatalog.QuarantineModDescriptors, StepCatalog.InspectLoaderFiles, StepCatalog.CheckSaveHygiene, StepCatalog.CleanDocumentsFolder });
+                AddStepGroup("Diagnostics", new[] { StepCatalog.AnalyzeOos, StepCatalog.WriteSupportPackage, StepCatalog.WritePreventionRules, StepCatalog.WriteParityManifest });
             }
             finally
             {
@@ -326,63 +326,63 @@ namespace CK3MPS
         {
             switch (index)
             {
-                case 0:
+                case StepCatalog.CreateRestorePoint:
                     return "Creates a Windows System Restore point before CK3MPS changes anything. If System Restore is disabled, CK3MPS asks before trying to enable VSS/System Protection.";
-                case 1:
+                case StepCatalog.CheckPathsAndProcesses:
                     return "Checks that the selected CK3 game and Documents folders are valid and that CK3/Paradox Launcher are closed. Does not change files.";
-                case 2:
+                case StepCatalog.CreateQuarantine:
                     return "Creates the CK3MPS quarantine folder under Documents\\Paradox Interactive\\CK3MPS. Later moved/backed-up files are stored there instead of being deleted.";
-                case 3:
+                case StepCatalog.FlushDns:
                     return "Runs ipconfig /flushdns. This clears Windows DNS resolver cache only; it does not change network settings.";
-                case 4:
+                case StepCatalog.DiagnoseNetwork:
                     return "Reads adapters, routes, DNS, MTU, TCP/IP state, ping baseline, and service reachability. It logs diagnostics and does not change settings.";
-                case 5:
+                case StepCatalog.AddFirewallRules:
                     return "Adds Windows Firewall allow rules for ck3.exe when running elevated. This changes Windows Firewall rules only for CK3.";
-                case 6:
+                case StepCatalog.ApplyWindowsProfile:
                     return "Applies Windows game/network registry stability settings such as Game DVR/GPU/fullscreen profile and multimedia network profile when elevated.";
-                case 7:
+                case StepCatalog.TunePowerAdapters:
                     return "Applies conservative adapter/power stability settings where supported. It avoids route, VPN, MTU, and provider-specific rewrites.";
-                case 8:
+                case StepCatalog.CheckOverlaysVpn:
                     return "Checks running overlays, VPNs, background apps, Windows services, and power plan. It logs warnings and does not close apps.";
-                case 9:
+                case StepCatalog.CheckOnlineServices:
                     return "Tests TCP reachability to Paradox and Steam services. It only opens network checks and does not change settings.";
-                case 10:
+                case StepCatalog.BackupLauncherSettings:
                     return "Copies Steam localconfig/sharedconfig/appmanifest, launcher database, dlc_load.json, and pdx_settings.txt into quarantine backups.";
-                case 11:
+                case StepCatalog.StabilizeSteamSettings:
                     return "Backs up and edits Steam config for CK3: keeps -noasync, removes risky debug/renderer launch options, and disables visible Steam Cloud flag for CK3.";
-                case 12:
+                case StepCatalog.RebuildLauncherDatabase:
                     return "Moves Paradox Launcher CK3 database/cache files to quarantine so the launcher rebuilds clean state on next launch.";
-                case 13:
+                case StepCatalog.CheckRuntimeHygiene:
                     return "Checks CK3/Launcher runtime hygiene: processes closed, overlay guidance, and one clean launcher path. Does not change files.";
-                case 14:
+                case StepCatalog.ForceNoMods:
                     return "Backs up and rewrites dlc_load.json to enabled_mods=[] and disabled_dlcs=[] for a clean no-mod/no-disabled-DLC multiplayer profile.";
-                case 15:
+                case StepCatalog.StabilizePdxSettings:
                     return "Backs up and rewrites pdx_settings.txt with CK3 multiplayer stability settings: autosave/cloud/save-on-exit off, Vulkan/fullscreen/VSync, FPS cap, language, and selected graphics profile.";
-                case 16:
+                case StepCatalog.ConfirmLaunchedProfile:
                     return "Writes runtime verification report files and tracks whether the latest CK3 debug.log matches the applied profile.";
-                case 17:
+                case StepCatalog.WriteCampaignProfile:
                     return "Writes a text profile with recommended in-game campaign/session rules. It does not edit CK3 save files.";
-                case 18:
+                case StepCatalog.ClearPlayerState:
                     return "Moves CK3 player UI state folder to quarantine. CK3 can recreate it; this resets local UI/outliner state.";
-                case 19:
+                case StepCatalog.ArchiveReports:
                     return "Moves OOS, crashes, dumps, and exceptions folders to quarantine reports. It archives diagnostics instead of deleting them.";
-                case 20:
+                case StepCatalog.ClearCaches:
                     return "Moves CK3 shader/launcher caches and Paradox Launcher browser caches to quarantine. CK3/Launcher will regenerate them.";
-                case 21:
+                case StepCatalog.QuarantineModDescriptors:
                     return "Moves local .mod descriptor files from the CK3 Documents mod folder to quarantine. It does not delete workshop content.";
-                case 22:
+                case StepCatalog.InspectLoaderFiles:
                     return "Inspects CK3 binaries for known non-vanilla loader files and writes a report. It does not move or delete binaries.";
-                case 23:
+                case StepCatalog.CheckSaveHygiene:
                     return "Checks active Continue save, suspicious save names, Steam Cloud remote saves, and version parity. In stabilize mode it can quarantine suspicious save pointers/files.";
-                case 24:
+                case StepCatalog.CleanDocumentsFolder:
                     return "Broad CK3 Documents cleanup: moves caches, logs, old launcher metadata, old stabilizer artifacts, and generated clutter to quarantine while keeping saves.";
-                case 25:
+                case StepCatalog.AnalyzeOos:
                     return "Reads latest OOS metadata and writes a summary report. It does not change game files.";
-                case 26:
+                case StepCatalog.WriteSupportPackage:
                     return "Writes an evidence package index for support comparison after OOS. It collects paths, hashes, and report references.";
-                case 27:
+                case StepCatalog.WritePreventionRules:
                     return "Writes OOS prevention rules/protocol notes for players. It creates report text only.";
-                case 28:
+                case StepCatalog.WriteParityManifest:
                     return "Writes local multiplayer parity manifest and OOS risk score for host/client comparison. It creates report text only.";
             }
             return "No detailed help is available for this step.";
