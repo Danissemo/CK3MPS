@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,6 +20,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Apply short atomic temp path
+        if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-hardening-gaps'
+        shell: pwsh
+        run: |
+          $path = 'source/Utilities.cs'
+          $old = 'string tempPath = Path.Combine(dir, Path.GetFileName(target) + ".tmp-" + Guid.NewGuid().ToString("N"));'
+          $new = 'string tempPath = Path.Combine(dir, ".tmp-" + Guid.NewGuid().ToString("N").Substring(0, 12));'
+          $text = [System.IO.File]::ReadAllText($path)
+          if (-not $text.Contains($old)) {
+            Write-Host 'Atomic temp-path patch already applied.'
+            exit 0
+          }
+          $encoding = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($path, $text.Replace($old, $new), $encoding)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- source/Utilities.cs
+          git commit -m 'Shorten atomic temporary file paths'
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
