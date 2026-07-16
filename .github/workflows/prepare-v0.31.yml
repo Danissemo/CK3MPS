@@ -3,7 +3,12 @@ name: Prepare v0.31 release
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/prepare-v0.31.yml]
+    paths:
+      - .github/workflows/prepare-v0.31.yml
+      - source/AppState.cs
+      - CK3MPS.csproj
+      - CHANGELOG.md
+      - docs/release-notes-v0.31.md
   workflow_dispatch:
 
 permissions:
@@ -19,10 +24,25 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Update v0.31 metadata
+      - name: Read current version
+        id: version
+        shell: pwsh
+        run: |
+          $line = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          if (-not $line) { throw 'Could not parse AppVersion.' }
+          $version = [regex]::Match($line.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare release files on protected-branch PR branch
+        if: steps.version.outputs.value != 'v0.31'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $branch = 'agent/v0.31-release-files'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b $branch
+
           $p = 'source/AppState.cs'
           $c = Get-Content $p -Raw
           $n = $c -replace 'private const string AppVersion = "v0\.3";', 'private const string AppVersion = "v0.31";'
@@ -84,7 +104,12 @@ jobs:
           - Test LAN parity on the real Windows machines and network because firewall, router, VPN, and adapter configuration vary.
           '@ | Set-Content 'docs/release-notes-v0.31.md' -Encoding UTF8
 
-      - name: Build and validate
+          git add source/AppState.cs CK3MPS.csproj CHANGELOG.md docs/release-notes-v0.31.md
+          git commit -m 'Prepare v0.31 release files'
+          git push --force-with-lease origin $branch
+
+      - name: Build and validate release
+        if: steps.version.outputs.value == 'v0.31'
         shell: pwsh
         run: |
           ./scripts/build.ps1
@@ -93,15 +118,16 @@ jobs:
           ./scripts/check-version-consistency.ps1
           ./scripts/validate-release.ps1
 
-      - name: Commit and tag
+      - name: Create release tag
+        if: steps.version.outputs.value == 'v0.31'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          if (git ls-remote --exit-code --tags origin refs/tags/v0.31) {
+            Write-Host 'Tag v0.31 already exists.'
+            exit 0
+          }
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/prepare-v0.31.yml
-          git add source/AppState.cs CK3MPS.csproj CHANGELOG.md docs/release-notes-v0.31.md
-          git commit -m 'Prepare v0.31 release'
-          git push origin HEAD:main
           git tag -a v0.31 -m 'CK3MPS v0.31'
           git push origin v0.31
