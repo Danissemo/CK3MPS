@@ -2,13 +2,8 @@ name: Prepare v0.31 release
 
 on:
   push:
-    branches: [main]
-    paths:
-      - .github/workflows/prepare-v0.31.yml
-      - source/AppState.cs
-      - CK3MPS.csproj
-      - CHANGELOG.md
-      - docs/release-notes-v0.31.md
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -16,6 +11,7 @@ permissions:
 
 jobs:
   prepare:
+    if: github.actor != 'github-actions[bot]'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -33,7 +29,7 @@ jobs:
           $version = [regex]::Match($line.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
           "value=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Prepare release files on protected-branch PR branch
+      - name: Prepare release files branch
         if: steps.version.outputs.value != 'v0.31'
         shell: pwsh
         run: |
@@ -41,7 +37,7 @@ jobs:
           $branch = 'agent/v0.31-release-files'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout -b $branch
+          git checkout -B $branch
 
           $p = 'source/AppState.cs'
           $c = Get-Content $p -Raw
@@ -70,7 +66,9 @@ jobs:
           $p = 'CHANGELOG.md'
           $c = Get-Content $p -Raw
           if ($c -notmatch '## Unreleased') { throw 'Unreleased section missing.' }
-          Set-Content $p ($c -replace '## Unreleased\r?\n', "## Unreleased`r`n`r`n$entry") -Encoding UTF8
+          if ($c -notmatch '## v0\.31') {
+            Set-Content $p ($c -replace '## Unreleased\r?\n', "## Unreleased`r`n`r`n$entry") -Encoding UTF8
+          }
 
           @'
           ## Highlights
@@ -106,7 +104,7 @@ jobs:
 
           git add source/AppState.cs CK3MPS.csproj CHANGELOG.md docs/release-notes-v0.31.md
           git commit -m 'Prepare v0.31 release files'
-          git push --force-with-lease origin $branch
+          git push --force origin HEAD:$branch
 
       - name: Build and validate release
         if: steps.version.outputs.value == 'v0.31'
