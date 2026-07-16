@@ -32,7 +32,7 @@ if ($ProjectVersion -ne $ExpectedProjectVersion) {
 
 $ReleaseNotesPath = Join-Path $Root ("docs\release-notes-{0}.md" -f $AppVersion)
 if (-not (Test-Path -LiteralPath $ReleaseNotesPath -PathType Leaf)) {
-    throw "Missing release notes file for $AppVersion: $ReleaseNotesPath"
+    throw "Missing release notes file for ${AppVersion}: $ReleaseNotesPath"
 }
 
 if ($RequireReleaseTag) {
