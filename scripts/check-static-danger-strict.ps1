@@ -12,14 +12,14 @@ if ($LASTEXITCODE -ne 0) {
 # Pinning the complete reviewed blob means any edit forces an explicit security
 # review and a deliberate hash update instead of silently inheriting permission.
 $ReviewedBlobs = [ordered]@{
-$187e66749af2a63356071c57c1d26973e3047fd60'
-$19240e1fe9fc3f50c9fb770f0475adc1ce08a11f3'
-$150c83c7ffca2ad4fe742fd517bdb10d7236eb29e'
+    'source/AppConfig.cs' = '187e66749af2a63356071c57c1d26973e3047fd60'
+    'source/Cleanup.cs' = '9240e1fe9fc3f50c9fb770f0475adc1ce08a11f3'
+    'source/GameSettings.cs' = '50c83c7ffca2ad4fe742fd517bdb10d7236eb29e'
     'source/Helpers.cs' = 'cd912feb9ce896f5d3c64683d7d98130d6171371'
-$10fbe6046e4a5c332462f6778ede347d9ab284936'
-$171670460aedcb1033273e5134fef39e0c4e22b1f'
-$19f872149a526267721acb7d02ad5afc0df4b37bf'
-$12638181c295e5b47ecb0523d715799d05161d123'
+    'source/Launchers.cs' = '0fbe6046e4a5c332462f6778ede347d9ab284936'
+    'source/Readiness.cs' = '71670460aedcb1033273e5134fef39e0c4e22b1f'
+    'source/Reports.cs' = '9f872149a526267721acb7d02ad5afc0df4b37bf'
+    'source/SaveAnalysis.cs' = '2638181c295e5b47ecb0523d715799d05161d123'
     'source/Workflow.cs' = 'b4eecf5fd98b56e00c4e0e30afdc589a0b65a865'
 }
 
