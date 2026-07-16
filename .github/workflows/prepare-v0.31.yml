@@ -143,3 +143,22 @@ jobs:
             release/CK3MPS.exe.sha256
             ../CK3MPS_exports/CK3MPS-v0.31.zip
             ../CK3MPS_exports/CK3MPS-v0.31.zip.sha256
+
+      - name: Record successful publication
+        if: steps.version.outputs.value == 'v0.31'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $branch = 'automation/v0.31-published'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B $branch
+          @"
+          tag=v0.31
+          release=https://github.com/${{ github.repository }}/releases/tag/v0.31
+          run=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          published_utc=$(Get-Date -AsUTC -Format o)
+          "@ | Set-Content '.github/v0.31-release-published.txt' -Encoding UTF8
+          git add .github/v0.31-release-published.txt
+          git commit -m 'Record v0.31 release publication'
+          git push --force origin HEAD:$branch
