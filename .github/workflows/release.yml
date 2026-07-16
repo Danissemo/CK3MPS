@@ -28,6 +28,11 @@ jobs:
           ./scripts/build.ps1 -UpdateReleaseArtifacts
           ./scripts/test.ps1
           ./scripts/check-version-consistency.ps1
+          $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $version) {
+            throw "Release tag mismatch: pushed $env:GITHUB_REF_NAME but AppVersion is $version"
+          }
           ./scripts/check-repo-clean.ps1
           ./scripts/validate-release.ps1
           ./scripts/package-release.ps1
