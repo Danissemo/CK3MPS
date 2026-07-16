@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
@@ -59,6 +59,10 @@
     <Compile Include="source\Updates.cs" />
     <Compile Include="source\Utilities.cs" />
     <Compile Include="source\RuntimeModeUtilities.cs" />
+    <Compile Include="source\StepCatalog.cs" />
+    <Compile Include="source\TransactionalOperations.cs" />
+    <Compile Include="source\RestoreTransactions.cs" />
+    <Compile Include="source\WorkflowAnalysisCoordinator.cs" />
     <Compile Include="source\SaveAnalysis.cs" />
     <Compile Include="source\OosDeepAnalysis.cs" />
     <Compile Include="source\Workflow.cs" />
@@ -70,4 +74,3 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
-

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -837,14 +837,9 @@ namespace CK3MPS
 
         private void ValidateStepConfiguration()
         {
-            if (steps.Items.Count != ExpectedStepCount)
-                Log("WARN Step configuration mismatch: expected " + ExpectedStepCount + ", actual " + steps.Items.Count);
-
-            if (steps.Items.Count > 0 && !steps.Items[0].ToString().StartsWith("Create Windows restore point", StringComparison.Ordinal))
-                Log("WARN First checklist item is not the expected Safety block.");
-
-            if (steps.Items.Count > 0 && !steps.Items[steps.Items.Count - 1].ToString().StartsWith("Write player comparison manifest", StringComparison.Ordinal))
-                Log("WARN Last checklist item is not the expected MP parity block.");
+            string catalogError;
+            if (!StepCatalog.Validate(steps.Items, PresetUtilities.RecommendedStepIndices(), out catalogError))
+                Log("WARN Step configuration mismatch: " + catalogError);
         }
 
         private async void RunStabilize()
@@ -907,39 +902,39 @@ namespace CK3MPS
                     return;
                 }
 
-                bool shouldStartGuard = IsStepChecked(14) || IsStepChecked(15) || IsStepChecked(16);
+                bool shouldStartGuard = IsStepChecked(StepCatalog.ForceNoMods) || IsStepChecked(StepCatalog.StabilizePdxSettings) || IsStepChecked(StepCatalog.ConfirmLaunchedProfile);
                 CaptureExecutionSnapshot();
                 await Task.Run(delegate
                 {
-                    RunCoreStabilizeStep(1, "Safety: checking paths", CheckBasePaths, ShouldRunPathValidationCoreStep());
-                    RunCoreStabilizeStep(2, "Safety: creating quarantine", CreateQuarantine, ShouldRunQuarantineCoreStep());
-                    RunPlannedStabilizeStep(0, "Safety: creating Windows restore point", CreateWindowsRestorePoint);
-                    RunPlannedStabilizeStep(3, "Windows network: flushing DNS cache", FlushDnsCache);
-                    RunPlannedStabilizeStep(4, "Windows network: diagnosing adapters and routes", RunNetworkDiagnostics);
-                    RunPlannedStabilizeStep(5, "Windows firewall: adding CK3 rules", EnsureFirewallRules);
-                    RunPlannedStabilizeStep(6, "Windows registry: applying game/network profile", ApplyWindowsGameNetworkProfile);
-                    RunPlannedStabilizeStep(7, "Windows adapters: tuning power profile", ApplyPowerAdapterProfile);
-                    RunPlannedStabilizeStep(8, "Windows apps: checking overlays and VPNs", CheckOverlaysAndVpn);
-                    RunPlannedStabilizeStep(9, "Windows network: checking online services", CheckOnlineServices);
-                    RunPlannedStabilizeStep(10, "Launchers: backing up settings", BackupSteamAndLauncherSettings);
-                    RunPlannedStabilizeStep(11, "Steam: stabilizing CK3 settings", StabilizeSteamSettings);
-                    RunPlannedStabilizeStep(12, "Paradox Launcher: rebuilding database", RebuildParadoxLauncherDatabase);
-                    RunPlannedStabilizeStep(13, "Launchers: checking runtime hygiene", CheckLauncherRuntimeHygiene);
-                    RunPlannedStabilizeStep(14, "CK3 external profile: writing no-mod profile", ForceNoMods);
-                    RunPlannedStabilizeStep(15, "CK3 external settings: stabilizing settings", StabilizePdxSettings);
-                    RunPlannedStabilizeStep(16, "CK3 runtime verification: writing launch report", WriteRuntimeVerificationReport);
-                    RunPlannedStabilizeStep(17, "CK3 in-game rules: writing game-rule profile", WriteStableGameRuleProfile);
-                    RunPlannedStabilizeStep(18, "CK3 user state: clearing player UI state", ClearPlayerState);
-                    RunPlannedStabilizeStep(19, "CK3 reports: archiving OOS and crashes", ArchiveReports);
-                    RunPlannedStabilizeStep(20, "CK3 cache: clearing CK3 and launcher caches", ClearCaches);
-                    RunPlannedStabilizeStep(21, "CK3 mods: quarantining .mod descriptors", QuarantineModDescriptors);
-                    RunPlannedStabilizeStep(22, "CK3 binaries: inspecting non-vanilla files", QuarantineLoaderFiles);
-                    RunPlannedStabilizeStep(23, "CK3 saves: stabilizing save launch hygiene", StabilizeSaveHygiene);
-                    RunPlannedStabilizeStep(24, "CK3 folder cleanup: removing nonessential files", CleanCk3DocumentsFolder);
-                    RunPlannedStabilizeStep(25, "OOS reports: analyzing latest metadata", AnalyzeLatestOosReport);
-                    RunPlannedStabilizeStep(26, "OOS evidence: writing support package index", WriteOosEvidencePack);
-                    RunPlannedStabilizeStep(27, "OOS protocol: writing prevention rules", WriteOosPreventionProtocol);
-                    RunPlannedStabilizeStep(28, "MP parity: writing comparison manifest", WriteMultiplayerParityManifest);
+                    RunCoreStabilizeStep(StepCatalog.CheckPathsAndProcesses, "Safety: checking paths", CheckBasePaths, ShouldRunPathValidationCoreStep());
+                    RunCoreStabilizeStep(StepCatalog.CreateQuarantine, "Safety: creating quarantine", CreateQuarantine, ShouldRunQuarantineCoreStep());
+                    RunPlannedStabilizeStep(StepCatalog.CreateRestorePoint, "Safety: creating Windows restore point", CreateWindowsRestorePoint);
+                    RunPlannedStabilizeStep(StepCatalog.FlushDns, "Windows network: flushing DNS cache", FlushDnsCache);
+                    RunPlannedStabilizeStep(StepCatalog.DiagnoseNetwork, "Windows network: diagnosing adapters and routes", RunNetworkDiagnostics);
+                    RunPlannedStabilizeStep(StepCatalog.AddFirewallRules, "Windows firewall: adding CK3 rules", EnsureFirewallRules);
+                    RunPlannedStabilizeStep(StepCatalog.ApplyWindowsProfile, "Windows registry: applying game/network profile", ApplyWindowsGameNetworkProfile);
+                    RunPlannedStabilizeStep(StepCatalog.TunePowerAdapters, "Windows adapters: tuning power profile", ApplyPowerAdapterProfile);
+                    RunPlannedStabilizeStep(StepCatalog.CheckOverlaysVpn, "Windows apps: checking overlays and VPNs", CheckOverlaysAndVpn);
+                    RunPlannedStabilizeStep(StepCatalog.CheckOnlineServices, "Windows network: checking online services", CheckOnlineServices);
+                    RunPlannedStabilizeStep(StepCatalog.BackupLauncherSettings, "Launchers: backing up settings", BackupSteamAndLauncherSettings);
+                    RunPlannedStabilizeStep(StepCatalog.StabilizeSteamSettings, "Steam: stabilizing CK3 settings", StabilizeSteamSettings);
+                    RunPlannedStabilizeStep(StepCatalog.RebuildLauncherDatabase, "Paradox Launcher: rebuilding database", RebuildParadoxLauncherDatabase);
+                    RunPlannedStabilizeStep(StepCatalog.CheckRuntimeHygiene, "Launchers: checking runtime hygiene", CheckLauncherRuntimeHygiene);
+                    RunPlannedStabilizeStep(StepCatalog.ForceNoMods, "CK3 external profile: writing no-mod profile", ForceNoMods);
+                    RunPlannedStabilizeStep(StepCatalog.StabilizePdxSettings, "CK3 external settings: stabilizing settings", StabilizePdxSettings);
+                    RunPlannedStabilizeStep(StepCatalog.ConfirmLaunchedProfile, "CK3 runtime verification: writing launch report", WriteRuntimeVerificationReport);
+                    RunPlannedStabilizeStep(StepCatalog.WriteCampaignProfile, "CK3 in-game rules: writing game-rule profile", WriteStableGameRuleProfile);
+                    RunPlannedStabilizeStep(StepCatalog.ClearPlayerState, "CK3 user state: clearing player UI state", ClearPlayerState);
+                    RunPlannedStabilizeStep(StepCatalog.ArchiveReports, "CK3 reports: archiving OOS and crashes", ArchiveReports);
+                    RunPlannedStabilizeStep(StepCatalog.ClearCaches, "CK3 cache: clearing CK3 and launcher caches", ClearCaches);
+                    RunPlannedStabilizeStep(StepCatalog.QuarantineModDescriptors, "CK3 mods: quarantining .mod descriptors", QuarantineModDescriptors);
+                    RunPlannedStabilizeStep(StepCatalog.InspectLoaderFiles, "CK3 binaries: inspecting non-vanilla files", QuarantineLoaderFiles);
+                    RunPlannedStabilizeStep(StepCatalog.CheckSaveHygiene, "CK3 saves: stabilizing save launch hygiene", StabilizeSaveHygiene);
+                    RunPlannedStabilizeStep(StepCatalog.CleanDocumentsFolder, "CK3 folder cleanup: removing nonessential files", CleanCk3DocumentsFolder);
+                    RunPlannedStabilizeStep(StepCatalog.AnalyzeOos, "OOS reports: analyzing latest metadata", AnalyzeLatestOosReport);
+                    RunPlannedStabilizeStep(StepCatalog.WriteSupportPackage, "OOS evidence: writing support package index", WriteOosEvidencePack);
+                    RunPlannedStabilizeStep(StepCatalog.WritePreventionRules, "OOS protocol: writing prevention rules", WriteOosPreventionProtocol);
+                    RunPlannedStabilizeStep(StepCatalog.WriteParityManifest, "MP parity: writing comparison manifest", WriteMultiplayerParityManifest);
                     LogSection("Final readiness summary");
                     RunReadinessChecks(true);
                 });

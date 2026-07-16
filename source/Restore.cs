@@ -1257,21 +1257,9 @@ namespace CK3MPS
             try
             {
                 activeRestoreOperationSnapshots = confirmationSnapshots;
+                ExecuteRestoreBatch(entries, false);
                 foreach (RestoreEntry entry in entries)
-                {
-                    if (entry.Kind == "file" || entry.Kind == "moved_file")
-                        RestoreFileEntry(entry);
-                    else if (entry.Kind == "created_file")
-                        RestoreCreatedFileEntry(entry);
-                    else if (entry.Kind == "directory" || entry.Kind == "moved_directory")
-                        RestoreDirectoryEntry(entry);
-                    else if (entry.Kind == "registry")
-                        RestoreRegistryEntry(entry);
-                    else
-                        throw new InvalidOperationException("This restore entry is informational. Use the details text or Windows restore point for this item.");
-
                     Log("OK   Restored: " + entry.Description);
-                }
                 RefreshRestoreList();
             }
             catch (Exception ex)
@@ -1318,11 +1306,9 @@ namespace CK3MPS
             try
             {
                 activeRestoreOperationSnapshots = confirmationSnapshots;
+                ExecuteRestoreBatch(entries, true);
                 foreach (RestoreEntry entry in entries)
-                {
-                    RestoreDefaultEntry(entry);
                     Log("OK   Restored default behavior: " + entry.Description);
-                }
                 RefreshRestoreList();
             }
             catch (Exception ex)
@@ -1600,11 +1586,9 @@ namespace CK3MPS
             if (Directory.Exists(entry.SourcePath) && DirectoryContentsEqual(entry.SourcePath, entry.BackupPath))
                 return;
             if (Directory.Exists(entry.SourcePath))
-            {
                 BackupForRestore(entry.SourcePath, "Pre-restore backup of current directory: " + entry.SourcePath);
-                Directory.Delete(entry.SourcePath, true);
-            }
-            CopyDirectory(entry.BackupPath, entry.SourcePath);
+
+            AtomicReplaceDirectoryFromBackup(entry.BackupPath, entry.SourcePath);
             RecordRestoreEntry("restore_action", entry.SourcePath, entry.BackupPath, "Restored directory: " + entry.SourcePath, entry.Before, DescribePath(entry.SourcePath), "restored");
         }
 

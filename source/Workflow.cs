@@ -47,6 +47,7 @@ namespace CK3MPS
             {
                 if (workflowModeBox.SelectedItem != null)
                 {
+                    CancelWorkflowScenarioRefresh();
                     currentWorkflowScenario = Convert.ToString(workflowModeBox.SelectedItem);
                     LayoutWorkflowTabControls();
                     if (workflowUiInitialized)
@@ -664,7 +665,7 @@ namespace CK3MPS
             ShowWorkflowScenarioSnapshot(scenario, false);
 
             WorkflowScenarioSnapshot snapshot;
-            if (!TryGetWorkflowScenarioSnapshot(scenario, out snapshot) && !workflowRefreshPending)
+            if (!TryGetWorkflowScenarioSnapshot(scenario, out snapshot))
                 BeginInvoke((MethodInvoker)delegate { BeginWorkflowScenarioRefresh(); });
         }
 
@@ -721,7 +722,7 @@ namespace CK3MPS
 
         private void BeginWorkflowScenarioRefresh()
         {
-            if (!workflowUiInitialized || workflowRefreshPending)
+            if (!workflowUiInitialized)
                 return;
 
             workflowRefreshPending = true;
@@ -730,6 +731,7 @@ namespace CK3MPS
             string scenario = currentWorkflowScenario = NullText(Convert.ToString(workflowModeBox.SelectedItem)) == "(none)"
                 ? currentWorkflowScenario
                 : Convert.ToString(workflowModeBox.SelectedItem);
+            CancellationToken cancellationToken = BeginWorkflowRefreshCancellation();
 
             workflowRenderTimer.Stop();
             updatingWorkflowUi = true;
@@ -754,10 +756,12 @@ namespace CK3MPS
             {
                 try
                 {
-                    WorkflowScenarioSnapshot snapshot = BuildWorkflowScenarioSnapshot(scenario);
+                    WorkflowScenarioSnapshot snapshot = BuildWorkflowScenarioSnapshotCore(scenario, cancellationToken);
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (generation != workflowLoadGeneration)
+                        if (!WorkflowRefreshStillCurrent(generation, scenario, cancellationToken))
                             return;
 
                         workflowRenderStates = snapshot.States ?? new List<WorkflowStepState>();
@@ -773,11 +777,16 @@ namespace CK3MPS
                         workflowRenderTimer.Start();
                     });
                 }
+                catch (OperationCanceledException)
+                {
+                }
                 catch
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (generation != workflowLoadGeneration)
+                        if (!WorkflowRefreshStillCurrent(generation, scenario, cancellationToken))
                             return;
 
                         workflowRenderTimer.Stop();
@@ -789,7 +798,7 @@ namespace CK3MPS
                         workflowRefreshPending = false;
                     });
                 }
-            });
+            }, cancellationToken);
         }
 
         private void RebuildWorkflowScenarioUi()
@@ -825,20 +834,16 @@ namespace CK3MPS
 
         private WorkflowScenarioSnapshot BuildWorkflowScenarioSnapshot(string scenario)
         {
-            WorkflowScenarioSnapshot snapshot = new WorkflowScenarioSnapshot();
-            snapshot.Scenario = scenario;
-            BuildWorkflowScenarioSteps(scenario, snapshot.States);
-            snapshot.Verdict = BuildWorkflowVerdictLine(scenario, snapshot.States);
-            snapshot.Summary = BuildWorkflowScenarioSummaryText(scenario, snapshot.States);
-            return snapshot;
+            return BuildWorkflowScenarioSnapshotCore(scenario, CancellationToken.None);
         }
 
         private void BuildWorkflowScenarioSteps(string scenario, List<WorkflowStepState> states)
         {
-            HostSuitabilityResult host = AnalyzeHostSuitability();
-            HostSaveCandidateResult save = AnalyzeWorkflowHostSaveCandidate();
-            OosDeepInsight oos = AnalyzeLatestOosDeepInsight();
-            OosIncidentState incident = AnalyzeOosIncidentState();
+            WorkflowAnalysisSnapshot analysis = CurrentWorkflowAnalysis();
+            HostSuitabilityResult host = analysis.Host;
+            HostSaveCandidateResult save = analysis.Save;
+            OosDeepInsight oos = analysis.Oos;
+            OosIncidentState incident = analysis.Incident;
             bool saveRulesSafe = AllCriticalRulesSafe(save.Save.Rules);
             string latestOosPath = FindLatestOosMetadataFile();
             bool latestOosExists = !String.IsNullOrEmpty(latestOosPath);
@@ -935,7 +940,7 @@ namespace CK3MPS
 
         private string BuildWorkflowVerdictLine(string scenario, List<WorkflowStepState> states)
         {
-            OosDeepInsight oos = AnalyzeLatestOosDeepInsight();
+            OosDeepInsight oos = CurrentWorkflowAnalysis().Oos;
             bool blocked = false;
             foreach (WorkflowStepState state in states)
             {
@@ -959,10 +964,11 @@ namespace CK3MPS
 
         private string BuildWorkflowScenarioSummaryText(string scenario, List<WorkflowStepState> states)
         {
-            HostSuitabilityResult host = AnalyzeHostSuitability();
-            HostSaveCandidateResult save = AnalyzeWorkflowHostSaveCandidate();
-            OosDeepInsight oos = AnalyzeLatestOosDeepInsight();
-            OosIncidentState incident = AnalyzeOosIncidentState();
+            WorkflowAnalysisSnapshot analysis = CurrentWorkflowAnalysis();
+            HostSuitabilityResult host = analysis.Host;
+            HostSaveCandidateResult save = analysis.Save;
+            OosDeepInsight oos = analysis.Oos;
+            OosIncidentState incident = analysis.Incident;
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("Scenario: " + scenario);
             sb.AppendLine(BuildWorkflowVerdictLine(scenario, states));
@@ -1097,15 +1103,14 @@ namespace CK3MPS
 
         private string BuildWorkflowStatusReportText()
         {
-            List<WorkflowStepState> snapshot = new List<WorkflowStepState>();
-            BuildWorkflowScenarioSteps(currentWorkflowScenario, snapshot);
-            return BuildWorkflowScenarioSummaryText(currentWorkflowScenario, snapshot);
+            return BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None).Summary;
         }
 
         private string BuildWorkflowRecommendation(string scenario, List<WorkflowStepState> states, HostSuitabilityResult host, HostSaveCandidateResult save)
         {
-            OosDeepInsight oos = AnalyzeLatestOosDeepInsight();
-            OosIncidentState incident = AnalyzeOosIncidentState();
+            WorkflowAnalysisSnapshot analysis = CurrentWorkflowAnalysis();
+            OosDeepInsight oos = analysis.Oos;
+            OosIncidentState incident = analysis.Incident;
             bool gameRunning = IsGameRunning();
             bool blocked = false;
             foreach (WorkflowStepState state in states)
@@ -2269,7 +2274,7 @@ namespace CK3MPS
         {
             StopParityRoomHost(session);
 
-            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            TcpListener listener = new TcpListener(IPAddress.Any, 0);
             listener.Start();
             session.Listener = listener;
             session.CancelSource = new CancellationTokenSource();
@@ -2649,7 +2654,7 @@ namespace CK3MPS
                 dialog.MinimizeBox = false;
 
                 Label hostLabel = new Label { Text = "Host", Left = 16, Top = 20, Width = 100 };
-                TextBox hostBox = new TextBox { Left = 130, Top = 16, Width = 240, Text = "127.0.0.1" };
+                TextBox hostBox = new TextBox { Left = 130, Top = 16, Width = 240, Text = DetectPrimaryIpv4Address() };
                 Label portLabel = new Label { Text = "Port", Left = 16, Top = 58, Width = 100 };
                 TextBox portBox = new TextBox { Left = 130, Top = 54, Width = 120 };
                 Label codeLabel = new Label { Text = "Room code", Left = 16, Top = 96, Width = 100 };

@@ -51,6 +51,7 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     /r:System.dll `
     (Join-Path $Root "source\Utilities.cs") `
     (Join-Path $Root "source\RuntimeModeUtilities.cs") `
+    (Join-Path $Root "source\StepCatalog.cs") `
     (Join-Path $Root "tests\UtilityTests.cs")
 
 if ($LASTEXITCODE -ne 0) {

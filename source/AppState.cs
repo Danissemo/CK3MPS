@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -21,7 +21,7 @@ namespace CK3MPS
     internal sealed partial class MainForm : Form
     {
         private const string AppVersion = "v0.3";
-        private const int ExpectedStepCount = 29;
+        private const int ExpectedStepCount = StepCatalog.Count;
         private const long MaxSaveAnalysisFileBytes = 128L * 1024L * 1024L;
         private const int MaxSaveAnalysisPrefixBytes = 8 * 1024 * 1024;
         private const int MaxEmbeddedZipAnalysisBytes = 32 * 1024 * 1024;
@@ -657,7 +657,7 @@ namespace CK3MPS
                 CheckForUpdatesOnStartup();
                 StartOosWatcherServices();
             };
-            FormClosed += delegate { StopOosWatcherServices(1500); };
+            FormClosed += delegate { CancelWorkflowScenarioRefresh(); StopOosWatcherServices(1500); };
         }
 
         private static bool IsAutomationTestRun()

@@ -28,9 +28,17 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1
 
-      - name: Test
+      - name: Integration tests
         shell: pwsh
-        run: ./scripts/test.ps1
+        run: ./scripts/test-required.ps1
+
+      - name: Transactional recovery tests
+        shell: pwsh
+        run: ./scripts/test-transactional-hardening.ps1
+
+      - name: Strict mutation review
+        shell: pwsh
+        run: ./scripts/check-static-danger-strict.ps1
 
       - name: Validate release metadata
         shell: pwsh
