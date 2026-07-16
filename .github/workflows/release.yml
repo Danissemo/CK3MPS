@@ -26,7 +26,8 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/build.ps1 -UpdateReleaseArtifacts
-          ./scripts/test.ps1
+          ./scripts/test-required.ps1
+          ./scripts/check-static-danger-strict.ps1
           ./scripts/check-version-consistency.ps1
           $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
           $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
