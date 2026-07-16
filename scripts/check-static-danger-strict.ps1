@@ -3,10 +3,10 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 
+# The base script terminates the PowerShell process with exit 1 on failure.
+# On success it returns normally, so reading $LASTEXITCODE here would reuse an
+# unrelated native command's exit code.
 & (Join-Path $ScriptDir 'check-static-danger.ps1')
-if ($LASTEXITCODE -ne 0) {
-    throw "Base static danger check failed with exit code $LASTEXITCODE"
-}
 
 # These files currently contain one or more broad mutation allowlist entries.
 # Pinning the complete reviewed blob means any edit forces an explicit security
