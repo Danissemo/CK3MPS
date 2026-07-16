@@ -30,7 +30,23 @@ jobs:
 
       - name: Integration tests
         shell: pwsh
-        run: ./scripts/test-required.ps1
+        run: |
+          New-Item -ItemType Directory -Force -Path .diagnostics | Out-Null
+          try {
+            ./scripts/test-required.ps1 *>&1 | Tee-Object -FilePath .diagnostics/integration-tests.log
+          }
+          catch {
+            $_ | Out-String | Add-Content -Path .diagnostics/integration-tests.log
+            throw
+          }
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration-test-diagnostics
+          path: .diagnostics/integration-tests.log
+          if-no-files-found: warn
 
       - name: Transactional recovery tests
         shell: pwsh
