@@ -1,0 +1,190 @@
+name: Check Approved PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Number of recent open PRs to inspect
+        required: false
+        default: '10'
+      fail_on_no_approved_prs:
+        description: Fail when no approved PRs are found
+        required: false
+        default: 'false'
+  schedule:
+    - cron: '30 5 * * *'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  approved-pr-exe-builds:
+    name: Compile approved PR executables
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+
+      - name: Find approved pull requests
+        id: approved-prs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_LIMIT: ${{ github.event.inputs.limit }}
+          FAIL_ON_NO_APPROVED_PRS: ${{ github.event.inputs.fail_on_no_approved_prs }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $limit = 10
+          if (-not [string]::IsNullOrWhiteSpace($env:INPUT_LIMIT)) {
+            $limit = [int]$env:INPUT_LIMIT
+          }
+
+          $query = @'
+          query($owner: String!, $name: String!, $limit: Int!) {
+            repository(owner: $owner, name: $name) {
+              pullRequests(first: $limit, states: OPEN, orderBy: { field: UPDATED_AT, direction: DESC }) {
+                nodes {
+                  number
+                  title
+                  url
+                  reviewDecision
+                  headRefName
+                  headRefOid
+                  headRepositoryOwner {
+                    login
+                  }
+                }
+              }
+            }
+          }
+          '@
+
+          $repoParts = '${{ github.repository }}'.Split('/')
+          $response = gh api graphql `
+            -f owner=$repoParts[0] `
+            -f name=$repoParts[1] `
+            -F limit=$limit `
+            -f query=$query | ConvertFrom-Json
+
+          $approved = @($response.data.repository.pullRequests.nodes | Where-Object { $_.reviewDecision -eq 'APPROVED' })
+          New-Item -ItemType Directory -Force -Path .approved-pr-artifacts | Out-Null
+
+          $approved | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath .approved-pr-artifacts/approved-prs.json -Encoding utf8
+
+          if ($approved.Count -eq 0) {
+            'approved_count=0' >> $env:GITHUB_OUTPUT
+            'No approved open pull requests were found.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+            if ($env:FAIL_ON_NO_APPROVED_PRS -eq 'true') {
+              throw 'No approved open pull requests were found.'
+            }
+
+            return
+          }
+
+          'approved_count=' + $approved.Count >> $env:GITHUB_OUTPUT
+
+          '## Approved PRs selected for exe compilation' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '| PR | Title | Branch | Head SHA |' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '| --- | --- | --- | --- |' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          foreach ($pr in $approved) {
+            $branch = "$($pr.headRepositoryOwner.login):$($pr.headRefName)"
+            $sha = $pr.headRefOid.Substring(0, 7)
+            "| [#$($pr.number)]($($pr.url)) | $($pr.title) | `$branch` | `$sha` |" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Build approved PR executables
+        if: steps.approved-prs.outputs.approved_count != '0'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+
+          $approved = Get-Content -LiteralPath .approved-pr-artifacts/approved-prs.json -Raw | ConvertFrom-Json
+          if ($null -eq $approved) {
+            throw 'Approved PR list is empty or invalid.'
+          }
+
+          $failures = @()
+          $summaryRows = @()
+          $baseRef = '${{ github.ref_name }}'
+
+          foreach ($pr in @($approved)) {
+            $prNumber = [int]$pr.number
+            $workBranch = "approved-pr-$prNumber"
+            $artifactDir = Join-Path '.approved-pr-artifacts' "PR-$prNumber"
+
+            Write-Host "::group::Build PR #$prNumber"
+
+            git reset --hard
+            git clean -xdf
+
+            git fetch --force origin "pull/$prNumber/head:$workBranch"
+            git checkout $workBranch
+
+            New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+            ./scripts/build.ps1
+            if ($LASTEXITCODE -ne 0) {
+              $failures += "PR #$prNumber build.ps1 failed with exit code $LASTEXITCODE."
+              $summaryRows += "| #$prNumber | Failed | build.ps1 exited with $LASTEXITCODE |"
+              git checkout $baseRef
+              Write-Host '::endgroup::'
+              continue
+            }
+
+            if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
+              $failures += "PR #$prNumber did not produce bin\CK3MPS.exe."
+              $summaryRows += "| #$prNumber | Failed | bin\CK3MPS.exe missing |"
+              git checkout $baseRef
+              Write-Host '::endgroup::'
+              continue
+            }
+
+            Copy-Item -LiteralPath ./bin/CK3MPS.exe -Destination (Join-Path $artifactDir 'CK3MPS.exe') -Force
+            $summaryRows += "| #$prNumber | Passed | bin\CK3MPS.exe created |"
+
+            git checkout $baseRef
+            Write-Host '::endgroup::'
+          }
+
+          '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '## Executable build results' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '| PR | Status | Details |' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          '| --- | --- | --- |' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          $summaryRows | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+          if ($failures.Count -gt 0) {
+            '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            '## Failures' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            foreach ($failure in $failures) {
+              "- $failure" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            }
+            throw ($failures -join [Environment]::NewLine)
+          }
+
+      - name: Upload approved PR executables
+        if: always() && steps.approved-prs.outputs.approved_count != '0'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: approved-pr-executables
+          path: .approved-pr-artifacts/**/CK3MPS.exe
+          if-no-files-found: warn
+
+      - name: Upload approved PR report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: approved-pr-build-report
+          path: .approved-pr-artifacts/approved-prs.json
+          if-no-files-found: warn
