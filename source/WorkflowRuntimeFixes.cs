@@ -282,7 +282,7 @@ namespace CK3MPS
 
         private void OpenParityRoomWithOnlineDashboardText()
         {
-            Timer patchTimer = new Timer();
+            System.Windows.Forms.Timer patchTimer = new System.Windows.Forms.Timer();
             patchTimer.Interval = 250;
             patchTimer.Tick += delegate
             {
