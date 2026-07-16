@@ -86,7 +86,6 @@ namespace CK3MPS
             ClearPlayerState,
             ArchiveReports,
             ClearCaches,
-            QuarantineModDescriptors,
             InspectLoaderFiles,
             AnalyzeOos,
             WriteSupportPackage,
