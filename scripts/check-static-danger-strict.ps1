@@ -3,14 +3,8 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 
-# The base script terminates the PowerShell process with exit 1 on failure.
-# On success it returns normally, so reading $LASTEXITCODE here would reuse an
-# unrelated native command's exit code.
 & (Join-Path $ScriptDir 'check-static-danger.ps1')
 
-# These files currently contain one or more broad mutation allowlist entries.
-# Pinning the complete reviewed blob means any edit forces an explicit security
-# review and a deliberate hash update instead of silently inheriting permission.
 $ReviewedBlobs = [ordered]@{
     'source/AppConfig.cs' = '87e66749af2a63356071c57c1d26973e3047fd60'
     'source/Cleanup.cs' = '9240e1fe9fc3f50c9fb770f0475adc1ce08a11f3'
@@ -29,12 +23,23 @@ foreach ($relativePath in $ReviewedBlobs.Keys) {
         throw "Reviewed mutation file is missing: $relativePath"
     }
 
-    $actual = git -C $Root rev-parse "HEAD:$relativePath"
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($actual)) {
-        throw "Could not calculate Git blob hash for $relativePath"
+    # Use the staged Git object, not checkout bytes, so CRLF/LF conversion
+    # cannot change the reviewed identity.
+    $indexLines = @(git -C $Root ls-files --stage -- $relativePath)
+    if ($LASTEXITCODE -ne 0) { throw "Could not read the Git index entry for $relativePath" }
+    if ($indexLines.Count -ne 1) {
+        throw "Expected one Git index entry for $relativePath, found $($indexLines.Count)"
     }
 
-    $actual = $actual.Trim()
+    $parts = $indexLines[0] -split '\s+', 4
+    if ($parts.Count -lt 4 -or $parts[1] -notmatch '^[0-9a-f]{40}$') {
+        throw "Invalid Git index entry for $relativePath: $($indexLines[0])"
+    }
+
+    $actual = $parts[1]
+    git -C $Root cat-file -e ('{0}^{{blob}}' -f $actual)
+    if ($LASTEXITCODE -ne 0) { throw "Git object for $relativePath is not a valid blob: $actual" }
+
     $expected = $ReviewedBlobs[$relativePath]
     if ($actual -ne $expected) {
         throw "Broad mutation allowlist review expired for $relativePath. Expected reviewed blob $expected, found $actual. Review every dangerous call and update the pin deliberately."
