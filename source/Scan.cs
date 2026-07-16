@@ -182,8 +182,6 @@ namespace CK3MPS
 
         private void CheckBasePathsReadOnly()
         {
-            EnsureStabilizerRoot();
-            MoveLegacyStabilizerArtifacts();
             Check("CK3 settings/saves folder valid", SettingsFolderValid());
             Check("CK3 install folder valid", GameFolderValid());
             Check("CK3 is not currently running", !IsGameRunning());

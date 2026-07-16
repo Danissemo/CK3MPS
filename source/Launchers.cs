@@ -33,6 +33,9 @@ namespace CK3MPS
 
         private void StabilizeSteamSettings()
         {
+            if (!EnsureSteamClosedForConfigMutation("Apply Settings"))
+                return;
+
             EnsureNoAsync();
             RemoveDebugModeLaunchOption();
             DisableSteamCloudFlag();
@@ -78,26 +81,16 @@ namespace CK3MPS
                 Log("Steam localconfig.vdf not found. Set CK3 launch options manually: -noasync");
                 return;
             }
-
-            string text = File.ReadAllText(localConfig, Encoding.UTF8);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamLocalConfig(out root, out appObject, out error))
             {
-                Log("CK3 app block not found in Steam localconfig. Set launch options manually: -noasync");
+                Log(error);
                 return;
             }
 
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-            {
-                Log("Could not parse CK3 app block. Set launch options manually: -noasync");
-                return;
-            }
-
-            string block = text.Substring(open + 1, close - open - 1);
-            string existing = ExtractLaunchOptionsFromBlock(block);
+            string existing = appObject.GetString("LaunchOptions");
             string normalized = NormalizeLaunchOptions(existing, true);
             if (String.Equals(existing, normalized, StringComparison.Ordinal))
             {
@@ -106,13 +99,8 @@ namespace CK3MPS
             }
 
             BackupFile(localConfig);
-            if (Regex.IsMatch(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", RegexOptions.IgnoreCase))
-                block = Regex.Replace(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", "\"LaunchOptions\"\t\t\"" + EscapeVdfValue(normalized) + "\"", RegexOptions.IgnoreCase);
-            else
-                block = "\r\n\t\t\t\t\t\t\"LaunchOptions\"\t\t\"" + EscapeVdfValue(normalized) + "\"" + block;
-
-            text = text.Substring(0, open + 1) + block + text.Substring(close);
-            File.WriteAllText(localConfig, text, Encoding.UTF8);
+            appObject.SetString("LaunchOptions", normalized);
+            WriteSteamVdf(localConfig, root);
             Log("Steam launch options normalized: " + normalized);
         }
 
@@ -124,42 +112,32 @@ namespace CK3MPS
                 return;
             }
 
-            string text = File.ReadAllText(localConfig, Encoding.UTF8);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamLocalConfig(out root, out appObject, out error))
             {
-                Log("CK3 app block not found. Could not check debug_mode.");
+                Log(error.Replace("Set launch options manually: -noasync", "Could not check debug_mode."));
                 return;
             }
 
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-            {
-                Log("Could not parse CK3 app block. Could not remove debug_mode.");
-                return;
-            }
-
-            string block = text.Substring(open + 1, close - open - 1);
-            Match m = Regex.Match(block, "\"LaunchOptions\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            if (!m.Success)
+            string existing = appObject.GetString("LaunchOptions");
+            if (String.IsNullOrEmpty(existing))
             {
                 Log("No LaunchOptions block found while checking debug_mode.");
                 return;
             }
 
-            string cleaned = NormalizeLaunchOptions(m.Groups[1].Value, true);
-            if (String.Equals(m.Groups[1].Value, cleaned, StringComparison.Ordinal))
+            string cleaned = NormalizeLaunchOptions(existing, true);
+            if (String.Equals(existing, cleaned, StringComparison.Ordinal))
             {
                 Log("OK   Steam launch options already have debug_mode removed and -noasync kept.");
                 return;
             }
 
             BackupFile(localConfig);
-            block = Regex.Replace(block, "\"LaunchOptions\"\\s+\"[^\"]*\"", "\"LaunchOptions\"\t\t\"" + cleaned + "\"", RegexOptions.IgnoreCase);
-            text = text.Substring(0, open + 1) + block + text.Substring(close);
-            File.WriteAllText(localConfig, text, Encoding.UTF8);
+            appObject.SetString("LaunchOptions", cleaned);
+            WriteSteamVdf(localConfig, root);
             Log("Steam launch options checked: debug_mode removed, -noasync kept.");
         }
 
@@ -171,71 +149,40 @@ namespace CK3MPS
                 return;
             }
 
-            string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamSharedConfig(out root, out appObject, out error))
             {
-                Log("CK3 cloud block not found. If Steam Cloud is enabled, disable it in CK3 Properties.");
+                Log(error);
                 return;
             }
 
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-            {
-                Log("Could not parse cloud block. If Steam Cloud is enabled, disable it in CK3 Properties.");
-                return;
-            }
-
-            string block = text.Substring(open + 1, close - open - 1);
-            Match current = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            if (current.Success && current.Groups[1].Value == "0")
+            if (String.Equals(appObject.GetString("cloudenabled"), "0", StringComparison.Ordinal))
             {
                 Log("OK   Steam Cloud flag already set to off for CK3.");
                 return;
             }
 
             BackupFile(sharedConfig);
-            if (Regex.IsMatch(block, "\"cloudenabled\"\\s+\"[^\"]*\"", RegexOptions.IgnoreCase))
-                block = Regex.Replace(block, "\"cloudenabled\"\\s+\"[^\"]*\"", "\"cloudenabled\"\t\t\"0\"", RegexOptions.IgnoreCase);
-            else
-                block = "\r\n\t\t\t\t\"cloudenabled\"\t\t\"0\"" + block;
-
-            text = text.Substring(0, open + 1) + block + text.Substring(close);
-            File.WriteAllText(sharedConfig, text, Encoding.UTF8);
+            appObject.SetString("cloudenabled", "0");
+            WriteSteamVdf(sharedConfig, root);
             Log("Steam Cloud flag set to off for CK3 config.");
         }
 
         private string ExtractSteamLaunchOptions()
         {
-            if (String.IsNullOrEmpty(localConfig) || !File.Exists(localConfig))
-                return "";
-
-            string text = File.ReadAllText(localConfig, Encoding.UTF8);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
-                return "";
-
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-                return "";
-
-            return ExtractLaunchOptionsFromBlock(text.Substring(open + 1, close - open - 1));
-        }
-
-        private string ExtractLaunchOptionsFromBlock(string block)
-        {
-            Match m = Regex.Match(block, "\"LaunchOptions\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            return m.Success ? m.Groups[1].Value : "";
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            return TryLoadSteamLocalConfig(out root, out appObject, out error) ? appObject.GetString("LaunchOptions") : "";
         }
 
         private string NormalizeLaunchOptions(string options, bool requireNoAsync)
         {
             List<string> parts = new List<string>();
             bool hasNoAsync = false;
-            foreach (string raw in Regex.Split(options ?? "", "\\s+"))
+            foreach (string raw in WindowsCommandLineUtilities.Tokenize(options ?? ""))
             {
                 string token = raw.Trim();
                 if (String.IsNullOrEmpty(token))
@@ -251,12 +198,19 @@ namespace CK3MPS
             }
             if (requireNoAsync || hasNoAsync)
                 parts.Insert(0, "-noasync");
-            return String.Join(" ", parts.ToArray()).Trim();
+
+            List<string> encoded = new List<string>();
+            foreach (string part in parts)
+                encoded.Add(WindowsCommandLineUtilities.QuoteArgument(part));
+            return String.Join(" ", encoded.ToArray()).Trim();
         }
 
         private bool IsRiskyLaunchOptionToken(string token)
         {
             string lower = (token ?? "").Trim().TrimStart('-').ToLowerInvariant();
+            int equals = lower.IndexOf('=');
+            if (equals >= 0)
+                lower = lower.Substring(0, equals);
             return lower == "debug_mode"
                 || lower == "debug"
                 || lower == "develop"
@@ -272,15 +226,10 @@ namespace CK3MPS
 
         private bool HasRiskyLaunchOptions()
         {
-            foreach (string raw in Regex.Split(ExtractSteamLaunchOptions(), "\\s+"))
+            foreach (string raw in WindowsCommandLineUtilities.Tokenize(ExtractSteamLaunchOptions()))
                 if (IsRiskyLaunchOptionToken(raw))
                     return true;
             return false;
-        }
-
-        private string EscapeVdfValue(string value)
-        {
-            return (value ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
         }
 
         private void LogSteamOverlayHints()
@@ -291,18 +240,17 @@ namespace CK3MPS
                 return;
             }
 
-            string text = File.ReadAllText(localConfig);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            string block = "";
-            if (appIndex >= 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamLocalConfig(out root, out appObject, out error))
             {
-                int open = text.IndexOf('{', appIndex);
-                int close = FindMatchingBrace(text, open);
-                if (open >= 0 && close > open)
-                    block = text.Substring(open, close - open + 1);
+                Log("Steam overlay setting not found in config. If OOS persists, disable Steam Overlay for CK3 manually.");
+                Log("Steam Desktop Theatre/VR settings are global UI options; not changed automatically.");
+                return;
             }
 
-            if (block.IndexOf("Overlay", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (appObject.ContainsKeyFragment("Overlay"))
                 Log("Steam overlay-related setting found in CK3 block. If OOS persists, disable Steam Overlay for CK3 in Steam UI.");
             else
                 Log("Steam overlay setting not found in config. If OOS persists, disable Steam Overlay for CK3 manually.");
@@ -312,55 +260,107 @@ namespace CK3MPS
 
         private bool RemoveSteamLaunchOptionsOverride()
         {
+            if (!EnsureSteamClosedForConfigMutation("Restore default", true))
+                return false;
+
             if (String.IsNullOrEmpty(localConfig) || !File.Exists(localConfig))
                 return false;
 
-            string text = File.ReadAllText(localConfig, Encoding.UTF8);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamLocalConfig(out root, out appObject, out error))
                 return false;
-
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-                return false;
-
-            string block = text.Substring(open + 1, close - open - 1);
-            string updated = Regex.Replace(block, "\\r?\\n\\s*\"LaunchOptions\"\\s+\"[^\"]*\"", "", RegexOptions.IgnoreCase);
-            if (updated == block)
+            if (!appObject.RemoveAll("LaunchOptions"))
                 return false;
 
             BackupForRestore(localConfig, "Pre-default-restore backup of Steam localconfig launch options override: " + localConfig);
-            text = text.Substring(0, open + 1) + updated + text.Substring(close);
-            File.WriteAllText(localConfig, text, Encoding.UTF8);
+            WriteSteamVdf(localConfig, root);
             return true;
         }
 
         private bool RemoveSteamCloudOverride()
         {
+            if (!EnsureSteamClosedForConfigMutation("Restore default", true))
+                return false;
+
             if (String.IsNullOrEmpty(sharedConfig) || !File.Exists(sharedConfig))
                 return false;
 
-            string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamSharedConfig(out root, out appObject, out error))
                 return false;
-
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-                return false;
-
-            string block = text.Substring(open + 1, close - open - 1);
-            string updated = Regex.Replace(block, "\\r?\\n\\s*\"cloudenabled\"\\s+\"[^\"]*\"", "", RegexOptions.IgnoreCase);
-            if (updated == block)
+            if (!appObject.RemoveAll("cloudenabled"))
                 return false;
 
             BackupForRestore(sharedConfig, "Pre-default-restore backup of Steam sharedconfig cloud override: " + sharedConfig);
-            text = text.Substring(0, open + 1) + updated + text.Substring(close);
-            File.WriteAllText(sharedConfig, text, Encoding.UTF8);
+            WriteSteamVdf(sharedConfig, root);
             return true;
+        }
+
+        private bool TryLoadSteamLocalConfig(out ValveVdfUtilities.VdfObject root, out ValveVdfUtilities.VdfObject appObject, out string error)
+        {
+            return TryLoadSteamAppConfig(localConfig, "Steam localconfig.vdf not found. Set launch options manually: -noasync", "CK3 app block not found in Steam localconfig. Set launch options manually: -noasync", new[] { "UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "1158310" }, out root, out appObject, out error);
+        }
+
+        private bool TryLoadSteamSharedConfig(out ValveVdfUtilities.VdfObject root, out ValveVdfUtilities.VdfObject appObject, out string error)
+        {
+            return TryLoadSteamAppConfig(sharedConfig, "Steam sharedconfig.vdf not found. If Steam Cloud is enabled, disable it in CK3 Properties.", "CK3 cloud block not found. If Steam Cloud is enabled, disable it in CK3 Properties.", new[] { "UserRoamingConfigStore", "Software", "Valve", "Steam", "apps", "1158310" }, out root, out appObject, out error);
+        }
+
+        private bool TryLoadSteamAppConfig(string path, string missingMessage, string appMissingMessage, string[] appPath, out ValveVdfUtilities.VdfObject root, out ValveVdfUtilities.VdfObject appObject, out string error)
+        {
+            root = null;
+            appObject = null;
+            error = "";
+            if (String.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                error = missingMessage;
+                return false;
+            }
+
+            string text = File.ReadAllText(path, Encoding.UTF8);
+            if (!ValveVdfUtilities.TryParse(text, out root, out error))
+            {
+                error = "Could not parse " + Path.GetFileName(path) + ". " + error;
+                return false;
+            }
+
+            appObject = ValveVdfUtilities.FindPath(root, appPath);
+            if (appObject == null)
+            {
+                error = appMissingMessage;
+                return false;
+            }
+
+            return true;
+        }
+
+        private void WriteSteamVdf(string path, ValveVdfUtilities.VdfObject root)
+        {
+            string serialized = ValveVdfUtilities.Serialize(root);
+            AtomicWriteResult result = SafeAtomicFile.TryWriteAllText(path, serialized, Encoding.UTF8, delegate (string tempPath)
+            {
+                ValveVdfUtilities.VdfObject tempRoot;
+                string parseError;
+                return ValveVdfUtilities.TryParse(File.ReadAllText(tempPath, Encoding.UTF8), out tempRoot, out parseError);
+            });
+            if (!result.Succeeded)
+                throw new IOException(result.Message);
+        }
+
+        private bool EnsureSteamClosedForConfigMutation(string operation, bool throwWhenBlocked = false)
+        {
+            if (!ProcessRunningContains("steam"))
+                return true;
+
+            string message = "Steam is running. Close Steam completely before " + (operation ?? "changing Steam config") + " changes `localconfig.vdf` or `sharedconfig.vdf`.";
+            Log("WARN  " + message);
+            if (throwWhenBlocked)
+                throw new InvalidOperationException(message);
+            return false;
         }
     }
 }

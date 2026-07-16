@@ -1,5 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 using CK3MPS;
 
 internal static class UtilityTests
@@ -18,7 +21,12 @@ internal static class UtilityTests
         TestRuntimeModeUtilities();
         TestSaveRuleUtilities();
         TestPathContainmentUtilities();
+        TestBoundedTraversalUtilities();
         TestIncidentHistoryJsonUtilities();
+        TestSafeAtomicFile();
+        TestWindowsCommandLineUtilities();
+        TestValveVdfUtilities();
+        TestPdxSettingsUtilities();
 
         if (failures > 0)
             Environment.Exit(1);
@@ -37,10 +45,21 @@ internal static class UtilityTests
         string roamingLauncher = Path.Combine(root, "Roaming", "Paradox Interactive", "launcher-v2");
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows CK3 Documents files");
         Assert(RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(localLauncher, "Cache"), ck3Docs, localLauncher, roamingLauncher), "default restore allows launcher local cache");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(ck3Docs, ck3Docs, localLauncher, roamingLauncher), "default restore blocks CK3 Documents root");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "save games"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks save games folder deletion");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "save games", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks save file deletion");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks top-level CK3 save file");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "mod", "example.mod"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks mod descriptor deletion");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(ck3Docs, "mod"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks mod root deletion");
         Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(root, "Steam", "userdata", "localconfig.vdf"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks Steam config deletion");
+        Assert(!RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(Path.Combine(root, "Documents", "Paradox Interactive", "Crusader Kings III hacked", "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore blocks sibling root with shared prefix");
+        Assert(RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows explicit CK3 config file");
+        Assert(!RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "save games", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher), "default restore denies managed workflow save");
+        Assert(!RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "mod"), ck3Docs, localLauncher, roamingLauncher), "default restore denies mod root");
+        Assert(RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR\AppCaptureEnabled"), "registry allowlist accepts known GameDVR value");
+        Assert(RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\Software\Microsoft\DirectX\UserGpuPreferences\C:\Games\Crusader Kings III\binaries\ck3.exe"), "registry allowlist accepts CK3 GPU preference value");
+        Assert(!RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\Software\Microsoft\DirectX\UserGpuPreferences\C:\Games\OtherGame\game.exe"), "registry allowlist rejects foreign executable value");
+        Assert(!RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKLM\SOFTWARE\Example\Dangerous\Anything"), "registry allowlist rejects unrelated HKLM path");
     }
 
     private static void TestRegistryValueSerialization()
@@ -57,6 +76,113 @@ internal static class UtilityTests
             && restoredMulti[1] == "semi;colon"
             && restoredMulti[2] == "line\r\nbreak"
             && restoredMulti[3] == "slash\\tail", "registry multistring snapshot restores all entries");
+    }
+
+    private static void TestSafeAtomicFile()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "CK3MPS-atomic-" + Guid.NewGuid().ToString("N"));
+        string target = Path.Combine(root, "history.txt");
+
+        try
+        {
+            Directory.CreateDirectory(root);
+
+            AtomicWriteResult validationFailed = SafeAtomicFile.TryWriteAllText(target, "first", new System.Text.UTF8Encoding(false), delegate { return false; });
+            Assert(validationFailed.Status == AtomicWriteStatus.ValidationFailed, "atomic writer reports validation failure");
+            Assert(!File.Exists(target), "atomic writer does not create target on validation failure");
+
+            Task[] writers = new Task[10];
+            for (int i = 0; i < writers.Length; i++)
+            {
+                int lineNumber = i;
+                writers[i] = Task.Run(delegate
+                {
+                    AtomicWriteResult result = SafeAtomicFile.TryAppendText(target, "line-" + lineNumber + Environment.NewLine, new System.Text.UTF8Encoding(false));
+                    if (!result.Succeeded)
+                        throw new InvalidOperationException(result.Message);
+                });
+            }
+
+            Task.WaitAll(writers);
+            string[] lines = File.ReadAllLines(target);
+            Assert(lines.Length == 10, "atomic append serializes concurrent writers");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    private static void TestWindowsCommandLineUtilities()
+    {
+        string commandLine = "-noasync \"C:\\Program Files\\Paradox\\launcher helper.exe\" -debug_mode=1 plain";
+        var tokens = WindowsCommandLineUtilities.Tokenize(commandLine);
+        Assert(tokens.Count == 4, "command-line tokenizer keeps quoted argument groups");
+        Assert(tokens[1] == "C:\\Program Files\\Paradox\\launcher helper.exe", "command-line tokenizer preserves spaces inside quotes");
+        Assert(tokens[2] == "-debug_mode=1", "command-line tokenizer preserves = style flags");
+        Assert(WindowsCommandLineUtilities.QuoteArgument("C:\\Program Files\\Paradox\\launcher helper.exe") == "\"C:\\Program Files\\Paradox\\launcher helper.exe\"", "command-line quoting re-wraps space-containing arguments");
+        Assert(WindowsCommandLineUtilities.QuoteArgument("plain") == "plain", "command-line quoting leaves simple arguments unchanged");
+    }
+
+    private static void TestValveVdfUtilities()
+    {
+        string text =
+            "\"UserLocalConfigStore\"\r\n{\r\n" +
+            "\t\"Software\"\r\n\t{\r\n" +
+            "\t\t\"Valve\"\r\n\t\t{\r\n" +
+            "\t\t\t\"Steam\"\r\n\t\t\t{\r\n" +
+            "\t\t\t\t\"apps\"\r\n\t\t\t\t{\r\n" +
+            "\t\t\t\t\t\"1158310\"\r\n\t\t\t\t\t{\r\n" +
+            "\t\t\t\t\t\t\"LaunchOptions\"\t\t\"\\\"C:\\\\Program Files\\\\Paradox\\\\launcher helper.exe\\\" -debug_mode=1\"\r\n" +
+            "\t\t\t\t\t\t\"LaunchOptions\"\t\t\"stale\"\r\n" +
+            "\t\t\t\t\t}\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n}\r\n";
+
+        ValveVdfUtilities.VdfObject root;
+        string error;
+        Assert(ValveVdfUtilities.TryParse(text, out root, out error), "VDF parser accepts nested Steam config text");
+        var app = ValveVdfUtilities.FindPath(root, "UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "1158310");
+        Assert(app != null, "VDF parser navigates nested object path");
+        Assert(app.GetString("LaunchOptions") == "\"C:\\Program Files\\Paradox\\launcher helper.exe\" -debug_mode=1", "VDF parser keeps escaped quoted string values");
+        app.SetString("LaunchOptions", "-noasync \"C:\\Program Files\\Paradox\\launcher helper.exe\"");
+        string serialized = ValveVdfUtilities.Serialize(root);
+        Assert(serialized.IndexOf("\\\"C:\\\\Program Files\\\\Paradox\\\\launcher helper.exe\\\"", StringComparison.Ordinal) >= 0, "VDF serializer re-escapes quoted paths");
+        Assert(serialized.IndexOf("\"LaunchOptions\"\t\t\"stale\"", StringComparison.OrdinalIgnoreCase) < 0, "VDF SetString replaces duplicate keys with one predictable value");
+        app.RemoveAll("LaunchOptions");
+        Assert(app.GetString("LaunchOptions") == "", "VDF remove clears matching keys");
+    }
+
+    private static void TestPdxSettingsUtilities()
+    {
+        string text =
+            "\"game\"={\r\n" +
+            "\t\"autosave\"={\r\n" +
+            "\t\t\"version\"=0\r\n" +
+            "\t\t\"value\"=\"MONTHLY\"\r\n" +
+            "\t}\r\n" +
+            "}\r\n" +
+            "\"Graphics\"={\r\n" +
+            "\t\"renderer\"={\r\n" +
+            "\t\t\"version\"=0\r\n" +
+            "\t\t\"value\"=\"OpenGL\"\r\n" +
+            "\t}\r\n" +
+            "}\r\n";
+
+        PdxSettingsUtilities.PdxObject root;
+        string error;
+        Assert(PdxSettingsUtilities.TryParse(text, out root, out error), "pdx_settings parser accepts nested settings text");
+        var graphics = PdxSettingsUtilities.FindPath(root, "Graphics");
+        Assert(graphics != null, "pdx_settings parser navigates to section object");
+        Assert(PdxSettingsUtilities.SectionSettingMatches(text, "Graphics", "renderer", new Dictionary<string, string> { { "version", "0" }, { "value", "OpenGL" } }), "pdx_settings matcher reads expected field values");
+
+        string updated = PdxSettingsUtilities.SetSectionSettingBlock(text, "Graphics", "renderer", new Dictionary<string, string> { { "version", "0" }, { "value", "Vulkan" } });
+        Assert(PdxSettingsUtilities.SectionSettingMatches(updated, "Graphics", "renderer", new Dictionary<string, string> { { "version", "0" }, { "value", "Vulkan" } }), "pdx_settings writer replaces existing section setting");
+
+        string inserted = PdxSettingsUtilities.SetSectionSettingBlock(updated, "Audio", "audio_debug_log_level", new Dictionary<string, string> { { "version", "0" }, { "value", "error" } });
+        Assert(PdxSettingsUtilities.SectionSettingMatches(inserted, "Audio", "audio_debug_log_level", new Dictionary<string, string> { { "version", "0" }, { "value", "error" } }), "pdx_settings writer inserts missing section setting");
+
+        string sectionBody = PdxSettingsUtilities.ExtractSectionBody(inserted, "Graphics");
+        Assert(sectionBody.IndexOf("\"renderer\"", StringComparison.OrdinalIgnoreCase) >= 0, "pdx_settings section extraction returns serialized section body");
     }
 
     private static void TestRuntimeModeUtilities()
@@ -105,8 +231,117 @@ internal static class UtilityTests
         }
         finally
         {
+            string cycleLink = Path.Combine(root, "cycle-link");
+            TryRemoveJunction(cycleLink);
+
             if (Directory.Exists(root))
-                Directory.Delete(root, true);
+            {
+                try
+                {
+                    Directory.Delete(root, true);
+                }
+                catch
+                {
+                    TryRemoveDirectoryTreeWithCmd(root);
+                }
+            }
+        }
+    }
+
+    private static void TestBoundedTraversalUtilities()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "CK3MPS-traversal-" + Guid.NewGuid().ToString("N"));
+        string userData = Path.Combine(root, "Steam", "userdata");
+        string numericUser = Path.Combine(userData, "123456");
+        string otherUser = Path.Combine(userData, "not-a-user");
+        string appDir = Path.Combine(numericUser, "1158310");
+        string similarAppDir = Path.Combine(numericUser, "1158310_extra");
+        string configDir = Path.Combine(numericUser, "config");
+        string deepRoot = Path.Combine(root, "deep");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(appDir, "remote", "save games"));
+            Directory.CreateDirectory(similarAppDir);
+            Directory.CreateDirectory(configDir);
+            Directory.CreateDirectory(otherUser);
+            Directory.CreateDirectory(Path.Combine(deepRoot, "level1", "level2", "level3"));
+            File.WriteAllText(Path.Combine(configDir, "localconfig.vdf"), "\"1158310\"{}");
+            File.WriteAllText(Path.Combine(configDir, "sharedconfig.vdf"), "\"1158310\"{}");
+            File.WriteAllText(Path.Combine(deepRoot, "root.txt"), "root");
+            File.WriteAllText(Path.Combine(deepRoot, "level1", "one.txt"), "one");
+            File.WriteAllText(Path.Combine(deepRoot, "level1", "level2", "two.txt"), "two");
+            File.WriteAllText(Path.Combine(deepRoot, "level1", "level2", "level3", "three.txt"), "three");
+
+            var users = BoundedTraversalUtilities.EnumerateSteamUserDirectories(userData, 8, 2000);
+            Assert(users.Count == 1 && String.Equals(users[0], numericUser, StringComparison.OrdinalIgnoreCase), "bounded traversal keeps only numeric Steam userdata directories");
+
+            var appDirs = BoundedTraversalUtilities.EnumerateSteamUserAppDirectories(userData, "1158310", 8, 8, 2000);
+            Assert(appDirs.Count == 1 && String.Equals(appDirs[0], appDir, StringComparison.OrdinalIgnoreCase), "bounded traversal accepts exact Steam app id directory only");
+
+            var deepFiles = BoundedTraversalUtilities.EnumerateFilesBounded(deepRoot, "*.txt", new BoundedTraversalUtilities.TraversalSettings
+            {
+                MaxDirectories = 16,
+                MaxFiles = 16,
+                MaxDepth = 1,
+                MaxElapsedMs = 2000
+            });
+            Assert(deepFiles.Paths.Count == 2, "bounded traversal respects maximum depth");
+
+            var limitedFiles = BoundedTraversalUtilities.EnumerateFilesBounded(deepRoot, "*.txt", new BoundedTraversalUtilities.TraversalSettings
+            {
+                MaxDirectories = 16,
+                MaxFiles = 2,
+                MaxDepth = 8,
+                MaxElapsedMs = 2000
+            });
+            Assert(limitedFiles.Paths.Count == 2 && limitedFiles.HitFileLimit, "bounded traversal respects file limit");
+
+            var timedOut = BoundedTraversalUtilities.EnumerateFilesBounded(deepRoot, "*.txt", new BoundedTraversalUtilities.TraversalSettings
+            {
+                MaxDirectories = 16,
+                MaxFiles = 16,
+                MaxDepth = 8,
+                MaxElapsedMs = 0
+            });
+            Assert(timedOut.TimedOut, "bounded traversal respects timeout");
+
+            string cycleTarget = Path.Combine(root, "cycle-target");
+            string cycleLink = Path.Combine(root, "cycle-link");
+            Directory.CreateDirectory(Path.Combine(cycleTarget, "nested"));
+            File.WriteAllText(Path.Combine(cycleTarget, "nested", "cycle.txt"), "cycle");
+            if (TryCreateJunction(cycleLink, cycleTarget))
+            {
+                var cycleFiles = BoundedTraversalUtilities.EnumerateFilesBounded(root, "*.txt", new BoundedTraversalUtilities.TraversalSettings
+                {
+                    MaxDirectories = 32,
+                    MaxFiles = 32,
+                    MaxDepth = 8,
+                    MaxElapsedMs = 2000
+                });
+                bool foundViaLink = false;
+                foreach (string path in cycleFiles.Paths)
+                    if (path.IndexOf("cycle-link", StringComparison.OrdinalIgnoreCase) >= 0)
+                        foundViaLink = true;
+                Assert(!foundViaLink, "bounded traversal skips reparse-point directories");
+            }
+        }
+        finally
+        {
+            string cycleLink = Path.Combine(root, "cycle-link");
+            TryRemoveJunction(cycleLink);
+
+            if (Directory.Exists(root))
+            {
+                try
+                {
+                    Directory.Delete(root, true);
+                }
+                catch
+                {
+                    TryRemoveDirectoryTreeWithCmd(root);
+                }
+            }
         }
     }
 
@@ -202,5 +437,97 @@ internal static class UtilityTests
 
         Console.WriteLine("FAIL " + message);
         failures++;
+    }
+
+    private static bool TryCreateJunction(string linkPath, string targetPath)
+    {
+        try
+        {
+            if (Directory.Exists(linkPath))
+                Directory.Delete(linkPath, true);
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = "cmd.exe";
+            psi.Arguments = "/c mklink /J \"" + linkPath + "\" \"" + targetPath + "\"";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            using (Process process = Process.Start(psi))
+            {
+                process.WaitForExit(5000);
+                if (!process.HasExited)
+                {
+                    try { process.Kill(); } catch { }
+                    return false;
+                }
+            }
+
+            return Directory.Exists(linkPath) && (File.GetAttributes(linkPath) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryRemoveJunction(string linkPath)
+    {
+        try
+        {
+            if (!Directory.Exists(linkPath))
+                return;
+
+            FileAttributes attributes = File.GetAttributes(linkPath);
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+                return;
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = "cmd.exe";
+            psi.Arguments = "/c rmdir \"" + linkPath + "\"";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            using (Process process = Process.Start(psi))
+            {
+                process.WaitForExit(5000);
+                if (!process.HasExited)
+                {
+                    try { process.Kill(); } catch { }
+                }
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static void TryRemoveDirectoryTreeWithCmd(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path))
+                return;
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = "cmd.exe";
+            psi.Arguments = "/c rmdir /s /q \"" + path + "\"";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            using (Process process = Process.Start(psi))
+            {
+                process.WaitForExit(5000);
+                if (!process.HasExited)
+                {
+                    try { process.Kill(); } catch { }
+                }
+            }
+        }
+        catch
+        {
+        }
     }
 }

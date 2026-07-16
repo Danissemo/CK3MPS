@@ -29,6 +29,47 @@ namespace CK3MPS
             }
         }
 
+        private bool IsOwnedCk3MpsRestorePointDescription(string description)
+        {
+            return !String.IsNullOrWhiteSpace(description)
+                && description.StartsWith(Ck3MpsRestorePointPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsOwnedCk3MpsRestorePointItem(RestorePointListItem item)
+        {
+            return item != null
+                && !String.IsNullOrWhiteSpace(item.SequenceNumber)
+                && IsOwnedCk3MpsRestorePointDescription(item.Description);
+        }
+
+        private bool ShouldAllowRestorePointItemCheck(RestorePointListItem item, CheckState newValue)
+        {
+            if (newValue != CheckState.Checked)
+                return true;
+            return item == null || item.IsCk3Mps;
+        }
+
+        private void UpdateRestorePointDeleteButtonState()
+        {
+            if (restorePointsLoading)
+            {
+                deleteSelectedRestorePointsButton.Enabled = false;
+                return;
+            }
+
+            foreach (object checkedItem in restorePointsListBox.CheckedItems)
+            {
+                RestorePointListItem item = checkedItem as RestorePointListItem;
+                if (IsOwnedCk3MpsRestorePointItem(item))
+                {
+                    deleteSelectedRestorePointsButton.Enabled = true;
+                    return;
+                }
+            }
+
+            deleteSelectedRestorePointsButton.Enabled = false;
+        }
+
         private void CreateWindowsRestorePoint()
         {
             if (!IsAdministrator())
@@ -120,6 +161,7 @@ namespace CK3MPS
                     restorePointsListBox.Items.Add(item);
                 if (items.Count == 0)
                     restorePointsListBox.Items.Add(new RestorePointListItem { Description = "No restore points found." });
+                UpdateRestorePointDeleteButtonState();
             }
             catch (Exception ex)
             {
@@ -130,7 +172,7 @@ namespace CK3MPS
             {
                 restorePointsLoading = false;
                 restorePointsListBox.Enabled = true;
-                deleteSelectedRestorePointsButton.Enabled = true;
+                UpdateRestorePointDeleteButtonState();
             }
         }
 
@@ -144,21 +186,28 @@ namespace CK3MPS
                 RestorePointListItem item = checkedItem as RestorePointListItem;
                 if (item == null || String.IsNullOrWhiteSpace(item.SequenceNumber))
                     continue;
-                sequenceNumbers.Add(item.SequenceNumber);
-                if (item.IsCk3Mps)
+                if (IsOwnedCk3MpsRestorePointItem(item))
+                {
+                    sequenceNumbers.Add(item.SequenceNumber);
                     ck3MpsCount++;
+                }
                 else
+                {
                     otherCount++;
+                }
             }
 
             if (sequenceNumbers.Count == 0)
             {
-                MessageBox.Show("Select one or more restore points first.", "Restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                string message = otherCount > 0
+                    ? "Only CK3MPS-created restore points can be deleted. Other restore points are informational and stay read-only."
+                    : "Select one or more CK3MPS restore points first.";
+                MessageBox.Show(message, "Restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             DialogResult result = MessageBox.Show(
-                "Delete selected restore points?\r\n\r\nSelected: " + sequenceNumbers.Count + "\r\nCK3MPS: " + ck3MpsCount + "\r\nOther: " + otherCount,
+                "Delete selected restore points?\r\n\r\nSelected CK3MPS restore points: " + sequenceNumbers.Count + "\r\nIgnored other restore points: " + otherCount,
                 "Restore points",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
@@ -183,7 +232,7 @@ namespace CK3MPS
                     SequenceNumber = parts[0].Trim(),
                     CreationTime = parts[1].Trim(),
                     Description = description,
-                    IsCk3Mps = description.StartsWith(Ck3MpsRestorePointPrefix, StringComparison.OrdinalIgnoreCase)
+                    IsCk3Mps = IsOwnedCk3MpsRestorePointDescription(description)
                 });
             }
             return items;
@@ -203,20 +252,13 @@ namespace CK3MPS
 
         private void DeleteRestorePointsBySequenceNumbers(string[] sequenceNumbers, string successMessage)
         {
-            List<string> valid = new List<string>();
-            foreach (string item in sequenceNumbers ?? new string[0])
-                if (!String.IsNullOrWhiteSpace(item))
-                    valid.Add(item.Trim());
-            if (valid.Count == 0)
+            List<int> validatedSequenceNumbers = ValidateOwnedRestorePointDeletionSnapshot(sequenceNumbers, ListRestorePointItems());
+            if (validatedSequenceNumbers.Count == 0)
                 return;
 
             int removed = 0;
-            foreach (string idText in valid)
+            foreach (int id in validatedSequenceNumbers)
             {
-                int id;
-                if (!Int32.TryParse(idText, out id))
-                    throw new InvalidOperationException("Restore point sequence number is invalid: " + idText);
-
                 uint result = SRRemoveRestorePoint(id);
                 if (result != 0)
                     throw new InvalidOperationException("Removing restore point " + id + " failed with code " + result + ".");
@@ -225,6 +267,44 @@ namespace CK3MPS
 
             SetStatusText(successMessage);
             Log("OK   " + successMessage + " Removed=" + removed + ".");
+        }
+
+        private List<int> ValidateOwnedRestorePointDeletionSnapshot(IEnumerable<string> sequenceNumbers, IEnumerable<RestorePointListItem> currentItems)
+        {
+            List<string> valid = new List<string>();
+            foreach (string item in sequenceNumbers ?? new string[0])
+            {
+                if (!String.IsNullOrWhiteSpace(item))
+                    valid.Add(item.Trim());
+            }
+            if (valid.Count == 0)
+                return new List<int>();
+
+            Dictionary<string, RestorePointListItem> currentBySequence = new Dictionary<string, RestorePointListItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (RestorePointListItem item in currentItems ?? new RestorePointListItem[0])
+            {
+                if (item == null || String.IsNullOrWhiteSpace(item.SequenceNumber))
+                    continue;
+                currentBySequence[item.SequenceNumber.Trim()] = item;
+            }
+
+            List<int> validated = new List<int>();
+            foreach (string idText in valid)
+            {
+                int id;
+                if (!Int32.TryParse(idText, out id))
+                    throw new InvalidOperationException("Restore point sequence number is invalid: " + idText);
+
+                RestorePointListItem currentItem;
+                if (!currentBySequence.TryGetValue(idText, out currentItem))
+                    throw new InvalidOperationException("Restore point " + idText + " is no longer present. Refresh the list and try again.");
+                if (!IsOwnedCk3MpsRestorePointItem(currentItem))
+                    throw new InvalidOperationException("Restore point " + idText + " is not owned by CK3MPS and cannot be deleted.");
+
+                validated.Add(id);
+            }
+
+            return validated;
         }
 
         private void RepairWindowsRestorePointInfrastructure()
@@ -243,7 +323,7 @@ namespace CK3MPS
         private string RunPowerShellScriptLogged(string script, int timeoutMs)
         {
             PowerShellResult result = RunPowerShellScript(script, timeoutMs);
-            Log("CMD  powershell.exe -NoProfile -ExecutionPolicy Bypass -File <temporary script>");
+            Log("CMD  powershell.exe -NoProfile -NonInteractive -EncodedCommand <inline script>");
             foreach (string line in result.CombinedOutput.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
                 Log("  " + line.Trim());
 
@@ -265,54 +345,41 @@ namespace CK3MPS
         private PowerShellResult RunPowerShellScript(string script, int timeoutMs)
         {
             Stopwatch sw = Stopwatch.StartNew();
-            string tempScript = Path.Combine(Path.GetTempPath(), "CK3MPS-" + Guid.NewGuid().ToString("N") + ".ps1");
-            File.WriteAllText(tempScript, script, Encoding.UTF8);
-            try
-            {
-                ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "powershell.exe";
-                psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + tempScript + "\"";
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                psi.CreateNoWindow = true;
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script ?? ""));
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = "powershell.exe";
+            psi.Arguments = "-NoProfile -NonInteractive -EncodedCommand " + encoded;
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            psi.CreateNoWindow = true;
 
-                using (Process process = Process.Start(psi))
-                {
-                    StringBuilder output = new StringBuilder();
-                    StringBuilder error = new StringBuilder();
-                    process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
-                    {
-                        if (e.Data != null)
-                            output.AppendLine(e.Data);
-                    };
-                    process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
-                    {
-                        if (e.Data != null)
-                            error.AppendLine(e.Data);
-                    };
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                    if (!WaitForProcessResponsive(process, timeoutMs))
-                    {
-                        try { process.Kill(); } catch { }
-                        return new PowerShellResult(124, "PowerShell command timed out.");
-                    }
-                    process.WaitForExit();
-                    sw.Stop();
-                    if (sw.ElapsedMilliseconds >= 1000)
-                        Log("INFO PowerShell duration: " + FormatDurationMs(sw.ElapsedMilliseconds));
-                    return new PowerShellResult(process.ExitCode, (output.ToString() + "\r\n" + error.ToString()).Trim());
-                }
-            }
-            finally
+            using (Process process = Process.Start(psi))
             {
-                try
+                StringBuilder output = new StringBuilder();
+                StringBuilder error = new StringBuilder();
+                process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
                 {
-                    if (File.Exists(tempScript))
-                        File.Delete(tempScript);
+                    if (e.Data != null)
+                        output.AppendLine(e.Data);
+                };
+                process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (e.Data != null)
+                        error.AppendLine(e.Data);
+                };
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                if (!WaitForProcessResponsive(process, timeoutMs))
+                {
+                    try { process.Kill(); } catch { }
+                    return new PowerShellResult(124, "PowerShell command timed out.");
                 }
-                catch { }
+                process.WaitForExit();
+                sw.Stop();
+                if (sw.ElapsedMilliseconds >= 1000)
+                    Log("INFO PowerShell duration: " + FormatDurationMs(sw.ElapsedMilliseconds));
+                return new PowerShellResult(process.ExitCode, (output.ToString() + "\r\n" + error.ToString()).Trim());
             }
         }
 

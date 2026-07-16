@@ -256,7 +256,7 @@ namespace CK3MPS
                     files.AddRange(EnumerateOosMetadataFiles(quarantineReports));
             }
 
-            if (Directory.Exists(ck3Docs))
+            if (Directory.Exists(ck3Docs) && Directory.Exists(stabilizerRoot))
             {
                 foreach (string quarantine in Directory.GetDirectories(stabilizerRoot, "_ck3_stabilizer_quarantine_*"))
                 {
@@ -283,7 +283,7 @@ namespace CK3MPS
             if (Directory.Exists(activeOos))
                 files.AddRange(EnumerateOosMetadataFiles(activeOos));
 
-            if (Directory.Exists(ck3Docs))
+            if (Directory.Exists(ck3Docs) && Directory.Exists(stabilizerRoot))
             {
                 foreach (string quarantine in Directory.GetDirectories(stabilizerRoot, "_ck3_stabilizer_quarantine_*"))
                 {
@@ -302,20 +302,16 @@ namespace CK3MPS
 
         private IEnumerable<string> EnumerateOosMetadataFiles(string root)
         {
-            List<string> files = new List<string>();
-            try
-            {
-                foreach (string file in Directory.EnumerateFiles(root, "oos_metadata_*.txt", SearchOption.AllDirectories))
+            return BoundedTraversalUtilities.EnumerateFilesBounded(
+                root,
+                "oos_metadata_*.txt",
+                new BoundedTraversalUtilities.TraversalSettings
                 {
-                    files.Add(file);
-                    if (files.Count >= MaxWatcherFiles)
-                        break;
-                }
-            }
-            catch
-            {
-            }
-            return files;
+                    MaxDirectories = MaxBoundedTraversalDirectories,
+                    MaxFiles = MaxWatcherFiles,
+                    MaxDepth = MaxBoundedTraversalDepth,
+                    MaxElapsedMs = MaxBoundedTraversalElapsedMs
+                }).Paths;
         }
 
         private void WriteOosHistoryTimeline()

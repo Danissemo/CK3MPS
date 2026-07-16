@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
@@ -110,17 +111,17 @@ namespace CK3MPS
             return dest;
         }
 
-        private void RecordCreatedFileForRestore(string path, string description)
+        private string RecordCreatedFileForRestore(string path, string description)
         {
-            RecordRestoreEntry("created_file", path, "", description, "(missing)", "Will be created by CK3MPS.", "");
+            return RecordRestoreEntry("created_file", path, "", description, "(missing)", "Will be created by CK3MPS.", "");
         }
 
-        private void RecordMovedForRestore(string source, string dest, string description)
+        private string RecordMovedForRestore(string source, string dest, string description)
         {
-            RecordRestoreEntry(File.Exists(dest) ? "moved_file" : "moved_directory", source, dest, description, "Moved out of original location.", "Moved to quarantine.", "");
+            return RecordRestoreEntry(File.Exists(dest) ? "moved_file" : "moved_directory", source, dest, description, "Moved out of original location.", "Moved to quarantine.", "");
         }
 
-        private void RecordRegistryBeforeChange(RegistryKey root, string subKey, string name, string description, string after)
+        private string RecordRegistryBeforeChange(RegistryKey root, string subKey, string name, string description, string after)
         {
             try
             {
@@ -138,45 +139,48 @@ namespace CK3MPS
                     }
                 }
                 if (String.Equals(before, after, StringComparison.Ordinal))
-                    return;
-                RecordRestoreEntry("registry", source, "", description, before, after, "");
+                    return "";
+                return RecordRestoreEntry("registry", source, "", description, before, after, "");
             }
             catch (Exception ex)
             {
                 Log("WARN Registry restore snapshot failed: " + ex.Message);
+                return "";
             }
         }
 
-        private void RecordSystemSnapshot(string description, string command, string output)
+        private string RecordSystemSnapshot(string description, string command, string output)
         {
             try
             {
                 if (String.IsNullOrEmpty(lastQuarantine))
-                    return;
+                    return "";
                 string file = UniquePath(Path.Combine(RestoreBackupRoot(), SafeFileName(description) + ".txt"));
                 Directory.CreateDirectory(RestoreBackupRoot());
                 SafeAtomicFile.WriteAllText(file, "Command: " + command + Environment.NewLine + output, Encoding.UTF8);
-                RecordRestoreEntry("system_snapshot", command, file, description, output, "", "");
+                return RecordRestoreEntry("system_snapshot", command, file, description, output, "", "");
             }
             catch (Exception ex)
             {
                 Log("WARN System restore snapshot failed: " + ex.Message);
+                return "";
             }
         }
 
-        private void RecordRestoreEntry(string kind, string source, string backup, string description, string before, string after, string status)
+        private string RecordRestoreEntry(string kind, string source, string backup, string description, string before, string after, string status)
         {
             string manifest = RestoreManifestFile();
             if (String.IsNullOrEmpty(manifest))
-                return;
+                return "";
             if (!File.Exists(manifest))
                 InitializeRestoreManifest();
             if (String.IsNullOrEmpty(currentRestoreRunId))
                 currentRestoreRunId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
+            string entryId = Guid.NewGuid().ToString("N");
             string line = String.Join("\t", new[]
             {
-                Guid.NewGuid().ToString("N"),
+                entryId,
                 DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
                 RestoreManifestUtilities.EscapeTsv(kind),
                 RestoreManifestUtilities.EscapeTsv(source),
@@ -193,6 +197,36 @@ namespace CK3MPS
             if (lines.Count == 0)
                 lines.Add("id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\trun_id");
             lines.Add(line);
+            SafeAtomicFile.WriteAllLines(manifest, lines, Encoding.UTF8);
+            return entryId;
+        }
+
+        private void UpdateRestoreEntryStatus(string entryId, string status)
+        {
+            if (String.IsNullOrWhiteSpace(entryId))
+                return;
+
+            string manifest = RestoreManifestFile();
+            if (String.IsNullOrEmpty(manifest) || !File.Exists(manifest))
+                throw new InvalidOperationException("Restore manifest is missing.");
+
+            string[] lines = File.ReadAllLines(manifest, Encoding.UTF8);
+            bool updated = false;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string[] parts = lines[i].Split('\t');
+                if (parts.Length < 9 || !String.Equals(parts[0], entryId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                parts[8] = RestoreManifestUtilities.EscapeTsv(status);
+                lines[i] = String.Join("\t", parts);
+                updated = true;
+                break;
+            }
+
+            if (!updated)
+                throw new InvalidOperationException("Restore manifest entry was not found: " + entryId);
+
             SafeAtomicFile.WriteAllLines(manifest, lines, Encoding.UTF8);
         }
 
@@ -223,34 +257,118 @@ namespace CK3MPS
             if (!Directory.Exists(left) || !Directory.Exists(right))
                 return false;
 
-            string[] leftEntries = Directory.GetFileSystemEntries(left, "*", SearchOption.AllDirectories);
-            string[] rightEntries = Directory.GetFileSystemEntries(right, "*", SearchOption.AllDirectories);
-            if (leftEntries.Length != rightEntries.Length)
+            Dictionary<string, bool> leftEntries = EnumerateDirectoryEntriesBounded(left);
+            Dictionary<string, bool> rightEntries = EnumerateDirectoryEntriesBounded(right);
+            if (leftEntries == null || rightEntries == null)
+                return false;
+            if (leftEntries.Count != rightEntries.Count)
                 return false;
 
-            Dictionary<string, string> rightMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string path in rightEntries)
+            foreach (KeyValuePair<string, bool> pair in leftEntries)
             {
-                string relative = path.Substring(right.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                rightMap[relative] = path;
-            }
-
-            foreach (string path in leftEntries)
-            {
-                string relative = path.Substring(left.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string other;
-                if (!rightMap.TryGetValue(relative, out other))
+                bool rightIsFile;
+                if (!rightEntries.TryGetValue(pair.Key, out rightIsFile))
                     return false;
-
-                bool leftFile = File.Exists(path);
-                bool rightFile = File.Exists(other);
-                if (leftFile != rightFile)
+                if (pair.Value != rightIsFile)
                     return false;
-                if (leftFile && !FileContentsEqual(path, other))
+                if (pair.Value && !FileContentsEqual(Path.Combine(left, pair.Key), Path.Combine(right, pair.Key)))
                     return false;
             }
 
             return true;
+        }
+
+        private Dictionary<string, bool> EnumerateDirectoryEntriesBounded(string root)
+        {
+            string normalizedRoot;
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(root, out normalizedRoot) || !Directory.Exists(normalizedRoot))
+                return null;
+
+            Dictionary<string, bool> entries = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            Stopwatch sw = Stopwatch.StartNew();
+            Stack<TraversalFrame> stack = new Stack<TraversalFrame>();
+            stack.Push(new TraversalFrame(normalizedRoot, 0));
+
+            int visitedDirectories = 0;
+            int visitedFiles = 0;
+            while (stack.Count > 0)
+            {
+                if (sw.ElapsedMilliseconds >= MaxBoundedTraversalElapsedMs)
+                    return null;
+
+                TraversalFrame frame = stack.Pop();
+                if (frame.Depth > MaxBoundedTraversalDepth)
+                    continue;
+                if (ShouldSkipReparseDirectory(frame.Path))
+                    continue;
+                if (++visitedDirectories > MaxBoundedTraversalDirectories)
+                    return null;
+
+                string[] childDirectories = new string[0];
+                try
+                {
+                    childDirectories = Directory.GetDirectories(frame.Path, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch
+                {
+                }
+
+                for (int i = childDirectories.Length - 1; i >= 0; i--)
+                {
+                    string child = childDirectories[i];
+                    if (ShouldSkipReparseDirectory(child))
+                        continue;
+                    string relative = child.Substring(normalizedRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    entries[relative] = false;
+                    stack.Push(new TraversalFrame(child, frame.Depth + 1));
+                }
+
+                string[] files = new string[0];
+                try
+                {
+                    files = Directory.GetFiles(frame.Path, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch
+                {
+                }
+
+                foreach (string file in files)
+                {
+                    if (sw.ElapsedMilliseconds >= MaxBoundedTraversalElapsedMs)
+                        return null;
+                    if (++visitedFiles > MaxBoundedTraversalDirectories)
+                        return null;
+                    string relative = file.Substring(normalizedRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    entries[relative] = true;
+                }
+            }
+
+            return entries;
+        }
+
+        private bool ShouldSkipReparseDirectory(string path)
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(path);
+                return (attributes & FileAttributes.ReparsePoint) != 0;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private sealed class TraversalFrame
+        {
+            public readonly string Path;
+            public readonly int Depth;
+
+            public TraversalFrame(string path, int depth)
+            {
+                Path = path;
+                Depth = depth;
+            }
         }
 
         private List<RestoreEntry> ReadRestoreEntries()
@@ -260,37 +378,195 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(manifest) || !File.Exists(manifest))
                 return entries;
 
+            ReconcilePreparedRestoreEntries(manifest);
             string[] lines = File.ReadAllLines(manifest, Encoding.UTF8);
+            Dictionary<string, List<RestoreEntry>> entriesById = new Dictionary<string, List<RestoreEntry>>(StringComparer.OrdinalIgnoreCase);
             for (int i = 1; i < lines.Length; i++)
             {
-                string[] parts = lines[i].Split('\t');
-                if (parts.Length < 9)
+                RestoreEntry entry = ParseRestoreManifestLine(lines[i], i + 1);
+                if (entry == null)
                     continue;
-                RestoreEntry entry = new RestoreEntry
-                {
-                    Id = parts[0],
-                    Created = parts[1],
-                    Kind = parts[2],
-                    SourcePath = parts[3],
-                    BackupPath = parts[4],
-                    Description = parts[5],
-                    Before = parts[6],
-                    After = parts[7],
-                    Status = parts[8],
-                    RunId = RestoreManifestUtilities.RunIdFromManifestParts(parts, parts[1])
-                };
+
                 ValidateRestoreEntry(entry);
                 entry.DisplayText = BuildListDisplayText(entry);
                 entries.Add(entry);
+                if (!String.IsNullOrWhiteSpace(entry.Id))
+                {
+                    List<RestoreEntry> sameId;
+                    if (!entriesById.TryGetValue(entry.Id, out sameId))
+                    {
+                        sameId = new List<RestoreEntry>();
+                        entriesById[entry.Id] = sameId;
+                    }
+                    sameId.Add(entry);
+                }
             }
+
+            MarkDuplicateRestoreEntries(entriesById);
             ApplyRestoreStatusOverlay(entries);
             return entries;
+        }
+
+        private void ReconcilePreparedRestoreEntries(string manifest)
+        {
+            if (String.IsNullOrWhiteSpace(manifest) || !File.Exists(manifest))
+                return;
+
+            string[] lines = File.ReadAllLines(manifest, Encoding.UTF8);
+            bool updated = false;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                RestoreEntry entry = ParseRestoreManifestLine(lines[i], i + 1);
+                if (entry == null)
+                    continue;
+
+                string nextStatus;
+                if (!TryResolvePreparedRestoreStatus(entry, out nextStatus))
+                    continue;
+
+                string[] parts = lines[i].Split('\t');
+                if (parts.Length < 9)
+                    continue;
+
+                parts[8] = RestoreManifestUtilities.EscapeTsv(nextStatus);
+                lines[i] = String.Join("\t", parts);
+                updated = true;
+            }
+
+            if (updated)
+                SafeAtomicFile.WriteAllLines(manifest, lines, Encoding.UTF8);
+        }
+
+        private bool TryResolvePreparedRestoreStatus(RestoreEntry entry, out string nextStatus)
+        {
+            nextStatus = "";
+            if (entry == null || !String.Equals(NullText(entry.Status), "prepared", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string kind = NullText(entry.Kind).Trim().ToLowerInvariant();
+            if (kind != "moved_file" && kind != "moved_directory")
+                return false;
+
+            string error;
+            if (!TryValidateManifestSourcePath(entry.SourcePath, kind == "moved_directory", true, true, out error)
+                || !TryValidateManifestBackupPath(entry.BackupPath, kind == "moved_directory", out error))
+            {
+                nextStatus = "failed";
+                return true;
+            }
+
+            bool sourceExists = kind == "moved_directory" ? Directory.Exists(entry.SourcePath) : File.Exists(entry.SourcePath);
+            bool backupExists = kind == "moved_directory" ? Directory.Exists(entry.BackupPath) : File.Exists(entry.BackupPath);
+
+            if (!sourceExists && backupExists)
+                nextStatus = "committed";
+            else if (sourceExists && !backupExists)
+                nextStatus = "rolled_back";
+            else
+                nextStatus = "failed";
+
+            return true;
+        }
+
+        private RestoreEntry ParseRestoreManifestLine(string line, int lineNumber)
+        {
+            string[] parts = (line ?? "").Split('\t');
+            if (parts.Length != 9 && parts.Length != 10)
+                return CreateInvalidRestoreManifestEntry(lineNumber, "Manifest row must contain 9 or 10 tab-separated columns.", line);
+
+            string created = parts[1];
+            if (!IsValidRestoreManifestCreated(created))
+                return CreateInvalidRestoreManifestEntry(lineNumber, "Created timestamp is malformed.", line);
+
+            string runId = RestoreManifestUtilities.RunIdFromManifestParts(parts, created);
+            if (!IsValidRestoreManifestRunId(runId))
+                return CreateInvalidRestoreManifestEntry(lineNumber, "Run ID is malformed.", line);
+
+            return new RestoreEntry
+            {
+                Id = parts[0],
+                Created = created,
+                Kind = parts[2],
+                SourcePath = parts[3],
+                BackupPath = parts[4],
+                Description = parts[5],
+                Before = parts[6],
+                After = parts[7],
+                Status = parts[8],
+                RunId = runId
+            };
+        }
+
+        private RestoreEntry CreateInvalidRestoreManifestEntry(int lineNumber, string error, string rawLine)
+        {
+            string snippet = ShortRestoreText((rawLine ?? "").Trim(), 72);
+            string description = "Invalid restore manifest row " + lineNumber;
+            if (!String.IsNullOrEmpty(snippet))
+                description += ": " + snippet;
+
+            return new RestoreEntry
+            {
+                Id = "__invalid_manifest_row_" + lineNumber.ToString(CultureInfo.InvariantCulture),
+                Created = "",
+                Kind = "manifest_error",
+                SourcePath = "",
+                BackupPath = "",
+                Description = description,
+                Before = "",
+                After = "",
+                Status = "invalid",
+                RunId = "invalid",
+                ValidationError = error
+            };
+        }
+
+        private void MarkDuplicateRestoreEntries(Dictionary<string, List<RestoreEntry>> entriesById)
+        {
+            foreach (KeyValuePair<string, List<RestoreEntry>> pair in entriesById)
+            {
+                if (pair.Value == null || pair.Value.Count < 2)
+                    continue;
+
+                foreach (RestoreEntry entry in pair.Value)
+                {
+                    entry.ValidationError = "Restore entry ID is duplicated in restore_manifest.tsv.";
+                    entry.Status = "invalid";
+                    entry.DisplayText = BuildListDisplayText(entry);
+                }
+            }
+        }
+
+        private bool IsValidRestoreManifestCreated(string created)
+        {
+            DateTime ignored;
+            return DateTime.TryParseExact(created, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out ignored);
+        }
+
+        private bool IsValidRestoreManifestRunId(string runId)
+        {
+            if (String.IsNullOrWhiteSpace(runId) || runId.Length != 15 || runId[8] != '_')
+                return false;
+
+            for (int i = 0; i < runId.Length; i++)
+            {
+                if (i == 8)
+                    continue;
+                if (!Char.IsDigit(runId[i]))
+                    return false;
+            }
+
+            return true;
         }
 
         private void ValidateRestoreEntry(RestoreEntry entry)
         {
             if (entry == null)
                 return;
+            if (!String.IsNullOrEmpty(entry.ValidationError))
+            {
+                entry.Status = "invalid";
+                return;
+            }
 
             string error;
             if (!TryValidateRestoreEntry(entry, out error))
@@ -340,18 +616,18 @@ namespace CK3MPS
         private bool TryValidateRestoreFileEntry(RestoreEntry entry, out string error)
         {
             return TryValidateManifestBackupPath(entry.BackupPath, false, out error)
-                && TryValidateManifestSourcePath(entry.SourcePath, false, true, out error);
+                && TryValidateManifestSourcePath(entry.SourcePath, false, true, true, out error);
         }
 
         private bool TryValidateCreatedFileEntry(RestoreEntry entry, out string error)
         {
-            return TryValidateManifestSourcePath(entry.SourcePath, false, true, out error);
+            return TryValidateManifestSourcePath(entry.SourcePath, false, true, false, out error);
         }
 
         private bool TryValidateRestoreDirectoryEntry(RestoreEntry entry, out string error)
         {
             return TryValidateManifestBackupPath(entry.BackupPath, true, out error)
-                && TryValidateManifestSourcePath(entry.SourcePath, true, true, out error);
+                && TryValidateManifestSourcePath(entry.SourcePath, true, true, false, out error);
         }
 
         private bool TryValidateManifestBackupPath(string path, bool directoryExpected, out string error)
@@ -394,7 +670,7 @@ namespace CK3MPS
             return true;
         }
 
-        private bool TryValidateManifestSourcePath(string path, bool directoryExpected, bool allowCreatedMissing, out string error)
+        private bool TryValidateManifestSourcePath(string path, bool directoryExpected, bool allowCreatedMissing, bool allowManagedWorkflowSave, out string error)
         {
             error = "";
             string normalized;
@@ -404,7 +680,12 @@ namespace CK3MPS
                 return false;
             }
 
-            if (!IsOwnedByCk3OrParadoxLauncher(normalized))
+            RestoreManifestUtilities.RestorePathKind pathKind = RestoreManifestUtilities.GetRestorePathKind(normalized, ck3Docs, LocalLauncherRoot(), RoamingLauncherRoot());
+            bool allowed = pathKind == RestoreManifestUtilities.RestorePathKind.Ck3ConfigFile
+                || pathKind == RestoreManifestUtilities.RestorePathKind.Ck3GeneratedDirectory
+                || pathKind == RestoreManifestUtilities.RestorePathKind.LauncherCache
+                || (allowManagedWorkflowSave && pathKind == RestoreManifestUtilities.RestorePathKind.ManagedWorkflowSave);
+            if (!allowed)
             {
                 error = "Source path is outside the CK3/Paradox allowlist.";
                 return false;
@@ -445,6 +726,11 @@ namespace CK3MPS
                 if (String.IsNullOrWhiteSpace(subKey) || String.IsNullOrWhiteSpace(name))
                 {
                     error = "Registry restore path is incomplete.";
+                    return false;
+                }
+                if (!RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(path))
+                {
+                    error = "Registry restore path is outside the CK3MPS allowlist.";
                     return false;
                 }
                 return true;
@@ -755,6 +1041,8 @@ namespace CK3MPS
                 return "restored";
             if (String.Equals(status, "already_default", StringComparison.OrdinalIgnoreCase))
                 return "already default";
+            if (String.Equals(status, "rolled_back", StringComparison.OrdinalIgnoreCase))
+                return "rolled back";
             return status.Replace('_', ' ');
         }
 
@@ -1088,11 +1376,11 @@ namespace CK3MPS
             if (entry == null || !String.IsNullOrEmpty(entry.ValidationError))
                 return false;
             if (entry.Kind == "registry")
-                return true;
+                return RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(entry.SourcePath);
             if (IsSteamLocalConfigEntry(entry) || IsSteamSharedConfigEntry(entry))
                 return true;
             if (entry.Kind == "file" || entry.Kind == "created_file" || entry.Kind == "moved_file" || entry.Kind == "directory" || entry.Kind == "moved_directory")
-                return IsOwnedByCk3OrParadoxLauncher(entry.SourcePath);
+                return RestoreManifestUtilities.IsDefaultRestorablePath(entry.SourcePath, ck3Docs, LocalLauncherRoot(), RoamingLauncherRoot());
             return false;
         }
 
@@ -1112,15 +1400,22 @@ namespace CK3MPS
         {
             if (String.IsNullOrEmpty(path))
                 return false;
-            if (!String.IsNullOrEmpty(ck3Docs) && PathContainmentUtilities.IsWithinRoot(ck3Docs, path))
-                return true;
-            string localLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paradox Interactive", "launcher-v2");
-            string roamingLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Paradox Interactive", "launcher-v2");
-            return RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(path, ck3Docs, localLauncher, roamingLauncher);
+            return RestoreManifestUtilities.IsOwnedByCk3OrParadoxLauncher(path, ck3Docs, LocalLauncherRoot(), RoamingLauncherRoot());
+        }
+
+        private string LocalLauncherRoot()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paradox Interactive", "launcher-v2");
+        }
+
+        private string RoamingLauncherRoot()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Paradox Interactive", "launcher-v2");
         }
 
         private void RestoreDefaultEntry(RestoreEntry entry)
         {
+            EnsureRestoreOperationStillAllowed(entry, "default restore");
             string beforeNow = DescribeRestoreCurrentState(entry);
             if (IsSteamLocalConfigEntry(entry))
             {
@@ -1172,6 +1467,7 @@ namespace CK3MPS
 
         private void RestoreFileEntry(RestoreEntry entry)
         {
+            EnsureRestoreOperationStillAllowed(entry, "file restore");
             if (!File.Exists(entry.BackupPath))
                 throw new FileNotFoundException("Backup file is missing.", entry.BackupPath);
 
@@ -1180,6 +1476,8 @@ namespace CK3MPS
                 Directory.CreateDirectory(dir);
             if (File.Exists(entry.SourcePath) && FileContentsEqual(entry.SourcePath, entry.BackupPath))
                 return;
+            if (String.Equals(entry.Kind, "moved_file", StringComparison.OrdinalIgnoreCase) && File.Exists(entry.SourcePath))
+                throw new IOException("A workflow save already exists at the original path. Restore will not overwrite it without a separate user decision.");
             if (File.Exists(entry.SourcePath))
                 BackupForRestore(entry.SourcePath, "Pre-restore backup of current file: " + entry.SourcePath);
             File.Copy(entry.BackupPath, entry.SourcePath, true);
@@ -1188,6 +1486,7 @@ namespace CK3MPS
 
         private void RestoreCreatedFileEntry(RestoreEntry entry)
         {
+            EnsureRestoreOperationStillAllowed(entry, "created-file restore");
             if (!File.Exists(entry.SourcePath))
                 return;
 
@@ -1198,6 +1497,7 @@ namespace CK3MPS
 
         private void RestoreDirectoryEntry(RestoreEntry entry)
         {
+            EnsureRestoreOperationStillAllowed(entry, "directory restore");
             if (!Directory.Exists(entry.BackupPath))
                 throw new DirectoryNotFoundException("Backup directory is missing: " + entry.BackupPath);
 
@@ -1214,6 +1514,7 @@ namespace CK3MPS
 
         private void RestoreRegistryEntry(RestoreEntry entry)
         {
+            EnsureRestoreOperationStillAllowed(entry, "registry restore");
             RegistryKey root;
             string subKey;
             string name;
@@ -1253,6 +1554,16 @@ namespace CK3MPS
             RecordRestoreEntry("restore_action", entry.SourcePath, "", "Restored registry value: " + entry.SourcePath, beforeNow, ReadRegistryRestoreValue(entry.SourcePath), "restored");
         }
 
+        private void EnsureRestoreOperationStillAllowed(RestoreEntry entry, string operation)
+        {
+            if (entry == null)
+                throw new InvalidOperationException("Restore entry is missing.");
+
+            string error;
+            if (!TryValidateRestoreEntry(entry, out error))
+                throw new InvalidOperationException("Blocked " + operation + " for untrusted restore entry. " + error);
+        }
+
         private object ParseRegistryValue(string value, RegistryValueKind kind)
         {
             return RestoreManifestUtilities.ParseSerializedRegistryValue(value, kind);
@@ -1284,14 +1595,9 @@ namespace CK3MPS
 
         private void ParseRegistryRestorePath(string path, out RegistryKey root, out string subKey, out string name)
         {
-            int firstSlash = path.IndexOf('\\');
-            int lastSlash = path.LastIndexOf('\\');
-            if (firstSlash <= 0 || lastSlash <= firstSlash)
+            string rootText;
+            if (!RestoreManifestUtilities.TryParseRegistryRestorePath(path, out rootText, out subKey, out name))
                 throw new InvalidOperationException("Registry restore path is invalid: " + path);
-
-            string rootText = path.Substring(0, firstSlash);
-            subKey = path.Substring(firstSlash + 1, lastSlash - firstSlash - 1);
-            name = path.Substring(lastSlash + 1);
 
             if (String.Equals(rootText, "HKCU", StringComparison.OrdinalIgnoreCase))
                 root = Registry.CurrentUser;

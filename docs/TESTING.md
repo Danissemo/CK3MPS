@@ -23,6 +23,8 @@
 
 - `scripts\build.ps1`
 - `scripts\test.ps1`
+- `scripts\check-static-danger.ps1`
+- `scripts\check-repo-clean.ps1`
 - `scripts\validate-release.ps1`
 - `scripts\package-release.ps1`
 - Launch smoke test completed once on a real machine

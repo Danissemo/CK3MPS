@@ -147,30 +147,11 @@ namespace CK3MPS
 
         private string ApplySectionSettingBlockIfDifferent(string text, string section, string key, string body)
         {
-            string current = NormalizePdxSettingBlock(ExtractPdxSettingBlock(text, section, key));
-            string target = NormalizePdxSettingBlock(body);
-            if (String.Equals(current, target, StringComparison.Ordinal))
+            Dictionary<string, string> targetFields = PdxSettingsUtilities.ParseFieldMap(body);
+            if (PdxSettingsUtilities.SectionSettingMatches(text, section, key, targetFields))
                 return text;
 
             return SetSectionSettingBlock(text, section, key, body);
-        }
-
-        private string ExtractPdxSettingBlock(string text, string section, string key)
-        {
-            string body = ExtractSectionBody(text, section);
-            if (String.IsNullOrEmpty(body))
-                return "";
-
-            Match match = Regex.Match(body, "\"" + Regex.Escape(key) + "\"\\s*=\\s*\\{(.*?)\\}", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value : "";
-        }
-
-        private string NormalizePdxSettingBlock(string block)
-        {
-            if (String.IsNullOrWhiteSpace(block))
-                return "(missing)";
-
-            return Regex.Replace(block.Trim(), "\\s+", " ");
         }
 
         private string YesNoToken(bool enabled)
@@ -196,7 +177,10 @@ namespace CK3MPS
             settingsGuardActive = true;
             settingsGuardTimer.Stop();
             settingsGuardTimer.Start();
-            Log("GUARD Settings guard is active while this app stays open. If CK3/Launcher rewrites settings, mods, launch options, or unsafe save pointers, the stable profile will be restored.");
+            if (settingsGuardAutoRepairEnabled)
+                Log("GUARD Settings guard auto-repair is active while this app stays open. CK3MPS will repair supported drift after CK3, Launcher, and Steam are closed.");
+            else
+                Log("GUARD Settings guard detect-only mode is active while this app stays open. CK3MPS will report drift but will not change files unless auto-repair is explicitly enabled.");
         }
 
         private void StartSettingsGuardDeferred()
@@ -232,32 +216,70 @@ namespace CK3MPS
                     return;
 
                 lastSettingsGuardRepairUtc = DateTime.UtcNow;
-                Log("GUARD CK3/Launcher rollback detected. Restoring stable multiplayer profile.");
+                if (!settingsGuardAutoRepairEnabled)
+                {
+                    Log("GUARD Drift detected. Guard is in detect-only mode, so no files were changed. Enable auto-repair in Advanced to allow automatic fixes.");
+                    WriteSettingsGuardReport("drift detected (detect-only)");
+                    return;
+                }
+
+                bool repairedAny = false;
+                bool blockedAny = false;
+                Log("GUARD Drift detected. Repairing supported settings after process-safety checks.");
                 if (!stableSettings)
                 {
                     if (ProcessRunningExact("ck3"))
+                    {
                         Log("GUARD CK3 is running; pdx_settings.txt restore will wait until CK3 exits.");
+                        blockedAny = true;
+                    }
                     else
+                    {
                         ApplyStablePdxSettings(false, "Guard restored pdx_settings.txt after rollback.");
+                        repairedAny = true;
+                    }
                 }
                 if (!stableMods)
                 {
                     if (ProcessRunningExact("ck3") || ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher"))
+                    {
                         Log("GUARD CK3/Launcher is running; dlc_load.json restore will wait until it exits.");
+                        blockedAny = true;
+                    }
                     else
+                    {
                         ForceNoMods();
+                        repairedAny = true;
+                    }
                 }
                 if (!stableLaunch)
-                    StabilizeSteamSettings();
+                {
+                    if (ProcessRunningExact("steam"))
+                    {
+                        Log("GUARD Steam is running; Steam config repair will wait until Steam exits.");
+                        blockedAny = true;
+                    }
+                    else
+                    {
+                        StabilizeSteamSettings();
+                        repairedAny = true;
+                    }
+                }
                 if (!stableSaves)
                 {
-                    if (ProcessRunningExact("ck3"))
-                        Log("GUARD Unsafe save pointer/list detected while CK3 is running; save-file quarantine will wait until CK3 exits.");
-                    else
-                        StabilizeSaveHygiene();
+                    Log("GUARD Unsafe save pointer/list detected. Save quarantine stays manual-only and requires separate user confirmation.");
+                    blockedAny = true;
                 }
-                WriteExpectedProfileSnapshot("rollback repaired");
-                WriteSettingsGuardReport("rollback repaired");
+
+                if (repairedAny)
+                {
+                    WriteExpectedProfileSnapshot("rollback repaired");
+                    WriteSettingsGuardReport(blockedAny ? "partial repair applied; some actions blocked by running process or manual-only policy" : "rollback repaired");
+                }
+                else
+                {
+                    WriteSettingsGuardReport("drift detected but no repair was allowed");
+                }
             }
             catch (Exception ex)
             {
@@ -402,6 +424,7 @@ namespace CK3MPS
             sb.AppendLine("Reason: " + reason);
             sb.AppendLine();
             sb.AppendLine("Current status");
+            sb.AppendLine("- Mode: " + (settingsGuardAutoRepairEnabled ? "auto-repair enabled" : "detect-only"));
             sb.AppendLine("- pdx_settings core stable: " + YesNo(StableCriticalSettingsOk()));
             sb.AppendLine("- pdx_settings full exact profile: " + YesNo(StableSettingsOk()));
             sb.AppendLine("- dlc_load no active mods: " + YesNo(NoActiveMods()));
@@ -413,12 +436,16 @@ namespace CK3MPS
             sb.AppendLine("- Suspicious save names: " + CountSuspiciousSaveNames());
             sb.AppendLine("- CK3 running: " + YesNo(ProcessRunningExact("ck3")));
             sb.AppendLine("- Paradox Launcher running: " + YesNo(ProcessRunningContains("dowser") || ProcessRunningContains("paradox launcher")));
+            sb.AppendLine("- Steam running: " + YesNo(ProcessRunningExact("steam")));
             sb.AppendLine();
             sb.AppendLine("Tracked files");
             sb.AppendLine("- pdx_settings.txt: " + FileTimeHashLine(settings));
             sb.AppendLine("- dlc_load.json: " + FileTimeHashLine(dlc));
             sb.AppendLine();
-            sb.AppendLine("If these settings change after game launch, leave this app open and the guard will restore them automatically.");
+            if (settingsGuardAutoRepairEnabled)
+                sb.AppendLine("If supported settings drift after game launch, leave this app open and the guard will repair them after CK3, Launcher, and Steam are closed.");
+            else
+                sb.AppendLine("If supported settings drift after game launch, the guard will report the drift only. Enable auto-repair explicitly in Advanced to allow automatic fixes.");
             return sb.ToString();
         }
 

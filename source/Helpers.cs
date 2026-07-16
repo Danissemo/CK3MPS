@@ -16,6 +16,14 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
+        private sealed class QuarantineMoveResult
+        {
+            public bool Success;
+            public string SourcePath;
+            public string DestinationPath;
+            public string ErrorMessage;
+        }
+
         private void EnableDoubleBuffer(Control control)
         {
             if (control == null)
@@ -95,13 +103,20 @@ namespace CK3MPS
                 MoveToQuarantine(item, destDir);
         }
 
-        private void MoveToQuarantine(string source, string destDir)
+        private QuarantineMoveResult MoveToQuarantine(string source, string destDir)
         {
+            QuarantineMoveResult result = new QuarantineMoveResult();
+            result.SourcePath = source ?? "";
+
             if (!File.Exists(source) && !Directory.Exists(source))
-                return;
+            {
+                result.ErrorMessage = "Source path does not exist.";
+                return result;
+            }
 
             Directory.CreateDirectory(destDir);
             string dest = UniquePath(Path.Combine(destDir, Path.GetFileName(source)));
+            result.DestinationPath = dest;
             try
             {
                 if (File.Exists(source))
@@ -110,72 +125,35 @@ namespace CK3MPS
                     Directory.Move(source, dest);
                 RecordMovedForRestore(source, dest, "Moved to quarantine: " + source);
                 Log("Moved: " + source + " -> " + dest);
+                result.Success = true;
             }
             catch (Exception ex)
             {
                 Log("Could not move " + source + ": " + ex.Message);
+                result.ErrorMessage = ex.Message;
             }
+
+            return result;
         }
 
         private string SetSettingBlock(string text, string key, string body)
         {
-            string pattern = "(\"" + Regex.Escape(key) + "\"\\s*=\\s*\\{)(.*?)(\\r?\\n\\s*\\})";
-            string replacement = "\"" + key + "\"={\r\n\t\t" + body + "\r\n\t}";
-            if (Regex.IsMatch(text, pattern, RegexOptions.Singleline))
-                return Regex.Replace(text, pattern, replacement, RegexOptions.Singleline);
-            if (!text.EndsWith("\r\n", StringComparison.Ordinal))
-                text += "\r\n";
-            return text + "\"" + key + "\"={\r\n\t\t" + body + "\r\n\t}\r\n";
+            return body ?? "";
         }
 
         private string SetSectionSettingBlock(string text, string section, string key, string body)
         {
-            Match sectionMatch = Regex.Match(text ?? "", "\"" + Regex.Escape(section) + "\"\\s*=\\s*\\{", RegexOptions.IgnoreCase);
-            if (!sectionMatch.Success)
-            {
-                if (!String.IsNullOrEmpty(text) && !text.EndsWith("\r\n", StringComparison.Ordinal))
-                    text += "\r\n";
-                text += "\"" + section + "\"={\r\n}\r\n";
-                sectionMatch = Regex.Match(text, "\"" + Regex.Escape(section) + "\"\\s*=\\s*\\{", RegexOptions.IgnoreCase);
-            }
-
-            int open = text.IndexOf('{', sectionMatch.Index);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close <= open)
-                return text;
-
-            string sectionBody = text.Substring(open + 1, close - open - 1);
-            string updatedBody = SetSettingBlock(sectionBody, key, body);
-            if (!updatedBody.StartsWith("\r\n", StringComparison.Ordinal))
-                updatedBody = "\r\n" + updatedBody;
-            if (!updatedBody.EndsWith("\r\n", StringComparison.Ordinal))
-                updatedBody += "\r\n";
-
-            return text.Substring(0, open + 1) + updatedBody + text.Substring(close);
+            return PdxSettingsUtilities.SetSectionSettingBlock(text, section, key, PdxSettingsUtilities.ParseFieldMap(body));
         }
 
         private string ExtractSectionBody(string text, string section)
         {
-            Match sectionMatch = Regex.Match(text ?? "", "\"" + Regex.Escape(section) + "\"\\s*=\\s*\\{", RegexOptions.IgnoreCase);
-            if (!sectionMatch.Success)
-                return "";
-
-            int open = text.IndexOf('{', sectionMatch.Index);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close <= open)
-                return "";
-
-            return text.Substring(open + 1, close - open - 1);
+            return PdxSettingsUtilities.ExtractSectionBody(text, section);
         }
 
         private bool SectionSettingMatches(string text, string section, string key, string settingPattern)
         {
-            string body = ExtractSectionBody(text, section);
-            if (String.IsNullOrEmpty(body))
-                return false;
-
-            string pattern = "\"" + Regex.Escape(key) + "\"\\s*=\\s*\\{\\s*" + settingPattern;
-            return Regex.IsMatch(body, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            return PdxSettingsUtilities.SectionSettingMatches(text, section, key, PdxSettingsUtilities.ParseFieldMapFromPattern(settingPattern));
         }
 
         private int FindMatchingBrace(string text, int openIndex)
@@ -338,7 +316,7 @@ namespace CK3MPS
             if (!Directory.Exists(userData))
                 return dirs;
 
-            foreach (string appDir in Directory.GetDirectories(userData, "1158310", SearchOption.AllDirectories))
+            foreach (string appDir in BoundedTraversalUtilities.EnumerateSteamUserAppDirectories(userData, "1158310", MaxSteamUserDataUsers, MaxSteamUserDataMatches, MaxBoundedTraversalElapsedMs))
             {
                 string saveDir = Path.Combine(appDir, "remote", "save games");
                 if (Directory.Exists(saveDir))
@@ -467,6 +445,13 @@ namespace CK3MPS
         {
             try
             {
+                if (readOnlyScanMode)
+                {
+                    if (!String.IsNullOrEmpty(unchangedMessage))
+                        Log(unchangedMessage + path + " (scan mode: not written)");
+                    return false;
+                }
+
                 string dir = Path.GetDirectoryName(path);
                 if (!String.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
@@ -945,6 +930,7 @@ namespace CK3MPS
                 return;
             if (!Directory.Exists(stabilizerRoot))
                 Directory.CreateDirectory(stabilizerRoot);
+            liveLogWritesEnabled = true;
         }
 
         private void MigrateLegacyStabilizerState()
@@ -1216,6 +1202,8 @@ namespace CK3MPS
         {
             try
             {
+                if (readOnlyScanMode)
+                    return;
                 if (!String.IsNullOrEmpty(liveLogFilePath) && File.Exists(liveLogFilePath))
                     return;
 
@@ -1228,7 +1216,7 @@ namespace CK3MPS
                 sb.AppendLine("Started: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 sb.AppendLine("App version: " + AppVersion);
                 sb.AppendLine();
-                File.WriteAllText(liveLogFilePath, sb.ToString(), Utf8NoBom);
+                SafeAtomicFile.WriteAllText(liveLogFilePath, sb.ToString(), Utf8NoBom);
             }
             catch
             {
@@ -1265,7 +1253,9 @@ namespace CK3MPS
                 EnsureLiveLogFileCreated();
                 if (String.IsNullOrEmpty(liveLogFilePath))
                     return;
-                File.AppendAllText(liveLogFilePath, liveLogBuffer.ToString(), Utf8NoBom);
+                AtomicWriteResult result = SafeAtomicFile.TryAppendText(liveLogFilePath, liveLogBuffer.ToString(), Utf8NoBom);
+                if (!result.Succeeded)
+                    throw new IOException(result.Message);
                 liveLogBuffer.Clear();
             }
             catch

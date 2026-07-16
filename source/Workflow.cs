@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -477,10 +478,8 @@ namespace CK3MPS
             {
                 if (String.IsNullOrEmpty(lastQuarantine) || !Directory.Exists(lastQuarantine))
                     CreateQuarantine();
-                string targetDir = Path.Combine(lastQuarantine, "user_state", "workflow_deleted_saves");
-                MoveToQuarantine(normalizedPath, targetDir);
-                if (File.Exists(normalizedPath))
-                    throw new IOException("Save move to quarantine did not complete.");
+                string quarantinedPath;
+                QuarantineWorkflowSaveTransactional(normalizedPath, out quarantinedPath);
 
                 Log("OK   Quarantined workflow host save: " + normalizedPath);
                 if (String.Equals(workflowSelectedSavePath, normalizedPath, StringComparison.OrdinalIgnoreCase))
@@ -494,6 +493,78 @@ namespace CK3MPS
                 MessageBox.Show("Could not quarantine the selected save.\r\n\r\n" + ex.Message, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 Log("WARN Could not quarantine workflow host save: " + normalizedPath + " | " + ex.Message);
             }
+        }
+
+        private void QuarantineWorkflowSaveTransactional(string normalizedPath, out string quarantinedPath)
+        {
+            quarantinedPath = "";
+            FileInfo sourceInfo = new FileInfo(normalizedPath);
+            if (!sourceInfo.Exists)
+                throw new FileNotFoundException("Workflow save is missing.", normalizedPath);
+
+            string operationId = DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + Guid.NewGuid().ToString("N");
+            string targetDir = Path.Combine(RestoreBackupRoot(), "workflow_saves", operationId);
+            Directory.CreateDirectory(targetDir);
+            string destinationPath = Path.Combine(targetDir, sourceInfo.Name);
+            ThrowIfWorkflowFaultInjected("prepared");
+            string entryId = RecordRestoreEntry(
+                "moved_file",
+                normalizedPath,
+                destinationPath,
+                "Workflow save moved to quarantine: " + normalizedPath,
+                "Moved out of original location.",
+                "Prepared workflow quarantine move.",
+                "prepared");
+
+            bool moved = false;
+            try
+            {
+                ThrowIfWorkflowFaultInjected("move");
+                File.Move(normalizedPath, destinationPath);
+                moved = true;
+
+                FileInfo destinationInfo = new FileInfo(destinationPath);
+                if (!destinationInfo.Exists)
+                    throw new IOException("Workflow save quarantine destination was not created.");
+                if (File.Exists(normalizedPath))
+                    throw new IOException("Workflow save still exists at the original path after quarantine move.");
+                if (sourceInfo.Length != destinationInfo.Length)
+                    throw new IOException("Workflow save size changed during quarantine move.");
+
+                ThrowIfWorkflowFaultInjected("commit");
+                UpdateRestoreEntryStatus(entryId, "committed");
+                quarantinedPath = destinationPath;
+            }
+            catch
+            {
+                if (moved && File.Exists(destinationPath) && !File.Exists(normalizedPath))
+                {
+                    try
+                    {
+                        File.Move(destinationPath, normalizedPath);
+                        UpdateRestoreEntryStatus(entryId, "rolled_back");
+                    }
+                    catch
+                    {
+                        try { UpdateRestoreEntryStatus(entryId, "failed"); } catch { }
+                    }
+                }
+                else
+                {
+                    try { UpdateRestoreEntryStatus(entryId, "failed"); } catch { }
+                }
+
+                throw;
+            }
+        }
+
+        private void ThrowIfWorkflowFaultInjected(string stage)
+        {
+            string requested = Environment.GetEnvironmentVariable("CK3MPS_TEST_WORKFLOW_FAULT");
+            if (!String.Equals(requested, stage, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            throw new IOException("Injected workflow fault at stage: " + stage);
         }
 
         private void WorkflowRenderTimer_Tick(object sender, EventArgs e)
@@ -1240,18 +1311,51 @@ namespace CK3MPS
                 return;
             }
 
-            string dir = Path.GetDirectoryName(normalizedPath);
-            string name = Path.GetFileNameWithoutExtension(normalizedPath);
-            string ext = Path.GetExtension(normalizedPath);
-            string copyPath = Path.Combine(dir, name + "_workflow_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ext);
-            copyPath = UniquePath(copyPath);
-            string tempPath = copyPath + ".tmp";
-            File.Copy(normalizedPath, tempPath, false);
-            File.Move(tempPath, copyPath);
+            string copyPath = DuplicateWorkflowSaveCore(normalizedPath, "");
             workflowSelectedSavePath = copyPath;
             SaveAppConfig();
             InvalidateWorkflowSaveSelectionState();
             MessageBox.Show("Backup save created:\r\n\r\n" + copyPath, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string DuplicateWorkflowSaveCore(string normalizedPath, string explicitCopyPath)
+        {
+            string copyPath = explicitCopyPath;
+            if (String.IsNullOrWhiteSpace(copyPath))
+            {
+                string dir = Path.GetDirectoryName(normalizedPath);
+                string name = Path.GetFileNameWithoutExtension(normalizedPath);
+                string ext = Path.GetExtension(normalizedPath);
+                copyPath = Path.Combine(dir, name + "_workflow_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ext);
+                copyPath = UniquePath(copyPath);
+            }
+
+            string tempPath = copyPath + ".tmp";
+            if (File.Exists(copyPath))
+                throw new IOException("Workflow backup destination already exists: " + copyPath);
+
+            bool createdTemp = false;
+            try
+            {
+                File.Copy(normalizedPath, tempPath, false);
+                createdTemp = true;
+                if (!File.Exists(tempPath))
+                    throw new IOException("Temporary workflow backup copy was not created.");
+                if (!FileContentsEqual(normalizedPath, tempPath))
+                    throw new IOException("Temporary workflow backup copy does not match the source save.");
+                if (File.Exists(copyPath))
+                    throw new IOException("Workflow backup destination already exists before the final rename: " + copyPath);
+                File.Move(tempPath, copyPath);
+                return copyPath;
+            }
+            catch
+            {
+                if (createdTemp && File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
+                throw;
+            }
         }
 
         private void ArchiveWorkflowIncident()
@@ -1722,6 +1826,8 @@ namespace CK3MPS
                     MessageBox.Show("Join a room first.", "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
+                if (!TryConfirmParityRoomOosShare(session))
+                    return;
 
                 try
                 {
@@ -1756,6 +1862,34 @@ namespace CK3MPS
                 await refreshAllAsync(true, true, false);
             };
             form.ShowDialog(this);
+        }
+
+        private bool TryConfirmParityRoomOosShare(ParityRoomSession session)
+        {
+            if (session == null)
+                return false;
+            if (session.RawOosShareConsented)
+                return true;
+
+            string forced = Environment.GetEnvironmentVariable("CK3MPS_TEST_RAW_OOS_CONSENT");
+            if (String.Equals(forced, "allow", StringComparison.OrdinalIgnoreCase))
+            {
+                session.RawOosShareConsented = true;
+                return true;
+            }
+            if (String.Equals(forced, "deny", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            DialogResult consent = MessageBox.Show(
+                "Send OOS data to the host now?\r\n\r\nThis can include raw OOS dumps, metadata, deep reports, contamination notes, and nearby error-log excerpts.\r\n\r\nOnly share this when you explicitly want the host to inspect those artifacts for this room session.",
+                "CK3MPS parity room",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (consent != DialogResult.Yes)
+                return false;
+
+            session.RawOosShareConsented = true;
+            return true;
         }
 
         private string BuildParityRoomInfoText(ParityRoomSession session)
@@ -2126,7 +2260,25 @@ namespace CK3MPS
                 try
                 {
                     client = session.Listener.AcceptTcpClient();
-                    HandleParityRoomClient(session, client, onPeerChanged);
+                    if (!session.ClientSlots.Wait(0))
+                    {
+                        RejectBusyParityRoomClient(client);
+                        continue;
+                    }
+
+                    TcpClient acceptedClient = client;
+                    client = null;
+                    Task.Run(delegate
+                    {
+                        try
+                        {
+                            HandleParityRoomClient(session, acceptedClient, onPeerChanged);
+                        }
+                        finally
+                        {
+                            session.ClientSlots.Release();
+                        }
+                    });
                 }
                 catch
                 {
@@ -2140,6 +2292,25 @@ namespace CK3MPS
             }
         }
 
+        private void RejectBusyParityRoomClient(TcpClient client)
+        {
+            try
+            {
+                using (client)
+                using (NetworkStream stream = client.GetStream())
+                using (StreamWriter writer = new StreamWriter(stream, Encoding.UTF8, 4096, true))
+                {
+                    writer.NewLine = "\n";
+                    writer.AutoFlush = true;
+                    writer.WriteLine("ERROR");
+                    writer.WriteLine("room busy");
+                }
+            }
+            catch
+            {
+            }
+        }
+
         private void HandleParityRoomClient(ParityRoomSession session, TcpClient client, Action onPeerChanged)
         {
             using (client)
@@ -2147,81 +2318,88 @@ namespace CK3MPS
             using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true))
             using (StreamWriter writer = new StreamWriter(stream, Encoding.UTF8, 4096, true))
             {
-                client.ReceiveTimeout = ParityRoomSession.SocketTimeoutMs;
-                client.SendTimeout = ParityRoomSession.SocketTimeoutMs;
-                writer.NewLine = "\n";
-                writer.AutoFlush = true;
-                string payload = ReadParityRoomMessage(stream);
-                Dictionary<string, string> fields = ParseParityRoomPayload(payload);
-                string code = DictionaryValue(fields, "room_code");
-                string secret = DictionaryValue(fields, "room_secret");
-                if (!String.Equals(code, session.RoomCode, StringComparison.Ordinal))
+                try
                 {
-                    writer.WriteLine("ERROR");
-                    writer.WriteLine("bad room code");
-                    return;
-                }
-                if (!String.Equals(secret, session.SharedSecret, StringComparison.Ordinal))
-                {
-                    writer.WriteLine("ERROR");
-                    writer.WriteLine("bad room secret");
-                    return;
-                }
-
-                ParityRoomPeer peer = new ParityRoomPeer();
-                peer.PlayerLabel = DecodePayloadField(fields, "player", 256);
-                peer.ManifestText = DecodePayloadField(fields, "manifest", ParityRoomSession.MaxFieldChars);
-                peer.OosSummaryText = DecodePayloadField(fields, "oos_summary", ParityRoomSession.MaxFieldChars);
-                peer.OosMetadataText = DecodePayloadField(fields, "oos_metadata", ParityRoomSession.MaxFieldChars);
-                peer.OosDeepReportText = DecodePayloadField(fields, "oos_deep_report", ParityRoomSession.MaxFieldChars);
-                peer.OosRecoveryRunbookText = DecodePayloadField(fields, "oos_runbook", ParityRoomSession.MaxFieldChars);
-                peer.OosContaminationText = DecodePayloadField(fields, "oos_contamination", ParityRoomSession.MaxFieldChars);
-                peer.OosSaveDumpText = DecodePayloadField(fields, "oos_save_dump", ParityRoomSession.MaxFieldChars);
-                peer.OosModifierDumpText = DecodePayloadField(fields, "oos_modifier_dump", ParityRoomSession.MaxFieldChars);
-                peer.OosErrorLogText = DecodePayloadField(fields, "oos_error_log", ParityRoomSession.MaxFieldChars);
-                peer.Endpoint = NullText(client.Client.RemoteEndPoint == null ? "" : client.Client.RemoteEndPoint.ToString());
-                peer.ReceivedUtc = DateTime.UtcNow;
-                if (String.IsNullOrWhiteSpace(peer.PlayerLabel))
-                    peer.PlayerLabel = peer.Endpoint;
-                UpdateParityRoomPeerDerivedData(peer);
-
-                lock (session.Sync)
-                {
-                    int index = session.Peers.FindIndex(delegate (ParityRoomPeer existing)
+                    client.ReceiveTimeout = ParityRoomSession.SocketTimeoutMs;
+                    client.SendTimeout = ParityRoomSession.SocketTimeoutMs;
+                    writer.NewLine = "\n";
+                    writer.AutoFlush = true;
+                    string payload = ReadParityRoomMessage(stream, session.SharedSecret);
+                    Dictionary<string, string> fields = ParseParityRoomPayload(payload);
+                    string validationError;
+                    if (!ValidateAndRememberParityRoomPayload(session, fields, out validationError))
                     {
-                        return String.Equals(existing.PlayerLabel, peer.PlayerLabel, StringComparison.OrdinalIgnoreCase);
-                    });
-                    if (index >= 0)
-                    {
-                        ParityRoomPeer existing = session.Peers[index];
-                        if (String.IsNullOrWhiteSpace(peer.ManifestText))
-                            peer.ManifestText = existing.ManifestText;
-                        if (String.IsNullOrWhiteSpace(peer.OosSummaryText))
-                            peer.OosSummaryText = existing.OosSummaryText;
-                        if (String.IsNullOrWhiteSpace(peer.OosMetadataText))
-                            peer.OosMetadataText = existing.OosMetadataText;
-                        if (String.IsNullOrWhiteSpace(peer.OosDeepReportText))
-                            peer.OosDeepReportText = existing.OosDeepReportText;
-                        if (String.IsNullOrWhiteSpace(peer.OosRecoveryRunbookText))
-                            peer.OosRecoveryRunbookText = existing.OosRecoveryRunbookText;
-                        if (String.IsNullOrWhiteSpace(peer.OosContaminationText))
-                            peer.OosContaminationText = existing.OosContaminationText;
-                        if (String.IsNullOrWhiteSpace(peer.OosSaveDumpText))
-                            peer.OosSaveDumpText = existing.OosSaveDumpText;
-                        if (String.IsNullOrWhiteSpace(peer.OosModifierDumpText))
-                            peer.OosModifierDumpText = existing.OosModifierDumpText;
-                        if (String.IsNullOrWhiteSpace(peer.OosErrorLogText))
-                            peer.OosErrorLogText = existing.OosErrorLogText;
-                        session.Peers[index] = peer;
+                        writer.WriteLine("ERROR");
+                        writer.WriteLine(validationError);
+                        return;
                     }
-                    else
-                        session.Peers.Add(peer);
-                }
 
-                writer.WriteLine("OK");
-                writer.WriteLine("received");
-                if (onPeerChanged != null)
-                    onPeerChanged();
+                    ParityRoomPeer peer = new ParityRoomPeer();
+                    peer.PlayerLabel = DecodePayloadField(fields, "player", 256);
+                    peer.ManifestText = DecodePayloadField(fields, "manifest", ParityRoomSession.MaxFieldChars);
+                    peer.OosSummaryText = DecodePayloadField(fields, "oos_summary", ParityRoomSession.MaxFieldChars);
+                    peer.OosMetadataText = DecodePayloadField(fields, "oos_metadata", ParityRoomSession.MaxFieldChars);
+                    peer.OosDeepReportText = DecodePayloadField(fields, "oos_deep_report", ParityRoomSession.MaxFieldChars);
+                    peer.OosRecoveryRunbookText = DecodePayloadField(fields, "oos_runbook", ParityRoomSession.MaxFieldChars);
+                    peer.OosContaminationText = DecodePayloadField(fields, "oos_contamination", ParityRoomSession.MaxFieldChars);
+                    peer.OosSaveDumpText = DecodePayloadField(fields, "oos_save_dump", ParityRoomSession.MaxFieldChars);
+                    peer.OosModifierDumpText = DecodePayloadField(fields, "oos_modifier_dump", ParityRoomSession.MaxFieldChars);
+                    peer.OosErrorLogText = DecodePayloadField(fields, "oos_error_log", ParityRoomSession.MaxFieldChars);
+                    peer.Endpoint = NullText(client.Client.RemoteEndPoint == null ? "" : client.Client.RemoteEndPoint.ToString());
+                    peer.ReceivedUtc = DateTime.UtcNow;
+                    if (String.IsNullOrWhiteSpace(peer.PlayerLabel))
+                        peer.PlayerLabel = peer.Endpoint;
+                    UpdateParityRoomPeerDerivedData(peer);
+
+                    lock (session.Sync)
+                    {
+                        int index = session.Peers.FindIndex(delegate (ParityRoomPeer existing)
+                        {
+                            return String.Equals(existing.PlayerLabel, peer.PlayerLabel, StringComparison.OrdinalIgnoreCase);
+                        });
+                        if (index >= 0)
+                        {
+                            ParityRoomPeer existing = session.Peers[index];
+                            if (String.IsNullOrWhiteSpace(peer.ManifestText))
+                                peer.ManifestText = existing.ManifestText;
+                            if (String.IsNullOrWhiteSpace(peer.OosSummaryText))
+                                peer.OosSummaryText = existing.OosSummaryText;
+                            if (String.IsNullOrWhiteSpace(peer.OosMetadataText))
+                                peer.OosMetadataText = existing.OosMetadataText;
+                            if (String.IsNullOrWhiteSpace(peer.OosDeepReportText))
+                                peer.OosDeepReportText = existing.OosDeepReportText;
+                            if (String.IsNullOrWhiteSpace(peer.OosRecoveryRunbookText))
+                                peer.OosRecoveryRunbookText = existing.OosRecoveryRunbookText;
+                            if (String.IsNullOrWhiteSpace(peer.OosContaminationText))
+                                peer.OosContaminationText = existing.OosContaminationText;
+                            if (String.IsNullOrWhiteSpace(peer.OosSaveDumpText))
+                                peer.OosSaveDumpText = existing.OosSaveDumpText;
+                            if (String.IsNullOrWhiteSpace(peer.OosModifierDumpText))
+                                peer.OosModifierDumpText = existing.OosModifierDumpText;
+                            if (String.IsNullOrWhiteSpace(peer.OosErrorLogText))
+                                peer.OosErrorLogText = existing.OosErrorLogText;
+                            session.Peers[index] = peer;
+                        }
+                        else
+                            session.Peers.Add(peer);
+                    }
+
+                    writer.WriteLine("OK");
+                    writer.WriteLine("received");
+                    if (onPeerChanged != null)
+                        onPeerChanged();
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        writer.WriteLine("ERROR");
+                        writer.WriteLine(ex.Message);
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 
@@ -2241,7 +2419,7 @@ namespace CK3MPS
                 using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true))
                 {
                     writer.AutoFlush = true;
-                    WriteParityRoomMessage(stream, payload);
+                    WriteParityRoomMessage(stream, payload, session.SharedSecret);
                     client.Client.Shutdown(SocketShutdown.Send);
                     string reply = reader.ReadToEnd();
                     if (reply.IndexOf("OK", StringComparison.OrdinalIgnoreCase) < 0)
@@ -2264,18 +2442,21 @@ namespace CK3MPS
             string oosModifierDump = includeOos ? temp.LocalOosModifierDumpText : "";
             string oosErrorLog = includeOos ? temp.LocalOosErrorLogText : "";
 
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine("player=" + EncodePayloadField(playerLabel));
-            sb.AppendLine("manifest=" + EncodePayloadField(manifestText));
-            sb.AppendLine("oos_summary=" + EncodePayloadField(oosSummary));
-            sb.AppendLine("oos_metadata=" + EncodePayloadField(oosMetadata));
-            sb.AppendLine("oos_deep_report=" + EncodePayloadField(oosDeepReport));
-            sb.AppendLine("oos_runbook=" + EncodePayloadField(oosRunbook));
-            sb.AppendLine("oos_contamination=" + EncodePayloadField(oosContamination));
-            sb.AppendLine("oos_save_dump=" + EncodePayloadField(oosSaveDump));
-            sb.AppendLine("oos_modifier_dump=" + EncodePayloadField(oosModifierDump));
-            sb.AppendLine("oos_error_log=" + EncodePayloadField(oosErrorLog));
-            return sb.ToString();
+            return BuildParityRoomPayloadText(
+                "",
+                "",
+                "",
+                playerLabel,
+                manifestText,
+                oosSummary,
+                oosMetadata,
+                oosDeepReport,
+                oosRunbook,
+                oosContamination,
+                oosSaveDump,
+                oosModifierDump,
+                oosErrorLog,
+                "");
         }
 
         private string BuildParityRoomPayload(ParityRoomSession session, string playerLabel, bool includeManifest, bool includeOos)
@@ -2293,20 +2474,38 @@ namespace CK3MPS
             string oosModifierDump = includeOos && session != null ? session.LocalOosModifierDumpText : "";
             string oosErrorLog = includeOos && session != null ? session.LocalOosErrorLogText : "";
 
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine("room_code=" + session.RoomCode);
-            sb.AppendLine("room_secret=" + session.SharedSecret);
-            sb.AppendLine("player=" + EncodePayloadField(playerLabel));
-            sb.AppendLine("manifest=" + EncodePayloadField(manifestText));
-            sb.AppendLine("oos_summary=" + EncodePayloadField(oosSummary));
-            sb.AppendLine("oos_metadata=" + EncodePayloadField(oosMetadata));
-            sb.AppendLine("oos_deep_report=" + EncodePayloadField(oosDeepReport));
-            sb.AppendLine("oos_runbook=" + EncodePayloadField(oosRunbook));
-            sb.AppendLine("oos_contamination=" + EncodePayloadField(oosContamination));
-            sb.AppendLine("oos_save_dump=" + EncodePayloadField(oosSaveDump));
-            sb.AppendLine("oos_modifier_dump=" + EncodePayloadField(oosModifierDump));
-            sb.AppendLine("oos_error_log=" + EncodePayloadField(oosErrorLog));
-            return sb.ToString();
+            string createdUtc = DateTime.UtcNow.ToString("o");
+            string nonce = GenerateParityRoomNonce();
+            string signature = ComputeParityRoomSignature(
+                session.SharedSecret,
+                session.RoomCode,
+                createdUtc,
+                nonce,
+                playerLabel,
+                manifestText,
+                oosSummary,
+                oosMetadata,
+                oosDeepReport,
+                oosRunbook,
+                oosContamination,
+                oosSaveDump,
+                oosModifierDump,
+                oosErrorLog);
+            return BuildParityRoomPayloadText(
+                session.RoomCode,
+                createdUtc,
+                nonce,
+                playerLabel,
+                manifestText,
+                oosSummary,
+                oosMetadata,
+                oosDeepReport,
+                oosRunbook,
+                oosContamination,
+                oosSaveDump,
+                oosModifierDump,
+                oosErrorLog,
+                signature);
         }
 
         private bool ShowParityJoinDialog(IWin32Window owner, out string host, out int port, out string code, out string secret, out string playerLabel)
@@ -2488,7 +2687,87 @@ namespace CK3MPS
             return fields;
         }
 
-        private string ReadParityRoomMessage(NetworkStream stream)
+        private bool ValidateAndRememberParityRoomPayload(ParityRoomSession session, Dictionary<string, string> fields, out string error)
+        {
+            error = "invalid parity payload";
+            if (session == null)
+            {
+                error = "session unavailable";
+                return false;
+            }
+
+            string code = DictionaryValue(fields, "room_code");
+            if (!String.Equals(code, session.RoomCode, StringComparison.Ordinal))
+            {
+                error = "bad room code";
+                return false;
+            }
+
+            string createdUtcText = DictionaryValue(fields, "created_utc");
+            DateTime createdUtc;
+            if (!DateTime.TryParse(createdUtcText, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out createdUtc))
+            {
+                error = "bad timestamp";
+                return false;
+            }
+
+            if (Math.Abs((DateTime.UtcNow - createdUtc).TotalMinutes) > ParityRoomSession.MaxReplayAgeMinutes)
+            {
+                error = "stale payload";
+                return false;
+            }
+
+            string nonce = DictionaryValue(fields, "nonce");
+            if (String.IsNullOrWhiteSpace(nonce) || nonce.Length > 128)
+            {
+                error = "bad nonce";
+                return false;
+            }
+
+            string expectedSignature = ComputeParityRoomSignature(
+                session.SharedSecret,
+                code,
+                createdUtcText,
+                nonce,
+                DecodePayloadField(fields, "player", 256),
+                DecodePayloadField(fields, "manifest", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_summary", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_metadata", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_deep_report", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_runbook", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_contamination", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_save_dump", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_modifier_dump", ParityRoomSession.MaxFieldChars),
+                DecodePayloadField(fields, "oos_error_log", ParityRoomSession.MaxFieldChars));
+            string providedSignature = DictionaryValue(fields, "signature");
+            if (!FixedTimeEquals(expectedSignature, providedSignature))
+            {
+                error = "bad signature";
+                return false;
+            }
+
+            lock (session.Sync)
+            {
+                if (session.SeenPayloadNonces.Contains(nonce))
+                {
+                    error = "replayed payload";
+                    return false;
+                }
+
+                session.SeenPayloadNonces.Add(nonce);
+                session.SeenPayloadNonceOrder.Enqueue(nonce);
+                while (session.SeenPayloadNonceOrder.Count > ParityRoomSession.MaxReplayNonces)
+                {
+                    string oldest = session.SeenPayloadNonceOrder.Dequeue();
+                    session.SeenPayloadNonces.Remove(oldest);
+                }
+            }
+
+            error = "";
+            return true;
+        }
+
+        private string ReadParityRoomMessage(NetworkStream stream, string sharedSecret)
         {
             if (stream == null)
                 throw new InvalidOperationException("Parity room stream is unavailable.");
@@ -2497,23 +2776,23 @@ namespace CK3MPS
             int length = BitConverter.ToInt32(lengthBytes, 0);
             if (length < 0 || length > ParityRoomSession.MaxPayloadBytes)
                 throw new InvalidOperationException("Parity room payload is too large.");
-            byte[] payloadBytes = ReadExactBytes(stream, length);
-            return Encoding.UTF8.GetString(payloadBytes);
+            byte[] packetBytes = ReadExactBytes(stream, length);
+            return UnprotectParityRoomPayload(packetBytes, sharedSecret);
         }
 
-        private void WriteParityRoomMessage(NetworkStream stream, string payload)
+        private void WriteParityRoomMessage(NetworkStream stream, string payload, string sharedSecret)
         {
             if (stream == null)
                 throw new InvalidOperationException("Parity room stream is unavailable.");
 
-            byte[] payloadBytes = Encoding.UTF8.GetBytes(NullText(payload));
-            if (payloadBytes.Length > ParityRoomSession.MaxPayloadBytes)
+            byte[] packetBytes = ProtectParityRoomPayload(NullText(payload), sharedSecret);
+            if (packetBytes.Length > ParityRoomSession.MaxPayloadBytes)
                 throw new InvalidOperationException("Parity room payload exceeds the size limit.");
 
-            byte[] lengthBytes = BitConverter.GetBytes(payloadBytes.Length);
+            byte[] lengthBytes = BitConverter.GetBytes(packetBytes.Length);
             stream.Write(lengthBytes, 0, lengthBytes.Length);
-            if (payloadBytes.Length > 0)
-                stream.Write(payloadBytes, 0, payloadBytes.Length);
+            if (packetBytes.Length > 0)
+                stream.Write(packetBytes, 0, packetBytes.Length);
             stream.Flush();
         }
 
@@ -2534,6 +2813,168 @@ namespace CK3MPS
         private string EncodePayloadField(string text)
         {
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(NullText(text)));
+        }
+
+        private byte[] ProtectParityRoomPayload(string payload, string sharedSecret)
+        {
+            byte[] plainBytes = Encoding.UTF8.GetBytes(NullText(payload));
+            byte[] encryptionKey = DeriveParityRoomKey(sharedSecret, "enc");
+            byte[] authKey = DeriveParityRoomKey(sharedSecret, "auth");
+            byte[] iv = new byte[16];
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+                rng.GetBytes(iv);
+
+            byte[] cipherBytes;
+            using (Aes aes = Aes.Create())
+            {
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+                aes.Key = encryptionKey;
+                aes.IV = iv;
+                using (ICryptoTransform encryptor = aes.CreateEncryptor())
+                    cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
+            }
+
+            byte[] packetWithoutMac = new byte[1 + iv.Length + cipherBytes.Length];
+            packetWithoutMac[0] = 1;
+            Buffer.BlockCopy(iv, 0, packetWithoutMac, 1, iv.Length);
+            Buffer.BlockCopy(cipherBytes, 0, packetWithoutMac, 1 + iv.Length, cipherBytes.Length);
+
+            byte[] mac;
+            using (HMACSHA256 hmac = new HMACSHA256(authKey))
+                mac = hmac.ComputeHash(packetWithoutMac);
+
+            byte[] packet = new byte[packetWithoutMac.Length + mac.Length];
+            Buffer.BlockCopy(packetWithoutMac, 0, packet, 0, packetWithoutMac.Length);
+            Buffer.BlockCopy(mac, 0, packet, packetWithoutMac.Length, mac.Length);
+            return packet;
+        }
+
+        private string UnprotectParityRoomPayload(byte[] packetBytes, string sharedSecret)
+        {
+            byte[] packet = packetBytes ?? new byte[0];
+            if (packet.Length < 1 + 16 + 32)
+                throw new InvalidOperationException("Parity room packet is malformed.");
+            if (packet[0] != 1)
+                throw new InvalidOperationException("Parity room packet version is not supported.");
+
+            byte[] authKey = DeriveParityRoomKey(sharedSecret, "auth");
+            int macOffset = packet.Length - 32;
+            byte[] expectedMac;
+            using (HMACSHA256 hmac = new HMACSHA256(authKey))
+                expectedMac = hmac.ComputeHash(packet, 0, macOffset);
+
+            byte[] providedMac = new byte[32];
+            Buffer.BlockCopy(packet, macOffset, providedMac, 0, providedMac.Length);
+            if (!FixedTimeEqualsBytes(expectedMac, providedMac))
+                throw new InvalidOperationException("Parity room packet authentication failed.");
+
+            byte[] encryptionKey = DeriveParityRoomKey(sharedSecret, "enc");
+            byte[] iv = new byte[16];
+            Buffer.BlockCopy(packet, 1, iv, 0, iv.Length);
+            int cipherOffset = 1 + iv.Length;
+            int cipherLength = macOffset - cipherOffset;
+            if (cipherLength < 0)
+                throw new InvalidOperationException("Parity room packet cipher section is malformed.");
+
+            byte[] cipherBytes = new byte[cipherLength];
+            Buffer.BlockCopy(packet, cipherOffset, cipherBytes, 0, cipherLength);
+            using (Aes aes = Aes.Create())
+            {
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+                aes.Key = encryptionKey;
+                aes.IV = iv;
+                using (ICryptoTransform decryptor = aes.CreateDecryptor())
+                {
+                    byte[] plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
+                    if (plainBytes.Length > ParityRoomSession.MaxPayloadBytes)
+                        throw new InvalidOperationException("Parity room decrypted payload exceeds the size limit.");
+                    return Encoding.UTF8.GetString(plainBytes);
+                }
+            }
+        }
+
+        private byte[] DeriveParityRoomKey(string sharedSecret, string label)
+        {
+            using (SHA256 sha = SHA256.Create())
+                return sha.ComputeHash(Encoding.UTF8.GetBytes(NullText(sharedSecret) + "|" + NullText(label)));
+        }
+
+        private string BuildParityRoomPayloadText(string roomCode, string createdUtc, string nonce, string playerLabel, string manifestText, string oosSummary, string oosMetadata, string oosDeepReport, string oosRunbook, string oosContamination, string oosSaveDump, string oosModifierDump, string oosErrorLog, string signature)
+        {
+            StringBuilder sb = new StringBuilder();
+            if (!String.IsNullOrWhiteSpace(roomCode))
+                sb.AppendLine("room_code=" + roomCode);
+            if (!String.IsNullOrWhiteSpace(createdUtc))
+                sb.AppendLine("created_utc=" + createdUtc);
+            if (!String.IsNullOrWhiteSpace(nonce))
+                sb.AppendLine("nonce=" + nonce);
+            sb.AppendLine("player=" + EncodePayloadField(playerLabel));
+            sb.AppendLine("manifest=" + EncodePayloadField(manifestText));
+            sb.AppendLine("oos_summary=" + EncodePayloadField(oosSummary));
+            sb.AppendLine("oos_metadata=" + EncodePayloadField(oosMetadata));
+            sb.AppendLine("oos_deep_report=" + EncodePayloadField(oosDeepReport));
+            sb.AppendLine("oos_runbook=" + EncodePayloadField(oosRunbook));
+            sb.AppendLine("oos_contamination=" + EncodePayloadField(oosContamination));
+            sb.AppendLine("oos_save_dump=" + EncodePayloadField(oosSaveDump));
+            sb.AppendLine("oos_modifier_dump=" + EncodePayloadField(oosModifierDump));
+            sb.AppendLine("oos_error_log=" + EncodePayloadField(oosErrorLog));
+            if (!String.IsNullOrWhiteSpace(signature))
+                sb.AppendLine("signature=" + signature);
+            return sb.ToString();
+        }
+
+        private string GenerateParityRoomNonce()
+        {
+            byte[] bytes = new byte[18];
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+                rng.GetBytes(bytes);
+            return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
+
+        private string ComputeParityRoomSignature(string secret, string roomCode, string createdUtc, string nonce, string playerLabel, string manifestText, string oosSummary, string oosMetadata, string oosDeepReport, string oosRunbook, string oosContamination, string oosSaveDump, string oosModifierDump, string oosErrorLog)
+        {
+            string canonical =
+                "room_code=" + NullText(roomCode) + "\n" +
+                "created_utc=" + NullText(createdUtc) + "\n" +
+                "nonce=" + NullText(nonce) + "\n" +
+                "player=" + NullText(playerLabel) + "\n" +
+                "manifest=" + NullText(manifestText) + "\n" +
+                "oos_summary=" + NullText(oosSummary) + "\n" +
+                "oos_metadata=" + NullText(oosMetadata) + "\n" +
+                "oos_deep_report=" + NullText(oosDeepReport) + "\n" +
+                "oos_runbook=" + NullText(oosRunbook) + "\n" +
+                "oos_contamination=" + NullText(oosContamination) + "\n" +
+                "oos_save_dump=" + NullText(oosSaveDump) + "\n" +
+                "oos_modifier_dump=" + NullText(oosModifierDump) + "\n" +
+                "oos_error_log=" + NullText(oosErrorLog);
+
+            using (HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(NullText(secret))))
+            {
+                byte[] hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(canonical));
+                return Convert.ToBase64String(hash).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            }
+        }
+
+        private bool FixedTimeEquals(string left, string right)
+        {
+            byte[] leftBytes = Encoding.UTF8.GetBytes(NullText(left));
+            byte[] rightBytes = Encoding.UTF8.GetBytes(NullText(right));
+            return FixedTimeEqualsBytes(leftBytes, rightBytes);
+        }
+
+        private bool FixedTimeEqualsBytes(byte[] leftBytes, byte[] rightBytes)
+        {
+            byte[] left = leftBytes ?? new byte[0];
+            byte[] right = rightBytes ?? new byte[0];
+            if (left.Length != right.Length)
+                return false;
+
+            int diff = 0;
+            for (int i = 0; i < left.Length; i++)
+                diff |= left[i] ^ right[i];
+            return diff == 0;
         }
 
         private string DecodePayloadField(Dictionary<string, string> fields, string key, int maxChars)

@@ -10,9 +10,11 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Net;
+using Timer = System.Windows.Forms.Timer;
 
 namespace CK3MPS
 {
@@ -25,6 +27,11 @@ namespace CK3MPS
         private const int MaxEmbeddedZipAnalysisBytes = 32 * 1024 * 1024;
         private const int MaxOosTextReadBytes = 4 * 1024 * 1024;
         private const int MaxWatcherFiles = 256;
+        private const int MaxSteamUserDataUsers = 128;
+        private const int MaxSteamUserDataMatches = 32;
+        private const int MaxBoundedTraversalDirectories = 1024;
+        private const int MaxBoundedTraversalDepth = 6;
+        private const int MaxBoundedTraversalElapsedMs = 3000;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private readonly CheckedListBox steps = new CheckedListBox();
@@ -118,6 +125,7 @@ namespace CK3MPS
         private readonly CheckBox restoreSelectAllBox = new CheckBox();
         private readonly CheckBox updateOnStartupBox = new CheckBox();
         private readonly CheckBox portableModeBox = new CheckBox();
+        private readonly CheckBox settingsGuardAutoRepairBox = new CheckBox();
         private readonly ComboBox logVerbosityBox = new ComboBox();
         private readonly ProgressBar updateDownloadProgress = new ProgressBar();
         private readonly GroupBox advancedGeneralGroup = new GroupBox();
@@ -139,6 +147,8 @@ namespace CK3MPS
         private readonly Timer settingsGuardTimer = new Timer();
         private readonly Timer workflowRenderTimer = new Timer();
         private readonly Timer oosWatcherTimer = new Timer();
+        private FileSystemWatcher oosWatcherFolderWatcher;
+        private FileSystemWatcher oosWatcherLogsWatcher;
         private bool updatingSettingsUi;
 
         private string ck3Docs;
@@ -163,6 +173,7 @@ namespace CK3MPS
         private bool updateCheckOnStartup = true;
         private bool portableMode;
         private bool portableModeChangeInProgress;
+        private bool settingsGuardAutoRepairEnabled;
         private string logVerbosity = "Normal";
         private bool gamePathOverrideActive;
         private bool settingsPathOverrideActive;
@@ -208,7 +219,16 @@ namespace CK3MPS
         private string workflowLastOosMetadataPath = "";
         private string oosWatcherLastSignature = "";
         private DateTime oosWatcherLastHandledUtc = DateTime.MinValue;
+        private DateTime oosWatcherLastQueuedUtc = DateTime.MinValue;
+        private DateTime oosWatcherLastWarningUtc = DateTime.MinValue;
         private string currentIncidentStateSignature = "";
+        private readonly object oosWatcherSync = new object();
+        private CancellationTokenSource oosWatcherCancelSource;
+        private Task oosWatcherTask;
+        private bool oosWatcherPending;
+        private bool oosWatcherStopping;
+        private string oosWatcherPendingReason = "";
+        private int oosWatcherProcessCount;
         private readonly List<WorkflowStepState> workflowStepStates = new List<WorkflowStepState>();
         private readonly Dictionary<string, WorkflowScenarioSnapshot> workflowScenarioSnapshots = new Dictionary<string, WorkflowScenarioSnapshot>(StringComparer.OrdinalIgnoreCase);
         private HostSaveCandidateResult cachedBestHostSaveCandidate;
@@ -323,6 +343,9 @@ namespace CK3MPS
             public const int MaxPayloadBytes = 1024 * 1024;
             public const int MaxFieldChars = 262144;
             public const int SocketTimeoutMs = 10000;
+            public const int MaxReplayNonces = 256;
+            public const int MaxReplayAgeMinutes = 15;
+            public const int MaxConcurrentClients = 8;
             public bool Hosting;
             public bool Joined;
             public string JoinHost = "";
@@ -332,6 +355,7 @@ namespace CK3MPS
             public string LocalPlayerLabel = "";
             public TcpListener Listener;
             public System.Threading.CancellationTokenSource CancelSource;
+            public readonly SemaphoreSlim ClientSlots = new SemaphoreSlim(MaxConcurrentClients, MaxConcurrentClients);
             public readonly List<ParityRoomPeer> Peers = new List<ParityRoomPeer>();
             public readonly object Sync = new object();
             public string LocalManifestText = "";
@@ -345,6 +369,9 @@ namespace CK3MPS
             public string LocalOosSaveDumpText = "";
             public string LocalOosModifierDumpText = "";
             public string LocalOosErrorLogText = "";
+            public bool RawOosShareConsented;
+            public readonly HashSet<string> SeenPayloadNonces = new HashSet<string>(StringComparer.Ordinal);
+            public readonly Queue<string> SeenPayloadNonceOrder = new Queue<string>();
             public string LastComparisonSignature = "";
             public string LastComparisonDifferencesText = "";
             public string LastComparisonActionsText = "";
@@ -580,21 +607,16 @@ namespace CK3MPS
             AutoDetectPaths();
             LoadAppConfig();
             RefreshStabilizerRoot();
-            MoveStabilizerRootContents(portableMode ? nonPortableStabilizerRoot : portableStabilizerRoot, stabilizerRoot);
 
             BuildUi();
             ConfigureStepToolTipBehavior();
             UpdateSettingsUi();
             UpdatePathStatusIndicators();
-            EnsureStabilizerRoot();
             ResetLiveLogFilePath();
-            MigrateLegacyStabilizerState();
-            MoveLegacyStabilizerArtifacts();
-            SaveAppConfig();
             settingsGuardTimer.Interval = 10000;
             settingsGuardTimer.Tick += delegate { RunSettingsGuardTick(); };
             oosWatcherTimer.Interval = 5000;
-            oosWatcherTimer.Tick += delegate { RunOosWatcherTick(); };
+            oosWatcherTimer.Tick += delegate { ScheduleOosWatcherScan("timer"); };
             FillSteps();
             ValidateStepConfiguration();
             presetBox.SelectedItem = "Recommended";
@@ -618,10 +640,9 @@ namespace CK3MPS
                 RefreshHistoryView();
                 RefreshRestoreList();
                 CheckForUpdatesOnStartup();
-                liveLogWritesEnabled = true;
-                oosWatcherTimer.Start();
+                StartOosWatcherServices();
             };
-            FormClosed += delegate { oosWatcherTimer.Stop(); };
+            FormClosed += delegate { StopOosWatcherServices(1500); };
         }
 
         private static bool IsAutomationTestRun()

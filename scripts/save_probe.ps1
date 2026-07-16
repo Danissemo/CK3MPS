@@ -11,7 +11,7 @@ $form = [Activator]::CreateInstance($formType)
 $flags = [Reflection.BindingFlags] "Instance,NonPublic"
 
 $analyze = $formType.GetMethod("AnalyzeHostSaveCandidate", $flags)
-$saveDir = "C:\Users\Asuka\Documents\Paradox Interactive\Crusader Kings III\save games"
+$saveDir = Join-Path $env:USERPROFILE "Documents\Paradox Interactive\Crusader Kings III\save games"
 $paths = Get-ChildItem $saveDir -Filter *.ck3 | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 12 -ExpandProperty FullName
 
 foreach ($path in $paths)

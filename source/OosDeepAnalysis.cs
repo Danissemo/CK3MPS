@@ -3,85 +3,367 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
-        private void RunOosWatcherTick()
+        private sealed class OosWatcherScanResult
+        {
+            public bool HadWork;
+            public bool IncidentChanged;
+            public bool WorkflowRefreshSuggested;
+            public string StatusMessage;
+        }
+
+        private void StartOosWatcherServices()
+        {
+            lock (oosWatcherSync)
+            {
+                if (oosWatcherCancelSource == null || oosWatcherCancelSource.IsCancellationRequested)
+                    oosWatcherCancelSource = new CancellationTokenSource();
+                oosWatcherStopping = false;
+            }
+
+            ResetOosWatcherFileWatchers();
+            oosWatcherTimer.Start();
+            ScheduleOosWatcherScan("startup");
+        }
+
+        private void StopOosWatcherServices(int timeoutMs)
+        {
+            Task runningTask = null;
+            CancellationTokenSource cancelSource = null;
+            lock (oosWatcherSync)
+            {
+                if (oosWatcherStopping)
+                    return;
+
+                oosWatcherStopping = true;
+                oosWatcherPending = false;
+                oosWatcherPendingReason = "";
+                runningTask = oosWatcherTask;
+                cancelSource = oosWatcherCancelSource;
+                oosWatcherCancelSource = null;
+            }
+
+            oosWatcherTimer.Stop();
+            DisposeOosWatcher(ref oosWatcherFolderWatcher);
+            DisposeOosWatcher(ref oosWatcherLogsWatcher);
+            if (cancelSource != null)
+                cancelSource.Cancel();
+
+            if (runningTask != null)
+            {
+                try
+                {
+                    runningTask.Wait(Math.Max(0, timeoutMs));
+                }
+                catch (AggregateException)
+                {
+                }
+            }
+        }
+
+        private void ResetOosWatcherFileWatchers()
         {
             try
             {
-                string signature = BuildOosWatcherSignature();
-                if (String.Equals(signature, oosWatcherLastSignature, StringComparison.Ordinal))
-                    return;
-
-                oosWatcherLastSignature = signature;
-                if (String.IsNullOrWhiteSpace(signature))
-                    return;
-
-                AnalyzeLatestOosReport();
-                oosWatcherLastHandledUtc = DateTime.UtcNow;
-
-                OosDeepInsight insight = AnalyzeLatestOosDeepInsight();
-                OosIncidentState incident = AnalyzeOosIncidentState();
-                string incidentSignature = BuildIncidentStateSignature(incident);
-                if (String.Equals(incidentSignature, currentIncidentStateSignature, StringComparison.Ordinal))
-                    return;
-                currentIncidentStateSignature = incidentSignature;
-                RecordIncidentHistoryEvent("watcher_detected", incident, "Automatic watcher refresh");
-                if (insight.WatcherRecoveryState)
-                    SetStatusText("OOS watcher: recovery state detected. Review Workflow -> After OOS.");
-                if (!incident.StartAllowed)
-                    SetStatusText("Incident state: " + incident.Stage + ". Recommended path: " + incident.RecommendedPath + ".");
-
-                if (mainTabs.SelectedTab == workflowPage && !workflowRefreshPending)
-                    BeginWorkflowScenarioRefresh();
+                DisposeOosWatcher(ref oosWatcherFolderWatcher);
+                DisposeOosWatcher(ref oosWatcherLogsWatcher);
+                TryConfigureOosWatcher(Path.Combine(ck3Docs, "oos"), true, ref oosWatcherFolderWatcher, "*.*");
+                TryConfigureOosWatcher(Path.Combine(ck3Docs, "logs"), false, ref oosWatcherLogsWatcher, "error.log");
             }
             catch
+            {
+                ReportOosWatcherWarningThrottled("Watcher setup failed. CK3MPS will keep using periodic scans.");
+            }
+        }
+
+        private void TryConfigureOosWatcher(string path, bool includeSubdirectories, ref FileSystemWatcher watcher, string filter)
+        {
+            if (String.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return;
+
+            watcher = new FileSystemWatcher(path);
+            watcher.IncludeSubdirectories = includeSubdirectories;
+            watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size;
+            watcher.Filter = String.IsNullOrWhiteSpace(filter) ? "*.*" : filter;
+            watcher.Created += HandleOosWatcherFileEvent;
+            watcher.Changed += HandleOosWatcherFileEvent;
+            watcher.Deleted += HandleOosWatcherFileEvent;
+            watcher.Renamed += HandleOosWatcherRenamedEvent;
+            watcher.Error += HandleOosWatcherError;
+            watcher.EnableRaisingEvents = true;
+        }
+
+        private void DisposeOosWatcher(ref FileSystemWatcher watcher)
+        {
+            try
+            {
+                if (watcher != null)
+                {
+                    watcher.EnableRaisingEvents = false;
+                    watcher.Dispose();
+                }
+            }
+            catch
+            {
+            }
+            watcher = null;
+        }
+
+        private void HandleOosWatcherFileEvent(object sender, FileSystemEventArgs e)
+        {
+            ScheduleOosWatcherScan("fsw:" + (e == null ? "unknown" : e.ChangeType.ToString()));
+        }
+
+        private void HandleOosWatcherRenamedEvent(object sender, RenamedEventArgs e)
+        {
+            ScheduleOosWatcherScan("fsw:rename");
+        }
+
+        private void HandleOosWatcherError(object sender, ErrorEventArgs e)
+        {
+            Exception ex = e == null ? null : e.GetException();
+            ReportOosWatcherWarningThrottled("Watcher event stream failed. CK3MPS will keep using periodic scans. " + (ex == null ? "" : ex.Message));
+        }
+
+        private void ScheduleOosWatcherScan(string reason)
+        {
+            bool startWorker = false;
+            CancellationTokenSource cancelSource;
+            DateTime nowUtc = DateTime.UtcNow;
+            lock (oosWatcherSync)
+            {
+                if (oosWatcherStopping)
+                    return;
+
+                if (oosWatcherCancelSource == null || oosWatcherCancelSource.IsCancellationRequested)
+                    oosWatcherCancelSource = new CancellationTokenSource();
+                cancelSource = oosWatcherCancelSource;
+
+                if (oosWatcherPending && (nowUtc - oosWatcherLastQueuedUtc).TotalMilliseconds < 750)
+                    return;
+
+                oosWatcherPending = true;
+                oosWatcherPendingReason = reason ?? "";
+                oosWatcherLastQueuedUtc = nowUtc;
+                if (oosWatcherTask == null || oosWatcherTask.IsCompleted)
+                {
+                    startWorker = true;
+                    oosWatcherTask = Task.Run(delegate { RunOosWatcherLoop(cancelSource.Token); });
+                }
+            }
+
+            if (startWorker)
+                LogVerbose("OOS watcher scheduled from " + NullText(reason) + ".");
+        }
+
+        private void RunOosWatcherLoop(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                string reason;
+                lock (oosWatcherSync)
+                {
+                    if (oosWatcherStopping || cancellationToken.IsCancellationRequested)
+                    {
+                        oosWatcherTask = null;
+                        return;
+                    }
+
+                    if (!oosWatcherPending)
+                    {
+                        oosWatcherTask = null;
+                        return;
+                    }
+
+                    oosWatcherPending = false;
+                    reason = oosWatcherPendingReason;
+                    oosWatcherPendingReason = "";
+                    oosWatcherProcessCount++;
+                }
+
+                try
+                {
+                    OosWatcherScanResult result = RunOosWatcherScanCore(cancellationToken);
+                    if (result != null && result.HadWork)
+                        PostOosWatcherUiUpdates(result);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    ReportOosWatcherWarningThrottled("OOS watcher failed during " + NullText(reason) + ": " + ex.Message);
+                }
+            }
+        }
+
+        private OosWatcherScanResult RunOosWatcherScanCore(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string signature = BuildOosWatcherSignatureUnsafe();
+            if (String.IsNullOrWhiteSpace(signature))
+                return new OosWatcherScanResult();
+
+            lock (oosWatcherSync)
+            {
+                if (String.Equals(signature, oosWatcherLastSignature, StringComparison.Ordinal))
+                    return new OosWatcherScanResult();
+                oosWatcherLastSignature = signature;
+            }
+
+            DelayOosWatcherForTestsIfRequested(cancellationToken);
+            AnalyzeLatestOosReport();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            OosDeepInsight insight = AnalyzeLatestOosDeepInsight();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            OosIncidentState incident = AnalyzeOosIncidentState();
+            string incidentSignature = BuildIncidentStateSignature(incident);
+            bool incidentChanged;
+            lock (oosWatcherSync)
+            {
+                incidentChanged = !String.Equals(incidentSignature, currentIncidentStateSignature, StringComparison.Ordinal);
+                if (incidentChanged)
+                    currentIncidentStateSignature = incidentSignature;
+                oosWatcherLastHandledUtc = DateTime.UtcNow;
+            }
+
+            if (incidentChanged)
+                RecordIncidentHistoryEvent("watcher_detected", incident, "Automatic watcher refresh");
+
+            OosWatcherScanResult result = new OosWatcherScanResult();
+            result.HadWork = true;
+            result.IncidentChanged = incidentChanged;
+            result.WorkflowRefreshSuggested = incidentChanged;
+            if (insight.WatcherRecoveryState)
+                result.StatusMessage = "OOS watcher: recovery state detected. Review Workflow -> After OOS.";
+            else if (!incident.StartAllowed)
+                result.StatusMessage = "Incident state: " + incident.Stage + ". Recommended path: " + incident.RecommendedPath + ".";
+            return result;
+        }
+
+        private void DelayOosWatcherForTestsIfRequested(CancellationToken cancellationToken)
+        {
+            string raw = Environment.GetEnvironmentVariable("CK3MPS_TEST_OOS_WATCHER_DELAY_MS");
+            int delayMs;
+            if (!Int32.TryParse(raw, out delayMs) || delayMs <= 0)
+                return;
+
+            int remaining = delayMs;
+            while (remaining > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int slice = Math.Min(remaining, 100);
+                Thread.Sleep(slice);
+                remaining -= slice;
+            }
+        }
+
+        private void PostOosWatcherUiUpdates(OosWatcherScanResult result)
+        {
+            if (result == null || IsDisposed || Disposing)
+                return;
+
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (IsDisposed || Disposing)
+                        return;
+
+                    if (!String.IsNullOrWhiteSpace(result.StatusMessage))
+                        SetStatusText(result.StatusMessage);
+                    if (result.WorkflowRefreshSuggested && mainTabs.SelectedTab == workflowPage && !workflowRefreshPending)
+                        BeginWorkflowScenarioRefresh();
+                });
+            }
+            catch (InvalidOperationException)
             {
             }
         }
 
-        private string BuildOosWatcherSignature()
+        private void ReportOosWatcherWarningThrottled(string message)
         {
+            if (String.IsNullOrWhiteSpace(message))
+                return;
+
+            bool shouldReport = false;
+            lock (oosWatcherSync)
+            {
+                DateTime nowUtc = DateTime.UtcNow;
+                if ((nowUtc - oosWatcherLastWarningUtc).TotalSeconds >= 15)
+                {
+                    oosWatcherLastWarningUtc = nowUtc;
+                    shouldReport = true;
+                }
+            }
+
+            if (!shouldReport)
+                return;
+
+            Log("WARN " + message);
+            if (IsDisposed || Disposing)
+                return;
             try
             {
-                StringBuilder sb = new StringBuilder();
-                string latestMetadata = FindLatestOosMetadataFile();
-                if (!String.IsNullOrWhiteSpace(latestMetadata) && File.Exists(latestMetadata))
+                BeginInvoke((MethodInvoker)delegate
                 {
-                    FileInfo info = new FileInfo(latestMetadata);
-                    sb.Append("meta|").Append(latestMetadata).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
-                }
-
-                string activeOos = Path.Combine(ck3Docs, "oos");
-                if (Directory.Exists(activeOos))
-                {
-                    int seen = 0;
-                    foreach (string file in Directory.EnumerateFiles(activeOos, "*.*", SearchOption.AllDirectories))
-                    {
-                        if (seen >= MaxWatcherFiles)
-                            break;
-                        FileInfo info = new FileInfo(file);
-                        sb.Append("\n").Append(file).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
-                        seen++;
-                    }
-                }
-
-                string liveErrorLog = Path.Combine(ck3Docs, "logs", "error.log");
-                if (File.Exists(liveErrorLog))
-                {
-                    FileInfo info = new FileInfo(liveErrorLog);
-                    sb.Append("\nerror|").Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
-                }
-
-                return sb.ToString();
+                    if (!IsDisposed && !Disposing)
+                        SetStatusText("OOS watcher warning. Review log for details.");
+                });
             }
-            catch
+            catch (InvalidOperationException)
             {
-                return "";
             }
+        }
+
+        private string BuildOosWatcherSignatureUnsafe()
+        {
+            StringBuilder sb = new StringBuilder();
+            string latestMetadata = FindLatestOosMetadataFile();
+            if (!String.IsNullOrWhiteSpace(latestMetadata) && File.Exists(latestMetadata))
+            {
+                FileInfo info = new FileInfo(latestMetadata);
+                sb.Append("meta|").Append(latestMetadata).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+            }
+
+            string activeOos = Path.Combine(ck3Docs, "oos");
+            if (Directory.Exists(activeOos))
+            {
+                BoundedTraversalUtilities.TraversalResult files = BoundedTraversalUtilities.EnumerateFilesBounded(
+                    activeOos,
+                    "*.*",
+                    new BoundedTraversalUtilities.TraversalSettings
+                    {
+                        MaxDirectories = MaxBoundedTraversalDirectories,
+                        MaxFiles = MaxWatcherFiles,
+                        MaxDepth = MaxBoundedTraversalDepth,
+                        MaxElapsedMs = MaxBoundedTraversalElapsedMs
+                    });
+                foreach (string file in files.Paths)
+                {
+                    FileInfo info = new FileInfo(file);
+                    sb.Append("\n").Append(file).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+                }
+            }
+
+            string liveErrorLog = Path.Combine(ck3Docs, "logs", "error.log");
+            if (File.Exists(liveErrorLog))
+            {
+                FileInfo info = new FileInfo(liveErrorLog);
+                sb.Append("\nerror|").Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+            }
+
+            return sb.ToString();
         }
 
         private OosDeepInsight AnalyzeLatestOosDeepInsight()
@@ -581,10 +863,7 @@ namespace CK3MPS
                     return;
 
                 string path = StabilizerFile("ck3_stabilizer_incident_history.jsonl");
-                List<string> lines = new List<string>();
-                if (File.Exists(path))
-                    lines.AddRange(File.ReadAllLines(path, Encoding.UTF8));
-                lines.Add(IncidentHistoryJsonUtilities.BuildJsonLine(
+                AtomicWriteResult result = SafeAtomicFile.TryAppendText(path, IncidentHistoryJsonUtilities.BuildJsonLine(
                     DateTime.UtcNow.ToString("o"),
                     EscapeIncidentHistory(trigger),
                     EscapeIncidentHistory(state.IncidentId),
@@ -593,8 +872,9 @@ namespace CK3MPS
                     state.ContinuationRiskScore,
                     EscapeIncidentHistory(state.Confidence),
                     state.HotjoinAllowed,
-                    EscapeIncidentHistory(note)));
-                SafeAtomicFile.WriteAllLines(path, lines, Encoding.UTF8);
+                    EscapeIncidentHistory(note)) + Environment.NewLine, Encoding.UTF8);
+                if (!result.Succeeded)
+                    throw new IOException(result.Message);
             }
             catch
             {

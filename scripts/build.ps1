@@ -58,6 +58,8 @@ if ($MSBuild) {
         /r:System.Core.dll `
         /r:System.IO.Compression.dll `
         /r:System.IO.Compression.FileSystem.dll `
+        /r:System.Runtime.Serialization.dll `
+        /r:System.Xml.dll `
         /r:System.Drawing.dll `
         /r:System.Windows.Forms.dll `
         $Sources

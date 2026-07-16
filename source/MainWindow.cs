@@ -618,6 +618,33 @@ namespace CK3MPS
             };
             advancedGeneralGroup.Controls.Add(portableModeBox);
 
+            settingsGuardAutoRepairBox.Text = "Allow guard auto-repair";
+            settingsGuardAutoRepairBox.Size = new Size(220, 24);
+            settingsGuardAutoRepairBox.CheckedChanged += delegate
+            {
+                if (updatingSettingsUi)
+                    return;
+
+                if (settingsGuardAutoRepairBox.Checked && !settingsGuardAutoRepairEnabled)
+                {
+                    DialogResult consent = MessageBox.Show(
+                        "Automatic settings guard repair can rewrite CK3, launcher, and Steam configuration files after drift is detected.\r\n\r\nSave quarantine still stays manual-only.\r\n\r\nEnable auto-repair?",
+                        "Settings guard auto-repair",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+                    if (consent != DialogResult.Yes)
+                    {
+                        updatingSettingsUi = true;
+                        try { settingsGuardAutoRepairBox.Checked = false; } finally { updatingSettingsUi = false; }
+                        return;
+                    }
+                }
+
+                settingsGuardAutoRepairEnabled = settingsGuardAutoRepairBox.Checked;
+                SaveAppConfig();
+            };
+            advancedGeneralGroup.Controls.Add(settingsGuardAutoRepairBox);
+
             advancedLogVerbosityLabel.Text = "Log verbosity:";
             advancedLogVerbosityLabel.AutoSize = true;
             advancedGeneralGroup.Controls.Add(advancedLogVerbosityLabel);
@@ -637,7 +664,7 @@ namespace CK3MPS
             };
             advancedGeneralGroup.Controls.Add(logVerbosityBox);
 
-            advancedHintLabel.Text = "Use this page for update behavior, portable mode and cleanup tasks. Restore point deletion affects system restore points created by CK3MPS on this PC.";
+            advancedHintLabel.Text = "Use this page for update behavior, portable mode, settings guard mode and cleanup tasks. Restore point deletion affects only CK3MPS-created system restore points on this PC.";
             advancedHintLabel.AutoSize = false;
             advancedHintLabel.ForeColor = Color.FromArgb(90, 90, 90);
             advancedGeneralGroup.Controls.Add(advancedHintLabel);
@@ -673,10 +700,30 @@ namespace CK3MPS
             restorePointsListBox.CheckOnClick = true;
             restorePointsListBox.HorizontalScrollbar = true;
             restorePointsListBox.IntegralHeight = false;
+            restorePointsListBox.ItemCheck += delegate(object sender, ItemCheckEventArgs e)
+            {
+                if (e.Index < 0 || e.Index >= restorePointsListBox.Items.Count)
+                    return;
+
+                RestorePointListItem item = restorePointsListBox.Items[e.Index] as RestorePointListItem;
+                if (!ShouldAllowRestorePointItemCheck(item, e.NewValue))
+                {
+                    e.NewValue = CheckState.Unchecked;
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        SetStatusText("Only CK3MPS-created restore points can be deleted.");
+                        UpdateRestorePointDeleteButtonState();
+                    });
+                    return;
+                }
+
+                BeginInvoke((MethodInvoker)delegate { UpdateRestorePointDeleteButtonState(); });
+            };
             advancedRestoreGroup.Controls.Add(restorePointsListBox);
 
             deleteSelectedRestorePointsButton.Text = "Delete selected restore points";
             deleteSelectedRestorePointsButton.Size = new Size(240, 34);
+            deleteSelectedRestorePointsButton.Enabled = false;
             deleteSelectedRestorePointsButton.Click += delegate { DeleteSelectedRestorePoints(); };
             advancedRestoreGroup.Controls.Add(deleteSelectedRestorePointsButton);
             advancedRestoreGroup.Controls.Add(clearOtherLogsButton);
@@ -702,7 +749,7 @@ namespace CK3MPS
             const int rightPadding = 18;
             const int progressMinWidth = 180;
             int contentWidth = Math.Max(520, advancedPage.ClientSize.Width - left - rightPadding);
-            int generalHeight = 136;
+            int generalHeight = 164;
             int maintenanceHeight = 82;
             int restoreTop = top + generalHeight + gap + maintenanceHeight + gap;
 
@@ -712,11 +759,13 @@ namespace CK3MPS
             updateOnStartupBox.Size = new Size(250, 24);
             portableModeBox.Location = new Point(14, 56);
             portableModeBox.Size = new Size(180, 24);
+            settingsGuardAutoRepairBox.Location = new Point(14, 84);
+            settingsGuardAutoRepairBox.Size = new Size(220, 24);
             advancedLogVerbosityLabel.Location = new Point(300, 31);
             logVerbosityBox.Location = new Point(404, 27);
             logVerbosityBox.Size = new Size(Math.Min(150, Math.Max(130, advancedGeneralGroup.ClientSize.Width - 418)), 24);
-            advancedHintLabel.Location = new Point(14, 88);
-            advancedHintLabel.Size = new Size(advancedGeneralGroup.ClientSize.Width - 28, 32);
+            advancedHintLabel.Location = new Point(14, 116);
+            advancedHintLabel.Size = new Size(advancedGeneralGroup.ClientSize.Width - 28, 40);
 
             advancedMaintenanceGroup.Location = new Point(left, advancedGeneralGroup.Bottom + gap);
             advancedMaintenanceGroup.Size = new Size(contentWidth, maintenanceHeight);
@@ -991,7 +1040,6 @@ namespace CK3MPS
                 if (!ValidateBeforeRun())
                 {
                     SetStatusText("Check stopped: fix folder paths first.");
-                    AppendRunHistory("check_only", "stopped_path_validation");
                     return;
                 }
 
@@ -1013,7 +1061,6 @@ namespace CK3MPS
             catch (Exception ex)
             {
                 Log("ERROR: " + ex.Message);
-                AppendRunHistory("check_only", "failed");
             }
             finally
             {
@@ -1067,9 +1114,6 @@ namespace CK3MPS
             {
                 if (finalizeGeneration != deferredFinalizeGeneration)
                     return;
-
-                WriteCheckOnlyReportSnapshot(readinessFailures, runLogLines);
-                AppendRunHistoryLineAsync(historyLine);
             });
         }
 

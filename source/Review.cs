@@ -355,7 +355,7 @@ namespace CK3MPS
                 case 10:
                     return "Backs up Steam, launcher, dlc_load.json and pdx_settings.txt sources into quarantine first.";
                 case 11:
-                    return "Rewrites Steam CK3 launch/cloud behavior after backup.";
+                    return "Rewrites Steam CK3 launch/cloud behavior after backup. This step is blocked while Steam is running.";
                 case 12:
                     return "Moves launcher database/cache state to quarantine so Paradox Launcher rebuilds a cleaner default state.";
                 case 14:
@@ -363,7 +363,7 @@ namespace CK3MPS
                 case 15:
                     return "Rewrites pdx_settings.txt core MP settings and applies the selected graphics profile: " + CurrentGraphicsProfile() + ".";
                 case 16:
-                    return "Writes settings guard and runtime verification report files.";
+                    return "Writes settings guard and runtime verification report files. Guard stays detect-only unless explicit auto-repair is enabled in Advanced.";
                 case 17:
                     return "Writes a fresh reference profile summary for stable new-campaign starts.";
                 case 18:
@@ -671,6 +671,8 @@ namespace CK3MPS
                         details.Add("Copy backup of `" + path + "` into the current quarantine.");
                     break;
                 case 11:
+                    if (ProcessRunningContains("steam"))
+                        details.Add("Blocker: Steam is currently running. Close Steam completely before CK3MPS changes `localconfig.vdf` or `sharedconfig.vdf`.");
                     if (LaunchOptionsNeedUpdate())
                         details.Add("Normalize Steam CK3 launch options to keep `-noasync` and remove risky flags such as `debug_mode`, `dx11`, `opengl` and similar. New value: `" + NormalizeLaunchOptions(ExtractSteamLaunchOptions(), true) + "`.");
                     if (SteamCloudFlagNeedsUpdate())
@@ -996,19 +998,14 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(sharedConfig) || !File.Exists(sharedConfig))
                 return false;
 
-            string text = File.ReadAllText(sharedConfig, Encoding.UTF8);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamSharedConfig(out root, out appObject, out error))
                 return false;
 
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < open)
-                return false;
-
-            string block = text.Substring(open, close - open + 1);
-            Match m = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            return m.Success && m.Groups[1].Value != "0";
+            string value = appObject.GetString("cloudenabled");
+            return !String.IsNullOrEmpty(value) && value != "0";
         }
 
         private bool LauncherRebuildHasTargets()

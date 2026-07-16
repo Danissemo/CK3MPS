@@ -44,7 +44,21 @@ namespace CK3MPS
 
             // CK3 recreates these UI preference files after launch. They are not simulation inputs,
             // so their presence should not block MP readiness after a successful cleanup.
-            foreach (string file in Directory.GetFiles(playerDir, "*", SearchOption.AllDirectories))
+            BoundedTraversalUtilities.TraversalResult traversal = BoundedTraversalUtilities.EnumerateFilesBounded(
+                playerDir,
+                "*",
+                new BoundedTraversalUtilities.TraversalSettings
+                {
+                    MaxDirectories = MaxBoundedTraversalDirectories,
+                    MaxFiles = MaxWatcherFiles,
+                    MaxDepth = MaxBoundedTraversalDepth,
+                    MaxElapsedMs = MaxBoundedTraversalElapsedMs
+                });
+
+            if (traversal.HitDirectoryLimit || traversal.HitFileLimit || traversal.TimedOut)
+                return false;
+
+            foreach (string file in traversal.Paths)
             {
                 string name = Path.GetFileName(file).ToLowerInvariant();
                 if (name == "outliner.txt" || name == "character_interactions.txt")

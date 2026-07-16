@@ -77,6 +77,14 @@ namespace CK3MPS
                 RuleValueIsDisabledToken)
         };
 
+        private const long MaxSaveRepairFileBytes = MaxSaveAnalysisFileBytes;
+        private const int MaxSaveRepairZipEntryCount = 64;
+        private const long MaxSaveRepairEntryCompressedBytes = 64L * 1024L * 1024L;
+        private const long MaxSaveRepairEntryUncompressedBytes = 128L * 1024L * 1024L;
+        private const long MaxSaveRepairTotalUncompressedBytes = 256L * 1024L * 1024L;
+        private const int MaxSaveRepairZipEntryNameBytes = 240;
+        private const double MaxSaveRepairCompressionRatio = 250d;
+
         private HostSaveCandidateResult AnalyzeBestHostSaveCandidate()
         {
             string cacheKey = BuildBestHostSaveCandidateCacheKey();
@@ -731,46 +739,42 @@ namespace CK3MPS
                 return false;
             }
 
-            byte[] sourceBytes;
-            try
-            {
-                sourceBytes = File.ReadAllBytes(sourcePath);
-            }
-            catch (Exception ex)
-            {
-                failureReason = ex.Message;
-                return false;
-            }
-
-            byte[] updatedBytes = null;
-            List<string> appliedRules = new List<string>();
-            bool changed;
-            try
-            {
-                changed = TryRepairSaveBytes(sourceBytes, out updatedBytes, out appliedRules);
-            }
-            catch (Exception ex)
-            {
-                failureReason = ex.Message;
-                return false;
-            }
-
-            if (!changed || updatedBytes == null || appliedRules.Count == 0)
-            {
-                failureReason = "no repairable critical rule tokens were found in the save.";
-                return false;
-            }
-
             repairedPath = BuildRepairedHostSavePath(sourcePath);
+            string repairedDir = Path.GetDirectoryName(repairedPath) ?? Path.GetDirectoryName(sourcePath) ?? "";
+            string tempPath = "";
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(repairedPath) ?? Path.GetDirectoryName(sourcePath) ?? "");
+                FileInfo info = new FileInfo(sourcePath);
+                if (info.Length <= 0 || info.Length > MaxSaveRepairFileBytes)
+                {
+                    failureReason = "save exceeds the safe repair size limit.";
+                    return false;
+                }
+
+                Directory.CreateDirectory(repairedDir);
+                tempPath = Path.Combine(repairedDir, Path.GetFileName(repairedPath) + ".tmp-" + Guid.NewGuid().ToString("N"));
                 if (File.Exists(repairedPath))
                     BackupForRestore(repairedPath, "Before CK3MPS refreshes repaired host save copy: " + repairedPath);
                 else
                     RecordCreatedFileForRestore(repairedPath, "CK3MPS repaired host save copy: " + repairedPath);
 
-                File.WriteAllBytes(repairedPath, updatedBytes);
+                List<string> appliedRules;
+                bool changed = TryRepairSaveToTempFile(sourcePath, tempPath, out appliedRules, out failureReason);
+                if (!changed || appliedRules == null || appliedRules.Count == 0)
+                {
+                    if (String.IsNullOrEmpty(failureReason))
+                        failureReason = "no repairable critical rule tokens were found in the save.";
+                    return false;
+                }
+
+                FileInfo tempInfo = new FileInfo(tempPath);
+                if (!tempInfo.Exists || tempInfo.Length <= 0)
+                {
+                    failureReason = "repaired save was not created.";
+                    return false;
+                }
+
+                SafeAtomicFile.ReplaceFile(tempPath, repairedPath);
                 repairedRules.AddRange(appliedRules);
                 return true;
             }
@@ -778,6 +782,10 @@ namespace CK3MPS
             {
                 failureReason = ex.Message;
                 return false;
+            }
+            finally
+            {
+                SafeAtomicFile.TryDeleteTempFile(tempPath);
             }
         }
 
@@ -789,45 +797,48 @@ namespace CK3MPS
             return Path.Combine(dir, name + "_ck3mps_safe" + ext);
         }
 
-        private bool TryRepairSaveBytes(byte[] sourceBytes, out byte[] updatedBytes, out List<string> appliedRules)
+        private bool TryRepairSaveToTempFile(string sourcePath, string tempPath, out List<string> appliedRules, out string failureReason)
         {
-            updatedBytes = sourceBytes;
             appliedRules = new List<string>();
-            if (sourceBytes == null || sourceBytes.Length == 0)
+            failureReason = "";
+            if (String.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+            {
+                failureReason = "source save is missing.";
+                return false;
+            }
+
+            long zipOffset;
+            bool startsWithZip;
+            if (!TryDetectZipLayout(sourcePath, out startsWithZip, out zipOffset, out failureReason))
                 return false;
 
-            if (LooksLikeZipArchive(sourceBytes, 0))
+            if (startsWithZip)
             {
-                byte[] zipUpdated;
-                if (!TryRewriteZipArchiveBytes(sourceBytes, out zipUpdated, out appliedRules))
-                    return false;
-                updatedBytes = zipUpdated;
-                return true;
+                return TryRewriteZipArchiveToTempFile(sourcePath, 0, tempPath, out appliedRules, out failureReason);
             }
 
-            int zipOffset = FindEmbeddedZipOffset(sourceBytes);
             if (zipOffset > 0)
             {
-                byte[] zipBytes = new byte[sourceBytes.Length - zipOffset];
-                Buffer.BlockCopy(sourceBytes, zipOffset, zipBytes, 0, zipBytes.Length);
-                byte[] updatedZipBytes;
-                List<string> zipRules = new List<string>();
-                bool zipChanged = TryRewriteZipArchiveBytes(zipBytes, out updatedZipBytes, out zipRules);
-                if (!zipChanged)
-                    return false;
-
-                updatedBytes = new byte[zipOffset + updatedZipBytes.Length];
-                Buffer.BlockCopy(sourceBytes, 0, updatedBytes, 0, zipOffset);
-                Buffer.BlockCopy(updatedZipBytes, 0, updatedBytes, zipOffset, updatedZipBytes.Length);
-                MergeAppliedRules(appliedRules, zipRules);
-                return appliedRules.Count > 0;
+                return TryRewriteZipArchiveToTempFile(sourcePath, zipOffset, tempPath, out appliedRules, out failureReason);
             }
 
-            string updatedText = ApplyCriticalRuleRepairsToText(Encoding.UTF8.GetString(sourceBytes), out appliedRules);
+            string originalText;
+            try
+            {
+                using (FileStream stream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    originalText = DecodeUtf8Bounded(ReadStreamBytesBounded(stream, MaxSaveRepairFileBytes));
+            }
+            catch (Exception ex)
+            {
+                failureReason = ex.Message;
+                return false;
+            }
+
+            string updatedText = ApplyCriticalRuleRepairsToText(originalText, out appliedRules);
             if (appliedRules.Count == 0)
                 return false;
 
-            updatedBytes = Encoding.UTF8.GetBytes(updatedText);
+            WriteUtf8FileFlushed(tempPath, updatedText);
             return true;
         }
 
@@ -841,42 +852,67 @@ namespace CK3MPS
                     target.Add(item);
         }
 
-        private bool TryRewriteZipArchiveBytes(byte[] zipBytes, out byte[] updatedZipBytes, out List<string> appliedRules)
+        private bool TryRewriteZipArchiveToTempFile(string sourcePath, long zipOffset, string tempPath, out List<string> appliedRules, out string failureReason)
         {
-            updatedZipBytes = zipBytes;
             appliedRules = new List<string>();
-            if (zipBytes == null || zipBytes.Length == 0)
-                return false;
-
-            using (MemoryStream input = new MemoryStream(zipBytes, false))
-            using (ZipArchive sourceArchive = new ZipArchive(input, ZipArchiveMode.Read, true))
+            failureReason = "";
+            if (String.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
             {
-                bool changed = false;
-                using (MemoryStream output = new MemoryStream())
+                failureReason = "source save is missing.";
+                return false;
+            }
+
+            using (FileStream input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (FileStream output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            {
+                if (zipOffset < 0 || zipOffset >= input.Length)
                 {
+                    failureReason = "embedded zip offset is invalid.";
+                    return false;
+                }
+
+                if (zipOffset > 0)
+                {
+                    CopyExactBytes(input, output, zipOffset);
+                    input.Position = zipOffset;
+                }
+
+                bool changed = false;
+                HashSet<string> normalizedEntryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                long totalUncompressedBytes = 0;
+                using (ZipArchive sourceArchive = new ZipArchive(input, ZipArchiveMode.Read, true))
+                {
+                    if (sourceArchive.Entries.Count > MaxSaveRepairZipEntryCount)
+                    {
+                        failureReason = "save zip contains too many entries.";
+                        return false;
+                    }
+
                     using (ZipArchive destinationArchive = new ZipArchive(output, ZipArchiveMode.Create, true))
                     {
                         foreach (ZipArchiveEntry sourceEntry in sourceArchive.Entries)
                         {
+                            string normalizedName;
+                            if (!TryValidateRepairZipEntry(sourceEntry, normalizedEntryNames, ref totalUncompressedBytes, out normalizedName, out failureReason))
+                                return false;
+
                             ZipArchiveEntry destinationEntry = destinationArchive.CreateEntry(sourceEntry.FullName, CompressionLevel.Optimal);
                             destinationEntry.LastWriteTime = sourceEntry.LastWriteTime;
-                            if (String.Equals(sourceEntry.Name, "meta", StringComparison.OrdinalIgnoreCase)
-                                || String.Equals(sourceEntry.Name, "gamestate", StringComparison.OrdinalIgnoreCase))
+                            if (String.Equals(normalizedName, "meta", StringComparison.OrdinalIgnoreCase)
+                                || String.Equals(normalizedName, "gamestate", StringComparison.OrdinalIgnoreCase))
                             {
-                                using (StreamReader reader = new StreamReader(sourceEntry.Open(), Encoding.UTF8, true))
+                                byte[] originalBytes = ReadZipEntryBytesBounded(sourceEntry, MaxSaveRepairEntryUncompressedBytes);
+                                string originalText = DecodeUtf8Bounded(originalBytes);
+                                List<string> entryRules;
+                                string updatedText = ApplyCriticalRuleRepairsToText(originalText, out entryRules);
+                                if (entryRules.Count > 0)
                                 {
-                                    string originalText = reader.ReadToEnd();
-                                    List<string> entryRules;
-                                    string updatedText = ApplyCriticalRuleRepairsToText(originalText, out entryRules);
-                                    if (entryRules.Count > 0)
-                                    {
-                                        changed = true;
-                                        MergeAppliedRules(appliedRules, entryRules);
-                                    }
-
-                                    using (StreamWriter writer = new StreamWriter(destinationEntry.Open(), Utf8NoBom))
-                                        writer.Write(updatedText);
+                                    changed = true;
+                                    MergeAppliedRules(appliedRules, entryRules);
                                 }
+
+                                using (Stream destinationStream = destinationEntry.Open())
+                                    WriteUtf8StreamFlushed(destinationStream, updatedText);
                             }
                             else
                             {
@@ -889,10 +925,228 @@ namespace CK3MPS
 
                     if (!changed)
                         return false;
+                }
 
-                    updatedZipBytes = output.ToArray();
+                output.Flush(true);
+                return true;
+            }
+        }
+
+        private bool TryDetectZipLayout(string sourcePath, out bool startsWithZip, out long zipOffset, out string failureReason)
+        {
+            startsWithZip = false;
+            zipOffset = -1;
+            failureReason = "";
+
+            try
+            {
+                using (FileStream stream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    byte[] probe = new byte[4];
+                    if (stream.Read(probe, 0, probe.Length) == probe.Length && LooksLikeZipArchive(probe, 0))
+                    {
+                        startsWithZip = true;
+                        zipOffset = 0;
+                        return true;
+                    }
+
+                    stream.Position = 0;
+                    zipOffset = FindEmbeddedZipOffset(stream, MaxSaveRepairFileBytes);
                     return true;
                 }
+            }
+            catch (Exception ex)
+            {
+                failureReason = ex.Message;
+                return false;
+            }
+        }
+
+        private int FindEmbeddedZipOffset(Stream stream, long maxBytes)
+        {
+            if (stream == null || !stream.CanRead)
+                return -1;
+
+            byte[] buffer = new byte[64 * 1024];
+            int bytesRead;
+            int previousCount = 0;
+            long scanned = 0;
+
+            while ((bytesRead = stream.Read(buffer, previousCount, buffer.Length - previousCount)) > 0)
+            {
+                int total = previousCount + bytesRead;
+                int start = scanned == 0 ? 4 : 0;
+                for (int i = start; i <= total - 4; i++)
+                    if (LooksLikeZipArchive(buffer, i))
+                        return (int)(scanned - previousCount + i);
+
+                if (total >= 3)
+                {
+                    buffer[0] = buffer[total - 3];
+                    buffer[1] = buffer[total - 2];
+                    buffer[2] = buffer[total - 1];
+                    previousCount = 3;
+                }
+                else
+                {
+                    previousCount = total;
+                }
+
+                scanned += bytesRead;
+                if (scanned > maxBytes)
+                    throw new InvalidOperationException("save exceeds the safe repair size limit.");
+            }
+
+            return -1;
+        }
+
+        private bool TryValidateRepairZipEntry(ZipArchiveEntry entry, HashSet<string> normalizedEntryNames, ref long totalUncompressedBytes, out string normalizedName, out string failureReason)
+        {
+            normalizedName = "";
+            failureReason = "";
+            if (entry == null)
+            {
+                failureReason = "save zip contains a missing entry.";
+                return false;
+            }
+
+            if (Encoding.UTF8.GetByteCount(entry.FullName ?? "") > MaxSaveRepairZipEntryNameBytes)
+            {
+                failureReason = "save zip contains an entry with an oversized name.";
+                return false;
+            }
+
+            if (!TryNormalizeRepairZipEntryName(entry.FullName, out normalizedName))
+            {
+                failureReason = "save zip contains a dangerous path entry: " + (entry.FullName ?? "");
+                return false;
+            }
+
+            if (!normalizedEntryNames.Add(normalizedName))
+            {
+                failureReason = "save zip contains duplicate normalized entry names.";
+                return false;
+            }
+
+            long compressedLength = entry.CompressedLength;
+            long uncompressedLength = entry.Length;
+            if (compressedLength < 0 || compressedLength > MaxSaveRepairEntryCompressedBytes)
+            {
+                failureReason = "save zip entry compressed size exceeds the repair limit.";
+                return false;
+            }
+
+            if (uncompressedLength < 0 || uncompressedLength > MaxSaveRepairEntryUncompressedBytes)
+            {
+                failureReason = "save zip entry uncompressed size exceeds the repair limit.";
+                return false;
+            }
+
+            totalUncompressedBytes += uncompressedLength;
+            if (totalUncompressedBytes > MaxSaveRepairTotalUncompressedBytes)
+            {
+                failureReason = "save zip total uncompressed size exceeds the repair limit.";
+                return false;
+            }
+
+            if (compressedLength > 0 && uncompressedLength > 0)
+            {
+                double ratio = (double)uncompressedLength / (double)compressedLength;
+                if (ratio > MaxSaveRepairCompressionRatio)
+                {
+                    failureReason = "save zip entry compression ratio exceeds the repair limit.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryNormalizeRepairZipEntryName(string fullName, out string normalizedName)
+        {
+            normalizedName = "";
+            string value = (fullName ?? "").Replace('\\', '/').Trim();
+            if (String.IsNullOrEmpty(value) || value.StartsWith("/", StringComparison.Ordinal) || value.Contains(":") || value.IndexOf('\0') >= 0)
+                return false;
+            if (value.IndexOf("../", StringComparison.Ordinal) >= 0 || value.StartsWith("..", StringComparison.Ordinal) || value.Contains("/.."))
+                return false;
+
+            string[] parts = value.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return false;
+
+            foreach (string part in parts)
+            {
+                string piece = part.Trim();
+                if (piece.Length == 0 || piece == "." || piece == "..")
+                    return false;
+            }
+
+            normalizedName = String.Join("/", parts).ToLowerInvariant();
+            return true;
+        }
+
+        private byte[] ReadZipEntryBytesBounded(ZipArchiveEntry entry, long maxBytes)
+        {
+            using (Stream stream = entry.Open())
+                return ReadStreamBytesBounded(stream, maxBytes);
+        }
+
+        private byte[] ReadStreamBytesBounded(Stream stream, long maxBytes)
+        {
+            if (stream == null)
+                throw new InvalidOperationException("Source stream is missing.");
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                byte[] buffer = new byte[64 * 1024];
+                long total = 0;
+                int read;
+                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    total += read;
+                    if (total > maxBytes)
+                        throw new InvalidOperationException("Stream exceeds the safe repair size limit.");
+                    ms.Write(buffer, 0, read);
+                }
+                return ms.ToArray();
+            }
+        }
+
+        private string DecodeUtf8Bounded(byte[] bytes)
+        {
+            return new UTF8Encoding(false, true).GetString(bytes ?? new byte[0]);
+        }
+
+        private void WriteUtf8FileFlushed(string path, string text)
+        {
+            using (FileStream stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                WriteUtf8StreamFlushed(stream, text);
+                stream.Flush(true);
+            }
+        }
+
+        private void WriteUtf8StreamFlushed(Stream stream, string text)
+        {
+            using (StreamWriter writer = new StreamWriter(stream, Utf8NoBom, 4096, true))
+            {
+                writer.Write(text ?? "");
+                writer.Flush();
+            }
+        }
+
+        private void CopyExactBytes(Stream source, Stream destination, long byteCount)
+        {
+            byte[] buffer = new byte[64 * 1024];
+            long remaining = byteCount;
+            while (remaining > 0)
+            {
+                int read = source.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
+                if (read <= 0)
+                    throw new EndOfStreamException("Unexpected end of file while copying save prefix.");
+                destination.Write(buffer, 0, read);
+                remaining -= read;
             }
         }
 

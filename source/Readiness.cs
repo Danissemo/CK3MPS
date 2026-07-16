@@ -727,29 +727,37 @@ namespace CK3MPS
 
         private string DetectLocalConfig()
         {
-            string userData = Path.Combine(DetectSteamRoot(), "userdata");
-            if (!Directory.Exists(userData))
-                return "";
-            foreach (string file in Directory.GetFiles(userData, "localconfig.vdf", SearchOption.AllDirectories))
-            {
-                string text = File.ReadAllText(file);
-                if (text.Contains("\"1158310\""))
-                    return file;
-            }
-            return "";
+            return DetectSteamConfigFile("localconfig.vdf");
         }
 
         private string DetectSharedConfig()
         {
+            return DetectSteamConfigFile("sharedconfig.vdf");
+        }
+
+        private string DetectSteamConfigFile(string fileName)
+        {
             string userData = Path.Combine(DetectSteamRoot(), "userdata");
             if (!Directory.Exists(userData))
                 return "";
-            foreach (string file in Directory.GetFiles(userData, "sharedconfig.vdf", SearchOption.AllDirectories))
+
+            foreach (string userDir in BoundedTraversalUtilities.EnumerateSteamUserDirectories(userData, MaxSteamUserDataUsers, MaxBoundedTraversalElapsedMs))
             {
-                string text = File.ReadAllText(file);
-                if (text.Contains("\"1158310\""))
-                    return file;
+                string file = Path.Combine(userDir, "config", fileName ?? "");
+                if (!File.Exists(file))
+                    continue;
+
+                try
+                {
+                    string text = File.ReadAllText(file);
+                    if (text.Contains("\"1158310\""))
+                        return file;
+                }
+                catch
+                {
+                }
             }
+
             return "";
         }
 
@@ -863,7 +871,13 @@ namespace CK3MPS
 
             foreach (string dir in dirs)
                 if (Directory.Exists(dir))
-                    total += Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Length;
+                    total += BoundedTraversalUtilities.EnumerateFilesBounded(dir, "*", new BoundedTraversalUtilities.TraversalSettings
+                    {
+                        MaxDirectories = MaxBoundedTraversalDirectories,
+                        MaxFiles = MaxBoundedTraversalDirectories,
+                        MaxDepth = MaxBoundedTraversalDepth,
+                        MaxElapsedMs = MaxBoundedTraversalElapsedMs
+                    }).Paths.Count;
             return total;
         }
 
@@ -887,7 +901,13 @@ namespace CK3MPS
                 {
                     if (!Directory.Exists(dir))
                         continue;
-                    foreach (string file in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                    foreach (string file in BoundedTraversalUtilities.EnumerateFilesBounded(dir, "*", new BoundedTraversalUtilities.TraversalSettings
+                    {
+                        MaxDirectories = MaxBoundedTraversalDirectories,
+                        MaxFiles = MaxBoundedTraversalDirectories,
+                        MaxDepth = MaxBoundedTraversalDepth,
+                        MaxElapsedMs = MaxBoundedTraversalElapsedMs
+                    }).Paths)
                         items.Add(RelativePath(dir, file) + ":" + new FileInfo(file).Length);
                 }
             }
@@ -973,36 +993,18 @@ namespace CK3MPS
 
         private bool HasNoAsync()
         {
-            if (String.IsNullOrEmpty(localConfig) || !File.Exists(localConfig))
-                return false;
-            string text = File.ReadAllText(localConfig);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
-                return false;
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-                return false;
-            string block = text.Substring(open, close - open + 1);
-            return Regex.IsMatch(block, "\"LaunchOptions\"\\s+\"[^\"]*-noasync[^\"]*\"", RegexOptions.IgnoreCase);
+            foreach (string token in WindowsCommandLineUtilities.Tokenize(ExtractSteamLaunchOptions()))
+                if (String.Equals(token, "-noasync", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
         }
 
         private bool HasDebugModeLaunchOption()
         {
-            if (String.IsNullOrEmpty(localConfig) || !File.Exists(localConfig))
-                return false;
-            string text = File.ReadAllText(localConfig);
-            int appsIndex = text.IndexOf("\"apps\"", StringComparison.OrdinalIgnoreCase);
-            int appIndex = appsIndex >= 0 ? text.IndexOf("\"1158310\"", appsIndex, StringComparison.OrdinalIgnoreCase) : -1;
-            if (appIndex < 0)
-                return false;
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < 0)
-                return false;
-            string block = text.Substring(open, close - open + 1);
-            return Regex.IsMatch(block, "\"LaunchOptions\"\\s+\"[^\"]*debug_mode[^\"]*\"", RegexOptions.IgnoreCase);
+            foreach (string token in WindowsCommandLineUtilities.Tokenize(ExtractSteamLaunchOptions()))
+                if (IsRiskyLaunchOptionToken(token) && token.IndexOf("debug", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            return false;
         }
 
         private bool SteamUpdateComplete()
@@ -1465,28 +1467,23 @@ namespace CK3MPS
                 return true;
             }
 
-            string text = File.ReadAllText(sharedConfig);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamSharedConfig(out root, out appObject, out error))
             {
-                Log("[INFO] CK3 block not found in sharedconfig.vdf, Steam Cloud flag cannot be read from file.");
+                Log("[INFO] " + error);
                 return true;
             }
 
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < open)
-                return false;
-
-            string block = text.Substring(open, close - open + 1);
-            Match m = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            if (!m.Success)
+            string value = appObject.GetString("cloudenabled");
+            if (String.IsNullOrEmpty(value))
             {
                 Log("[INFO] Steam Cloud flag is not visible in CK3 sharedconfig block.");
                 return true;
             }
 
-            return m.Groups[1].Value == "0";
+            return value == "0";
         }
 
         private bool SteamCloudDisabledOrUnknownQuiet()
@@ -1494,22 +1491,14 @@ namespace CK3MPS
             if (String.IsNullOrEmpty(sharedConfig) || !File.Exists(sharedConfig))
                 return true;
 
-            string text = File.ReadAllText(sharedConfig);
-            int appIndex = text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase);
-            if (appIndex < 0)
+            ValveVdfUtilities.VdfObject root;
+            ValveVdfUtilities.VdfObject appObject;
+            string error;
+            if (!TryLoadSteamSharedConfig(out root, out appObject, out error))
                 return true;
-
-            int open = text.IndexOf('{', appIndex);
-            int close = FindMatchingBrace(text, open);
-            if (open < 0 || close < open)
-                return false;
-
-            string block = text.Substring(open, close - open + 1);
-            Match m = Regex.Match(block, "\"cloudenabled\"\\s+\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            if (!m.Success)
+            if (String.IsNullOrEmpty(appObject.GetString("cloudenabled")))
                 return true;
-
-            return m.Groups[1].Value == "0";
+            return appObject.GetString("cloudenabled") == "0";
         }
 
         private bool CacheFoldersClean()
@@ -1573,6 +1562,8 @@ namespace CK3MPS
         {
             try
             {
+                if (readOnlyScanMode)
+                    return;
                 string path = StabilizerFile("ck3_stabilizer_cache_diagnostics.txt");
                 File.WriteAllText(path, text, Encoding.UTF8);
             }

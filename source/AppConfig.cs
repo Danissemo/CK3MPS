@@ -118,6 +118,8 @@ namespace CK3MPS
                     updateCheckOnStartup = ParseBool(value, true);
                 else if (String.Equals(key, "portableMode", StringComparison.OrdinalIgnoreCase))
                     portableMode = ParseBool(value, false);
+                else if (String.Equals(key, "settingsGuardAutoRepairEnabled", StringComparison.OrdinalIgnoreCase))
+                    settingsGuardAutoRepairEnabled = ParseBool(value, false);
                 else if (String.Equals(key, "logVerbosity", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
                     logVerbosity = value;
                 else if (String.Equals(key, "workflowSelectedSavePath", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
@@ -199,6 +201,7 @@ namespace CK3MPS
                 gamePathOverrideActive ? "ck3Install=" + ck3Install : "",
                 "updateCheckOnStartup=" + updateCheckOnStartup,
                 "portableMode=" + portableMode,
+                "settingsGuardAutoRepairEnabled=" + settingsGuardAutoRepairEnabled,
                 "logVerbosity=" + logVerbosity,
                 String.IsNullOrWhiteSpace(workflowSelectedSavePath) ? "" : "workflowSelectedSavePath=" + workflowSelectedSavePath,
                 String.IsNullOrWhiteSpace(workflowLastOosMetadataPath) ? "" : "workflowLastOosMetadataPath=" + workflowLastOosMetadataPath
@@ -348,6 +351,7 @@ namespace CK3MPS
             {
                 updateOnStartupBox.Checked = updateCheckOnStartup;
                 portableModeBox.Checked = portableMode;
+                settingsGuardAutoRepairBox.Checked = settingsGuardAutoRepairEnabled;
                 if (!logVerbosityBox.Items.Contains(logVerbosity))
                     logVerbosity = "Normal";
                 logVerbosityBox.SelectedItem = logVerbosity;
@@ -437,7 +441,9 @@ namespace CK3MPS
             {
                 try
                 {
-                    File.AppendAllText(historyPath, line + Environment.NewLine, Encoding.UTF8);
+                    AtomicWriteResult result = SafeAtomicFile.TryAppendText(historyPath, line + Environment.NewLine, Encoding.UTF8);
+                    if (!result.Succeeded)
+                        throw new IOException(result.Message);
                 }
                 catch (Exception ex)
                 {

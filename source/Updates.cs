@@ -2,9 +2,9 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -24,6 +24,29 @@ namespace CK3MPS
             public string DownloadUrl;
             public string ChecksumUrl;
             public string ReleasePageUrl;
+        }
+
+        [DataContract]
+        private sealed class GitHubReleaseDto
+        {
+            [DataMember(Name = "tag_name")]
+            public string TagName;
+
+            [DataMember(Name = "html_url")]
+            public string HtmlUrl;
+
+            [DataMember(Name = "assets")]
+            public GitHubAssetDto[] Assets;
+        }
+
+        [DataContract]
+        private sealed class GitHubAssetDto
+        {
+            [DataMember(Name = "name")]
+            public string Name;
+
+            [DataMember(Name = "browser_download_url")]
+            public string BrowserDownloadUrl;
         }
 
         private void CheckForUpdatesOnStartup()
@@ -130,20 +153,20 @@ namespace CK3MPS
             using (WebClient client = CreateGitHubWebClient())
             {
                 string json = client.DownloadString(ReleasesApiUrl);
-                string releaseJson = ExtractFirstReleaseObject(json);
-                if (String.IsNullOrEmpty(releaseJson))
+                GitHubReleaseDto releaseDto = ParseLatestReleaseJson(json);
+                if (releaseDto == null)
                     return null;
                 ReleaseInfo release = new ReleaseInfo();
-                release.TagName = JsonStringValue(releaseJson, "tag_name");
-                release.ReleasePageUrl = JsonStringValue(releaseJson, "html_url");
-                PickReleaseAsset(releaseJson, release);
+                release.TagName = releaseDto.TagName ?? "";
+                release.ReleasePageUrl = releaseDto.HtmlUrl ?? "";
+                PickReleaseAsset(releaseDto, release);
                 return release;
             }
         }
 
         private void OpenOfficialReleasePage(string url)
         {
-            string target = String.IsNullOrWhiteSpace(url) ? ReleasesPageUrl : url;
+            string target = SanitizeOfficialReleasePageUrl(url);
             ProcessStartInfo info = new ProcessStartInfo();
             info.FileName = target;
             info.UseShellExecute = true;
@@ -159,82 +182,44 @@ namespace CK3MPS
             return client;
         }
 
-        private static string JsonStringValue(string json, string key)
+        private static GitHubReleaseDto ParseLatestReleaseJson(string json)
         {
-            Match match = Regex.Match(json ?? "", "\"" + Regex.Escape(key) + "\"\\s*:\\s*\"([^\"]*)\"", RegexOptions.IgnoreCase);
-            return match.Success ? UnescapeJsonString(match.Groups[1].Value) : "";
-        }
-
-        private static string ExtractFirstReleaseObject(string json)
-        {
-            string text = json ?? "";
-            int arrayStart = text.IndexOf('[');
-            if (arrayStart < 0)
-                return "";
-
-            bool inString = false;
-            bool escape = false;
-            int depth = 0;
-            int objectStart = -1;
-
-            for (int i = arrayStart + 1; i < text.Length; i++)
+            try
             {
-                char ch = text[i];
-                if (escape)
+                DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(GitHubReleaseDto[]));
+                using (MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(json ?? "[]")))
                 {
-                    escape = false;
-                    continue;
-                }
-
-                if (ch == '\\' && inString)
-                {
-                    escape = true;
-                    continue;
-                }
-
-                if (ch == '"')
-                {
-                    inString = !inString;
-                    continue;
-                }
-
-                if (inString)
-                    continue;
-
-                if (ch == '{')
-                {
-                    if (depth == 0)
-                        objectStart = i;
-                    depth++;
-                    continue;
-                }
-
-                if (ch == '}')
-                {
-                    if (depth == 0)
-                        continue;
-                    depth--;
-                    if (depth == 0 && objectStart >= 0)
-                        return text.Substring(objectStart, i - objectStart + 1);
+                    GitHubReleaseDto[] releases = serializer.ReadObject(stream) as GitHubReleaseDto[];
+                    return releases != null && releases.Length > 0 ? releases[0] : null;
                 }
             }
-
-            return "";
+            catch
+            {
+                return null;
+            }
         }
 
-        private static void PickReleaseAsset(string json, ReleaseInfo release)
+        private static string SanitizeOfficialReleasePageUrl(string url)
         {
-            MatchCollection matches = Regex.Matches(
-                json ?? "",
-                "\"name\"\\s*:\\s*\"([^\"]+)\".*?\"browser_download_url\"\\s*:\\s*\"([^\"]+)\"",
-                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            Uri parsed;
+            if (!Uri.TryCreate(String.IsNullOrWhiteSpace(url) ? ReleasesPageUrl : url, UriKind.Absolute, out parsed))
+                return ReleasesPageUrl;
+            if (!String.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                return ReleasesPageUrl;
+            if (!String.Equals(parsed.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+                && !String.Equals(parsed.Host, "www.github.com", StringComparison.OrdinalIgnoreCase))
+                return ReleasesPageUrl;
+            return parsed.AbsoluteUri;
+        }
 
+        private static void PickReleaseAsset(GitHubReleaseDto releaseDto, ReleaseInfo release)
+        {
             string fallbackName = "";
             string fallbackUrl = "";
-            foreach (Match match in matches)
+            foreach (GitHubAssetDto asset in releaseDto.Assets ?? new GitHubAssetDto[0])
             {
-                string name = UnescapeJsonString(match.Groups[1].Value);
-                string url = UnescapeJsonString(match.Groups[2].Value);
+                string name = asset != null ? asset.Name ?? "" : "";
+                string url = asset != null ? asset.BrowserDownloadUrl ?? "" : "";
                 string lower = name.ToLowerInvariant();
 
                 if (lower == "ck3mps.exe")
@@ -247,7 +232,7 @@ namespace CK3MPS
                 {
                     release.AssetName = name;
                     release.DownloadUrl = url;
-                    release.ChecksumUrl = FindChecksumUrl(json, release.AssetName);
+                    release.ChecksumUrl = FindChecksumUrl(releaseDto, release.AssetName);
                     return;
                 }
             }
@@ -255,138 +240,21 @@ namespace CK3MPS
             release.AssetName = fallbackName;
             release.DownloadUrl = fallbackUrl;
             if (!String.IsNullOrEmpty(release.AssetName))
-                release.ChecksumUrl = FindChecksumUrl(json, release.AssetName);
+                release.ChecksumUrl = FindChecksumUrl(releaseDto, release.AssetName);
         }
 
-        private static string FindChecksumUrl(string json, string assetName)
+        private static string FindChecksumUrl(GitHubReleaseDto releaseDto, string assetName)
         {
-            MatchCollection matches = Regex.Matches(
-                json ?? "",
-                "\"name\"\\s*:\\s*\"([^\"]+)\".*?\"browser_download_url\"\\s*:\\s*\"([^\"]+)\"",
-                RegexOptions.Singleline | RegexOptions.IgnoreCase);
-
             string wanted = (assetName + ".sha256").ToLowerInvariant();
-            foreach (Match match in matches)
+            foreach (GitHubAssetDto asset in releaseDto.Assets ?? new GitHubAssetDto[0])
             {
-                string name = UnescapeJsonString(match.Groups[1].Value);
-                string url = UnescapeJsonString(match.Groups[2].Value);
+                string name = asset != null ? asset.Name ?? "" : "";
+                string url = asset != null ? asset.BrowserDownloadUrl ?? "" : "";
                 string lower = name.ToLowerInvariant();
                 if (lower == wanted || (lower.Contains("sha256") && lower.EndsWith(".txt", StringComparison.Ordinal)))
                     return url;
             }
             return "";
-        }
-
-        private static string UnescapeJsonString(string value)
-        {
-            return (value ?? "").Replace("\\/", "/").Replace("\\\"", "\"");
-        }
-
-        private async Task DownloadAndStartUpdater(ReleaseInfo release)
-        {
-            string workDir = Path.Combine(Path.GetTempPath(), "CK3MPS-update-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(workDir);
-
-            string assetName = String.IsNullOrEmpty(release.AssetName) ? "CK3MPS-update.bin" : SafeFileName(release.AssetName);
-            string downloadPath = Path.Combine(workDir, assetName);
-
-            Log("INFO Downloading update asset: " + release.AssetName);
-            using (WebClient client = CreateGitHubWebClient())
-            {
-                client.DownloadProgressChanged += delegate (object sender, DownloadProgressChangedEventArgs e)
-                {
-                    updateDownloadProgress.Value = Math.Max(0, Math.Min(100, e.ProgressPercentage));
-                };
-                await client.DownloadFileTaskAsync(new Uri(release.DownloadUrl), downloadPath);
-            }
-
-            if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length == 0)
-                throw new InvalidOperationException("Downloaded update asset is empty.");
-
-            if (!String.IsNullOrEmpty(release.ChecksumUrl))
-            {
-                using (WebClient client = CreateGitHubWebClient())
-                {
-                    string checksumText = await client.DownloadStringTaskAsync(new Uri(release.ChecksumUrl));
-                    VerifyDownloadedSha256(downloadPath, checksumText, release.AssetName);
-                    Log("OK   Update SHA256 checksum verified.");
-                }
-            }
-            else
-            {
-                throw new InvalidOperationException("No SHA256 checksum asset found for this release. Automatic update was stopped for safety.");
-            }
-
-            string script = Path.Combine(workDir, "apply-update.ps1");
-            File.WriteAllText(script, BuildUpdaterScript(), Encoding.UTF8);
-
-            ProcessStartInfo info = new ProcessStartInfo();
-            info.FileName = "powershell.exe";
-            info.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + QuoteArg(script)
-                + " -Source " + QuoteArg(downloadPath)
-                + " -Target " + QuoteArg(Application.ExecutablePath)
-                + " -ProcessId " + Process.GetCurrentProcess().Id;
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true;
-            info.WindowStyle = ProcessWindowStyle.Hidden;
-
-            Process.Start(info);
-            Log("INFO Updater started. CK3MPS will close and restart after the executable is replaced.");
-            Application.Exit();
-        }
-
-        private void VerifyDownloadedSha256(string path, string checksumText, string assetName)
-        {
-            string expected = ChecksumUtilities.ExtractExpectedSha256(checksumText, assetName);
-            if (String.IsNullOrEmpty(expected))
-                throw new InvalidOperationException("SHA256 checksum asset did not contain a hash for " + NullText(assetName) + ".");
-
-            string actual = Sha256File(path);
-            if (!String.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("SHA256 mismatch. Expected " + expected + ", got " + actual + ".");
-        }
-
-        private string Sha256File(string path)
-        {
-            using (SHA256 sha = SHA256.Create())
-            using (FileStream stream = File.OpenRead(path))
-            {
-                byte[] hash = sha.ComputeHash(stream);
-                StringBuilder sb = new StringBuilder();
-                foreach (byte b in hash)
-                    sb.Append(b.ToString("x2"));
-                return sb.ToString();
-            }
-        }
-
-        private static string QuoteArg(string value)
-        {
-            return "\"" + (value ?? "").Replace("\"", "\\\"") + "\"";
-        }
-
-        private static string BuildUpdaterScript()
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine("param([string]$Source, [string]$Target, [int]$ProcessId)");
-            sb.AppendLine("$ErrorActionPreference = 'Stop'");
-            sb.AppendLine("$WorkDir = Split-Path -Parent $Source");
-            sb.AppendLine("Wait-Process -Id $ProcessId -Timeout 45 -ErrorAction SilentlyContinue");
-            sb.AppendLine("Start-Sleep -Milliseconds 500");
-            sb.AppendLine("$Candidate = $Source");
-            sb.AppendLine("if ([System.IO.Path]::GetExtension($Source) -ieq '.zip') {");
-            sb.AppendLine("    $ExtractDir = Join-Path $WorkDir 'extract'");
-            sb.AppendLine("    if (Test-Path $ExtractDir) { Remove-Item -LiteralPath $ExtractDir -Recurse -Force }");
-            sb.AppendLine("    Expand-Archive -LiteralPath $Source -DestinationPath $ExtractDir -Force");
-            sb.AppendLine("    $Candidate = Get-ChildItem -LiteralPath $ExtractDir -Recurse -Filter 'CK3MPS.exe' | Select-Object -First 1 -ExpandProperty FullName");
-            sb.AppendLine("    if (-not $Candidate) { throw 'CK3MPS.exe was not found in the release archive.' }");
-            sb.AppendLine("}");
-            sb.AppendLine("$Backup = $Target + '.bak'");
-            sb.AppendLine("if (Test-Path -LiteralPath $Target) { Copy-Item -LiteralPath $Target -Destination $Backup -Force }");
-            sb.AppendLine("Copy-Item -LiteralPath $Candidate -Destination $Target -Force");
-            sb.AppendLine("Start-Process -FilePath $Target");
-            sb.AppendLine("Start-Sleep -Seconds 2");
-            sb.AppendLine("Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue");
-            return sb.ToString();
         }
     }
 }
