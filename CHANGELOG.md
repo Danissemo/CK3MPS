@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.31
+
+- Added recoverable, journaled portable-mode migration with checksum verification, rollback, startup recovery, and failure-injection coverage.
+- Added transactional multi-item restore batches with reverse snapshots, manifest rollback, safer same-parent directory replacement, and clearer rollback diagnostics.
+- Hardened Workflow refreshes with cancellation, generation checks, immutable snapshots, bounded save/OOS analysis, and improved race-condition handling.
+- Added authenticated parity-room exchange over loopback or a selected private LAN IPv4 endpoint with encryption/signatures, replay protection, peer/client limits, payload bounds, and rate limiting.
+- Standardized checklist behavior around stable `StepCatalog` identifiers, preset validation, and regression coverage.
+- Strengthened CI and release gates with deterministic full-test orchestration, build-output verification, strict mutation review, exact tag/version matching, and packaging from tested artifacts.
+- Updated architecture, testing, release, security, support, and repository documentation.
+
 ## v0.3
 
 - Reworked the main workflow around `Scan`, `Review`, and `Apply Settings`, with session reuse so a fresh scan can feed apply without repeating the same heavy checks.
@@ -34,3 +44,4 @@
 - Added OOS reports, MP parity, risk summary, and prevention protocol.
 - Added minimal git-ready project structure with `source`, `assets`, `scripts`, and `release`.
 - Added runnable `release/CK3MPS.exe`.
+
