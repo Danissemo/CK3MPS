@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Reflection;
-using System.Threading;
 using System.Windows.Forms;
 
 internal static class ReadOnlyScanHarness
@@ -50,15 +49,32 @@ internal static class ReadOnlyScanHarness
                 if (runCheckOnlyAsync == null)
                     throw new InvalidOperationException("RunCheckOnlyAsync was not found.");
 
-                System.Threading.Tasks.Task scanTask = (System.Threading.Tasks.Task)runCheckOnlyAsync.Invoke(form, null);
                 Label status = (Label)mainFormType.GetField("statusLabel", flags).GetValue(form);
-                DateTime deadline = DateTime.UtcNow.AddSeconds(120);
-                while (DateTime.UtcNow < deadline && !scanTask.IsCompleted)
+                System.Threading.Tasks.Task scanTask = null;
+                DateTime deadline = DateTime.MaxValue;
+                using (ApplicationContext context = new ApplicationContext())
+                using (Timer monitor = new Timer())
                 {
-                    Application.DoEvents();
-                    Thread.Sleep(25);
+                    monitor.Interval = 25;
+                    monitor.Tick += delegate
+                    {
+                        if (scanTask == null)
+                        {
+                            deadline = DateTime.UtcNow.AddSeconds(120);
+                            scanTask = (System.Threading.Tasks.Task)runCheckOnlyAsync.Invoke(form, null);
+                            return;
+                        }
+
+                        if (scanTask.IsCompleted || DateTime.UtcNow >= deadline)
+                        {
+                            monitor.Stop();
+                            context.ExitThread();
+                        }
+                    };
+                    monitor.Start();
+                    Application.Run(context);
                 }
-                if (!scanTask.IsCompleted)
+                if (scanTask == null || !scanTask.IsCompleted)
                 {
                     MethodInfo snapshotRunLogLines = mainFormType.GetMethod("SnapshotRunLogLines", flags);
                     string[] lines = snapshotRunLogLines == null
@@ -68,7 +84,7 @@ internal static class ReadOnlyScanHarness
                     for (int i = Math.Max(0, lines.Length - 25); i < lines.Length; i++)
                         Console.Error.WriteLine("SCAN " + lines[i]);
                 }
-                Assert(scanTask.IsCompleted, "full read-only Scan did not complete before timeout; last status: " + status.Text);
+                Assert(scanTask != null && scanTask.IsCompleted, "full read-only Scan did not complete before timeout; last status: " + status.Text);
                 scanTask.GetAwaiter().GetResult();
                 Assert(status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) >= 0, "full read-only Scan did not complete before timeout");
                 string reportText = Convert.ToString(mainFormType.GetField("lastCheckOnlyReportText", flags).GetValue(form)) ?? "";
