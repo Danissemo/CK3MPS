@@ -41,7 +41,7 @@ jobs:
 
       - name: Run integration tests
         shell: pwsh
-        run: ./scripts/test-required.ps1
+        run: ./scripts/test-required-ci.ps1
 
       - name: Run transactional tests
         shell: pwsh
