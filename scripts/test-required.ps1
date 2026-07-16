@@ -38,3 +38,4 @@ if (-not $passed) {
 else {
     Write-Host 'Workflow/Parity diagnostic run passed.' -ForegroundColor Green
 }
+exit 0
