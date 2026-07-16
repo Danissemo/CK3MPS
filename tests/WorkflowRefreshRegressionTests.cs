@@ -21,7 +21,7 @@ namespace CK3MPS
 
     internal sealed partial class MainForm : Form
     {
-        private readonly Timer workflowRenderTimer = new Timer();
+        private readonly System.Windows.Forms.Timer workflowRenderTimer = new System.Windows.Forms.Timer();
         private bool workflowRefreshPending;
         private int workflowLoadGeneration;
         private string currentWorkflowScenario = "Start Session";
