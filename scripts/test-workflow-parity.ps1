@@ -36,9 +36,20 @@ function Build-Harness {
         "/r:System.Windows.Forms.dll"
     ) + $Sources
 
-    & $Csc @arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Name compilation failed with exit code $LASTEXITCODE"
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $compilerOutput = & $Csc @arguments 2>&1
+        $compilerExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
+    foreach ($line in @($compilerOutput)) {
+        Write-Host ([string]$line)
+    }
+    if ($compilerExitCode -ne 0) {
+        throw "$Name compilation failed with exit code $compilerExitCode"
     }
     return $target
 }
