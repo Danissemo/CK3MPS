@@ -21,7 +21,7 @@ namespace CK3MPS
         {
             // The stabilizer edits firewall, registry, adapter, launcher, and game settings.
             // Request elevation at startup so every selected action has a predictable privilege level.
-            if (!IsAdministrator())
+            if (!SkipElevationForTestRun() && !IsAdministrator())
             {
                 try
                 {
@@ -41,6 +41,14 @@ namespace CK3MPS
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+        }
+
+        private static bool SkipElevationForTestRun()
+        {
+            string value = Environment.GetEnvironmentVariable("CK3MPS_SKIP_ELEVATION");
+            return String.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsAdministrator()

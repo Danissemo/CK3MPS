@@ -56,6 +56,8 @@ if ($MSBuild) {
         /out:"$OutExe" `
         /r:System.dll `
         /r:System.Core.dll `
+        /r:System.IO.Compression.dll `
+        /r:System.IO.Compression.FileSystem.dll `
         /r:System.Drawing.dll `
         /r:System.Windows.Forms.dll `
         $Sources

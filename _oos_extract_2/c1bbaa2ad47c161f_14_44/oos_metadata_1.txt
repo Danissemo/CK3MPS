@@ -1,0 +1,9 @@
+oos_folder_name:c1bbaa2ad47c161f_14_44
+oos_machine_id:2
+local_machine_id:1
+time_utc: 19:44:14 2026-07-15
+language:l_english
+all_checksums:LivingCharacters_Modifiers
+oos_checksums:
+14:LivingCharacters
+44:Modifiers

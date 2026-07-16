@@ -819,7 +819,7 @@ namespace CK3MPS
 
         private SessionScanSnapshot EnsurePlanningSnapshot()
         {
-            string key = BuildCheckOnlyScanKey();
+            string key = BuildPlanningSnapshotKey();
             if (sessionScanSnapshot != null && String.Equals(sessionScanSnapshot.ScanKey, key, StringComparison.Ordinal))
                 return sessionScanSnapshot;
 

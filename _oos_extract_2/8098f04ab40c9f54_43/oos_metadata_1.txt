@@ -1,0 +1,8 @@
+oos_folder_name:8098f04ab40c9f54_43
+oos_machine_id:2
+local_machine_id:1
+time_utc: 19:00:07 2026-07-15
+language:l_english
+all_checksums:AI
+oos_checksums:
+43:AI

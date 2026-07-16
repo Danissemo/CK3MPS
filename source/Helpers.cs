@@ -16,6 +16,52 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
+        private void EnableDoubleBuffer(Control control)
+        {
+            if (control == null)
+                return;
+
+            try
+            {
+                typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .SetValue(control, true, null);
+            }
+            catch
+            {
+            }
+        }
+
+        private void EnableSmoothUiDrawing()
+        {
+            SuspendLayout();
+            try
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+                UpdateStyles();
+
+                EnableDoubleBuffer(this);
+                EnableDoubleBuffer(mainTabs);
+                EnableDoubleBuffer(mainPage);
+                EnableDoubleBuffer(pathsPage);
+                EnableDoubleBuffer(workflowPage);
+                EnableDoubleBuffer(reportsPage);
+                EnableDoubleBuffer(restorePage);
+                EnableDoubleBuffer(advancedPage);
+                EnableDoubleBuffer(checklistPanel);
+                EnableDoubleBuffer(checklistContentPanel);
+                EnableDoubleBuffer(logBox);
+                EnableDoubleBuffer(historyBox);
+                EnableDoubleBuffer(workflowSummaryBox);
+                EnableDoubleBuffer(advancedGeneralGroup);
+                EnableDoubleBuffer(advancedMaintenanceGroup);
+                EnableDoubleBuffer(advancedRestoreGroup);
+            }
+            finally
+            {
+                ResumeLayout(true);
+            }
+        }
+
         private void BackupFile(string path)
         {
             if (String.IsNullOrEmpty(lastQuarantine) || String.IsNullOrEmpty(path))
@@ -605,7 +651,10 @@ namespace CK3MPS
                 if (index < stepRows.Count && stepRows[index] != null)
                     stepRows[index].CheckBox.Checked = value;
                 if (changed)
-                    InvalidateFreshCheckOnlyScan();
+                {
+                    InvalidatePlanningSnapshot();
+                    UpdateApplyButtonState();
+                }
             }
         }
 
@@ -751,6 +800,9 @@ namespace CK3MPS
                 StabilizerFile("ck3_stabilizer_latest_oos_summary.txt"),
                 StabilizerFile("ck3_stabilizer_oos_history.txt"),
                 StabilizerFile("ck3_stabilizer_oos_protocol.txt"),
+                StabilizerFile("ck3_stabilizer_host_suitability.txt"),
+                StabilizerFile("ck3_stabilizer_host_save_preparation.txt"),
+                StabilizerFile("ck3_stabilizer_workflow_status.txt"),
                 StabilizerFile("ck3_stabilizer_portable_notes.txt"),
                 StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"),
                 StabilizerFile("ck3_stabilizer_clean_save_note.txt"),
@@ -784,6 +836,11 @@ namespace CK3MPS
             }
 
             foreach (string dir in Directory.GetDirectories(stabilizerRoot, "support_package_*", SearchOption.TopDirectoryOnly))
+            {
+                Directory.Delete(dir, true);
+                deletedDirs++;
+            }
+            foreach (string dir in Directory.GetDirectories(stabilizerRoot, "rehost_pack_*", SearchOption.TopDirectoryOnly))
             {
                 Directory.Delete(dir, true);
                 deletedDirs++;
@@ -1445,7 +1502,7 @@ namespace CK3MPS
         private void MarkFreshCheckOnlyScan()
         {
             hasFreshCheckOnlyScan = true;
-            freshCheckOnlyScanKey = BuildCheckOnlyScanKey();
+            freshCheckOnlyScanKey = BuildFreshCheckOnlyScanKey();
         }
 
         private void StoreFreshCheckOnlySessionSnapshot()
@@ -1458,16 +1515,23 @@ namespace CK3MPS
         private bool HasReusableFreshCheckOnlyScan()
         {
             return hasFreshCheckOnlyScan
-                && String.Equals(freshCheckOnlyScanKey, BuildCheckOnlyScanKey(), StringComparison.Ordinal);
+                && String.Equals(freshCheckOnlyScanKey, BuildFreshCheckOnlyScanKey(), StringComparison.Ordinal);
         }
 
-        private string BuildCheckOnlyScanKey()
+        private string BuildFreshCheckOnlyScanKey()
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("portable=" + portableMode);
             sb.AppendLine("root=" + NullText(stabilizerRoot));
             sb.AppendLine("game=" + NullText(ck3Install));
             sb.AppendLine("settings=" + NullText(ck3Docs));
+            return sb.ToString();
+        }
+
+        private string BuildPlanningSnapshotKey()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append(BuildFreshCheckOnlyScanKey());
             sb.AppendLine("preset=" + NullText(CurrentPresetName()));
             sb.AppendLine("graphics=" + CurrentGraphicsProfile());
             for (int i = 0; i < steps.Items.Count; i++)

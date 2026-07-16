@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Net;
 
 namespace CK3MPS
 {
@@ -34,6 +35,7 @@ namespace CK3MPS
         private readonly TabControl mainTabs = new TabControl();
         private readonly TabPage mainPage = new TabPage("Main");
         private readonly TabPage pathsPage = new TabPage("Paths");
+        private readonly TabPage workflowPage = new TabPage("Workflow");
         private readonly TabPage reportsPage = new TabPage("Reports");
         private readonly TabPage restorePage = new TabPage("Restore");
         private readonly TabPage advancedPage = new TabPage("Advanced");
@@ -46,6 +48,19 @@ namespace CK3MPS
         private readonly Button exportSupportButton = new Button();
         private readonly Button refreshHistoryButton = new Button();
         private readonly Button clearReportsButton = new Button();
+        private readonly Button workflowEvaluateButton = new Button();
+        private readonly Button workflowApplySafeStartButton = new Button();
+        private readonly Button workflowCreateRehostPackButton = new Button();
+        private readonly Button workflowResetButton = new Button();
+        private readonly Button workflowRepairSaveButton = new Button();
+        private readonly Button workflowParityRoomButton = new Button();
+        private readonly Button workflowMoreButton = new Button();
+        private readonly Button workflowOpenSaveFolderButton = new Button();
+        private readonly Button workflowOpenOosFolderButton = new Button();
+        private readonly Button workflowCompareParityButton = new Button();
+        private readonly Button workflowDuplicateSaveButton = new Button();
+        private readonly Button workflowArchiveIncidentButton = new Button();
+        private readonly ContextMenuStrip workflowMoreMenu = new ContextMenuStrip();
         private readonly Button updateButton = new Button();
         private readonly CheckedListBox restorePointsListBox = new CheckedListBox();
         private readonly Button deleteSelectedRestorePointsButton = new Button();
@@ -69,6 +84,20 @@ namespace CK3MPS
         private readonly Label settingsPathStatusLabel = new Label();
         private readonly Label pathDetailsLabel = new Label();
         private readonly RichTextBox historyBox = new RichTextBox();
+        private readonly RichTextBox workflowSummaryBox = new RichTextBox();
+        private readonly ListBox workflowStepsListBox = new ListBox();
+        private readonly Panel workflowHeaderPanel = new Panel();
+        private readonly Panel workflowStatusPanel = new Panel();
+        private readonly Panel workflowStatusAccentPanel = new Panel();
+        private readonly Panel workflowStepsPanel = new Panel();
+        private readonly Panel workflowSummaryPanel = new Panel();
+        private readonly ComboBox workflowModeBox = new ComboBox();
+        private readonly ComboBox workflowSaveBox = new ComboBox();
+        private readonly ComboBox workflowRecoveryPathBox = new ComboBox();
+        private readonly Button workflowSaveBrowseButton = new Button();
+        private readonly Button workflowSaveDeleteButton = new Button();
+        private readonly ProgressBar workflowProgressBar = new ProgressBar();
+        private readonly TextBox workflowNotesBox = new TextBox();
         private readonly ComboBox restoreRunBox = new ComboBox();
         private readonly CheckedListBox restoreListBox = new CheckedListBox();
         private readonly TextBox restoreDetailsBox = new TextBox();
@@ -91,8 +120,20 @@ namespace CK3MPS
         private readonly GroupBox advancedRestoreGroup = new GroupBox();
         private readonly Label advancedLogVerbosityLabel = new Label();
         private readonly Label advancedHintLabel = new Label();
+        private readonly Label workflowModeLabel = new Label();
+        private readonly Label workflowSaveLabel = new Label();
+        private readonly Label workflowRecoveryPathLabel = new Label();
+        private readonly Label workflowActionsLabel = new Label();
+        private readonly Label workflowNotesLabel = new Label();
+        private readonly Label workflowIncidentLabel = new Label();
+        private readonly Label workflowVerdictLabel = new Label();
+        private readonly Label workflowStepsLabel = new Label();
+        private readonly Label workflowSummaryLabel = new Label();
+        private readonly Label workflowHintLabel = new Label();
         private readonly Label statusLabel = new Label();
         private readonly Timer settingsGuardTimer = new Timer();
+        private readonly Timer workflowRenderTimer = new Timer();
+        private readonly Timer oosWatcherTimer = new Timer();
         private bool updatingSettingsUi;
 
         private string ck3Docs;
@@ -142,6 +183,33 @@ namespace CK3MPS
         private int historyRefreshRequestId;
         private int deferredFinalizeGeneration;
         private bool applyButtonHintVisible;
+        private bool updatingWorkflowUi;
+        private bool workflowUiInitialized;
+        private bool workflowRefreshPending;
+        private int workflowLoadGeneration;
+        private int workflowRenderIndex;
+        private string workflowRenderVerdict = "";
+        private string workflowRenderSummary = "";
+        private List<WorkflowStepState> workflowRenderStates = new List<WorkflowStepState>();
+        private string currentWorkflowScenario = "Start Session";
+        private string workflowSelectedSavePath = "";
+        private string workflowRecoveryPath = "Full rehost";
+        private string workflowIncidentId = "";
+        private string workflowIncidentStatus = "";
+        private string workflowIncidentNotes = "";
+        private string workflowLastRehostPackPath = "";
+        private string workflowLastArchivedIncidentPath = "";
+        private string workflowLastOosMetadataPath = "";
+        private string oosWatcherLastSignature = "";
+        private DateTime oosWatcherLastHandledUtc = DateTime.MinValue;
+        private string currentIncidentStateSignature = "";
+        private readonly List<WorkflowStepState> workflowStepStates = new List<WorkflowStepState>();
+        private readonly Dictionary<string, WorkflowScenarioSnapshot> workflowScenarioSnapshots = new Dictionary<string, WorkflowScenarioSnapshot>(StringComparer.OrdinalIgnoreCase);
+        private HostSaveCandidateResult cachedBestHostSaveCandidate;
+        private string cachedBestHostSaveCandidateKey = "";
+        private HostSuitabilityResult cachedHostSuitability;
+        private string cachedHostSuitabilityKey = "";
+        private DateTime cachedHostSuitabilityUtc = DateTime.MinValue;
 
         private sealed class StepGroupUi
         {
@@ -193,6 +261,239 @@ namespace CK3MPS
             public bool NeedsQuarantine;
             public string SkipReason = "";
             public List<string> PreviewDetails = new List<string>();
+        }
+
+        private sealed class WorkflowStepState
+        {
+            public string Id = "";
+            public string Label = "";
+            public string Detail = "";
+            public string Timing = "";
+            public bool Required;
+            public bool Manual;
+            public bool AutoManaged;
+            public bool Passed;
+            public bool Blocked;
+            public bool UserDone;
+        }
+
+        private sealed class WorkflowScenarioSnapshot
+        {
+            public string Scenario = "";
+            public string Verdict = "";
+            public string Summary = "";
+            public List<WorkflowStepState> States = new List<WorkflowStepState>();
+        }
+
+        private sealed class ParityManifestRecord
+        {
+            public string Path = "";
+            public string PlayerLabel = "";
+            public readonly Dictionary<string, string> Values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private sealed class ParityRoomPeer
+        {
+            public string PlayerLabel = "";
+            public string Endpoint = "";
+            public string ManifestText = "";
+            public string OosSummaryText = "";
+            public string OosMetadataText = "";
+            public string OosDeepReportText = "";
+            public string OosRecoveryRunbookText = "";
+            public string OosContaminationText = "";
+            public string OosSaveDumpText = "";
+            public string OosModifierDumpText = "";
+            public string OosErrorLogText = "";
+            public ParityManifestRecord ParsedManifest;
+            public string ParsedRecoveryPath = "";
+            public string ParsedContamination = "";
+            public string ParsedHotjoin = "";
+            public DateTime ReceivedUtc = DateTime.UtcNow;
+        }
+
+        private sealed class ParityRoomSession
+        {
+            public bool Hosting;
+            public bool Joined;
+            public string JoinHost = "";
+            public int JoinPort;
+            public string RoomCode = "";
+            public string LocalPlayerLabel = "";
+            public TcpListener Listener;
+            public System.Threading.CancellationTokenSource CancelSource;
+            public readonly List<ParityRoomPeer> Peers = new List<ParityRoomPeer>();
+            public readonly object Sync = new object();
+            public string LocalManifestText = "";
+            public ParityManifestRecord LocalManifest;
+            public OosDeepInsight LocalInsight = new OosDeepInsight();
+            public string LocalOosSummaryText = "";
+            public string LocalOosMetadataText = "";
+            public string LocalOosDeepReportText = "";
+            public string LocalOosRunbookText = "";
+            public string LocalOosContaminationText = "";
+            public string LocalOosSaveDumpText = "";
+            public string LocalOosModifierDumpText = "";
+            public string LocalOosErrorLogText = "";
+            public string LastComparisonSignature = "";
+            public string LastComparisonDifferencesText = "";
+            public string LastComparisonActionsText = "";
+            public bool LastComparisonSafeToStart;
+            public readonly List<ParityDifferenceRow> LastComparisonRows = new List<ParityDifferenceRow>();
+        }
+
+        private sealed class ParityDifferenceRow
+        {
+            public string Player = "";
+            public string Area = "";
+            public string HostValue = "";
+            public string PlayerValue = "";
+            public string Status = "";
+        }
+
+        private sealed class ParityRoomPlayerRow
+        {
+            public string Player = "";
+            public string Parity = "";
+            public string Oos = "";
+            public string Path = "";
+            public string Risk = "";
+            public string Tone = "";
+        }
+
+        private sealed class ParityRoomViewState
+        {
+            public string InfoText = "";
+            public string ActionsText = "";
+            public bool SafeToStart;
+            public readonly List<ParityDifferenceRow> DifferenceRows = new List<ParityDifferenceRow>();
+            public readonly List<ParityRoomPlayerRow> PlayerRows = new List<ParityRoomPlayerRow>();
+        }
+
+        private sealed class WorkflowSaveOption
+        {
+            public string Path = "";
+            public string Display = "";
+
+            public override string ToString()
+            {
+                return String.IsNullOrEmpty(Display) ? Path : Display;
+            }
+        }
+
+        private sealed class SaveRuleCheckResult
+        {
+            public string Id = "";
+            public string DisplayName = "";
+            public string Expected = "";
+            public string Actual = "";
+            public string Evidence = "";
+            public bool Found;
+            public bool Safe;
+            public bool Critical = true;
+        }
+
+        private sealed class SaveAnalysisResult
+        {
+            public string Path = "";
+            public string SourceKind = "";
+            public string SaveName = "";
+            public string Version = "";
+            public string Date = "";
+            public string Player = "";
+            public string Title = "";
+            public bool Readable;
+            public bool VersionMatchesInstalled;
+            public bool SuspiciousName;
+            public readonly List<SaveRuleCheckResult> Rules = new List<SaveRuleCheckResult>();
+        }
+
+        private sealed class HostSaveCandidateResult
+        {
+            public SaveAnalysisResult Save = new SaveAnalysisResult();
+            public int Score;
+            public string Verdict = "";
+            public readonly List<string> Issues = new List<string>();
+            public readonly List<string> Strengths = new List<string>();
+        }
+
+        private sealed class HostSuitabilityResult
+        {
+            public int Score;
+            public string Level = "";
+            public bool Suitable;
+            public readonly List<string> Strengths = new List<string>();
+            public readonly List<string> Risks = new List<string>();
+        }
+
+        private sealed class OosDeepInsight
+        {
+            public string MetadataPath = "";
+            public string FolderPath = "";
+            public string SaveDumpPath = "";
+            public string ModifierDumpPath = "";
+            public string ErrorLogPath = "";
+            public string OosType = "";
+            public string Date = "";
+            public string RecoveryPath = "Full rehost";
+            public string RecoveryReason = "";
+            public string SessionContaminationLevel = "LOW";
+            public int SessionContaminationScore;
+            public int RandomSeed;
+            public int RandomCount;
+            public int CharacterMentions;
+            public int ModifierMentions;
+            public int ArmyMentions;
+            public int AiMentions;
+            public int FailedContextSwitchCount;
+            public int NullTargetCount;
+            public int RelationErrorCount;
+            public int ScriptErrorCount;
+            public int RepeatedStateDivergenceCount;
+            public bool HotjoinForbidden;
+            public bool WatcherRecoveryState;
+            public readonly List<string> CharacterSamples = new List<string>();
+            public readonly List<string> ModifierSamples = new List<string>();
+            public readonly List<string> ArmySamples = new List<string>();
+            public readonly List<string> AiSamples = new List<string>();
+            public readonly List<string> Findings = new List<string>();
+            public readonly List<string> Runbook = new List<string>();
+        }
+
+        private sealed class OosIncidentEvent
+        {
+            public string MetadataPath = "";
+            public string OosType = "";
+            public string Date = "";
+            public DateTime TimestampUtc = DateTime.MinValue;
+            public string RecoveryPath = "";
+            public string ContaminationLevel = "";
+            public int ContaminationScore;
+            public bool HotjoinForbidden;
+        }
+
+        private sealed class OosIncidentState
+        {
+            public string IncidentId = "";
+            public string Stage = "Ready";
+            public string Confidence = "Low";
+            public string SelectedBaselineSave = "";
+            public string RecommendedPath = "Full rehost";
+            public string RecommendedParityFingerprint = "";
+            public bool HotjoinAllowed = true;
+            public bool StartAllowed = true;
+            public int EscalationLevel;
+            public int ContinuationRiskScore;
+            public int PriorAttempts;
+            public int HostSuitabilityScore;
+            public int SaveSuitabilityScore;
+            public readonly List<string> Observed = new List<string>();
+            public readonly List<string> Interpreted = new List<string>();
+            public readonly List<string> RequiredActions = new List<string>();
+            public readonly List<string> BlockedActions = new List<string>();
+            public readonly List<string> AllowedActions = new List<string>();
+            public readonly List<string> PlayerResponsibilities = new List<string>();
+            public readonly List<OosIncidentEvent> Events = new List<OosIncidentEvent>();
         }
 
         private sealed class SessionScanSnapshot
@@ -265,6 +566,7 @@ namespace CK3MPS
             nonPortableStabilizerRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Paradox Interactive", "CK3MPS");
             portableStabilizerRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CK3MPS_Data");
             stabilizerRoot = nonPortableStabilizerRoot;
+            EnableSmoothUiDrawing();
             AutoDetectPaths();
             LoadAppConfig();
             RefreshStabilizerRoot();
@@ -281,6 +583,8 @@ namespace CK3MPS
             SaveAppConfig();
             settingsGuardTimer.Interval = 10000;
             settingsGuardTimer.Tick += delegate { RunSettingsGuardTick(); };
+            oosWatcherTimer.Interval = 5000;
+            oosWatcherTimer.Tick += delegate { RunOosWatcherTick(); };
             FillSteps();
             ValidateStepConfiguration();
             presetBox.SelectedItem = "Recommended";
@@ -305,7 +609,23 @@ namespace CK3MPS
                 RefreshRestoreList();
                 CheckForUpdatesOnStartup();
                 liveLogWritesEnabled = true;
+                oosWatcherTimer.Start();
             };
+            FormClosed += delegate { oosWatcherTimer.Stop(); };
+        }
+
+        private static bool IsAutomationTestRun()
+        {
+            string value = Environment.GetEnvironmentVariable("CK3MPS_SKIP_ELEVATION");
+            if (String.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "yes", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            value = Environment.GetEnvironmentVariable("CK3MPS_TEST_MODE");
+            return String.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -186,6 +186,9 @@ namespace CK3MPS
             WriteRuntimeVerificationReport();
             WritePreSessionPlan();
             WriteSessionVerdictReport();
+            WriteHostSavePreparationReport();
+            WriteHostSuitabilityReport();
+            WriteWorkflowStatusReport();
             string report = StabilizerFile("ck3_stabilizer_last_report.txt");
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3MPS compact report");
@@ -335,6 +338,8 @@ namespace CK3MPS
         private string BuildPreSessionPlanText()
         {
             string bestClean = FindBestCleanManualSave();
+            HostSaveCandidateResult hostSave = AnalyzeBestHostSaveCandidate();
+            HostSuitabilityResult host = AnalyzeHostSuitability();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 MP pre-session plan");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -355,6 +360,8 @@ namespace CK3MPS
             sb.AppendLine("- Candidate date: " + NullText(ExtractSaveMetaValue(bestClean, "meta_date")));
             sb.AppendLine("- Candidate player: " + NullText(ExtractSaveMetaValue(bestClean, "meta_player_name")));
             sb.AppendLine("- Candidate title: " + NullText(ExtractSaveMetaValue(bestClean, "meta_title_name")));
+            sb.AppendLine("- Candidate verdict: " + hostSave.Verdict + " (" + hostSave.Score + "/100)");
+            sb.AppendLine("- Host suitability: " + host.Level + " (" + host.Score + "/100)");
             sb.AppendLine();
             sb.AppendLine("Before unpause");
             sb.AppendLine("- Every player sends ck3_stabilizer_mp_parity_manifest.txt.");
@@ -392,6 +399,8 @@ namespace CK3MPS
         private string BuildSessionVerdictReportText()
         {
             List<string> blockers = BuildSessionBlockers();
+            HostSuitabilityResult host = AnalyzeHostSuitability();
+            HostSaveCandidateResult save = AnalyzeBestHostSaveCandidate();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3 MP session verdict");
             sb.AppendLine("Stabilizer: " + AppVersion);
@@ -411,6 +420,8 @@ namespace CK3MPS
             }
             sb.AppendLine();
             sb.AppendLine("Recommended clean save: " + NullText(Path.GetFileName(FindBestCleanManualSave())));
+            sb.AppendLine("Host save verdict: " + save.Verdict + " (" + save.Score + "/100)");
+            sb.AppendLine("Host suitability: " + host.Level + " (" + host.Score + "/100)");
             sb.AppendLine("Local parity fingerprint: " + BuildLocalParityFingerprint());
             return sb.ToString();
         }
@@ -418,6 +429,8 @@ namespace CK3MPS
         private List<string> BuildSessionBlockers()
         {
             List<string> blockers = new List<string>();
+            HostSaveCandidateResult hostSave = AnalyzeBestHostSaveCandidate();
+            HostSuitabilityResult host = AnalyzeHostSuitability();
             if (ActiveContinueSaveNameSuspicious())
                 blockers.Add("Current Continue is autosave/recovery/backup/desync-like: " + NullText(DetectActiveSaveTitle()));
             if (!StableCriticalSettingsOk())
@@ -438,39 +451,28 @@ namespace CK3MPS
                 blockers.Add("Recommended clean manual save cannot be read safely.");
             if (!BestCleanSaveVersionOk())
                 blockers.Add("Recommended clean manual save version differs from installed CK3 version.");
+            if (hostSave.Score < 70)
+                blockers.Add("Recommended host save baseline is not strong enough yet: " + hostSave.Verdict + " (" + hostSave.Score + "/100).");
+            if (!AllCriticalRulesSafe(hostSave.Save.Rules))
+                blockers.Add("Critical in-game rules from the recommended host save are not confirmed safe.");
+            if (!host.Suitable)
+                blockers.Add("Current PC/network host suitability is too weak right now: " + host.Level + " (" + host.Score + "/100).");
             return blockers;
         }
 
         private string FindBestCleanManualSave()
         {
-            string saveDir = Path.Combine(ck3Docs, "save games");
-            if (!Directory.Exists(saveDir))
-                return "";
-
-            FileInfo[] saves = new DirectoryInfo(saveDir).GetFiles("*.ck3");
-            Array.Sort(saves, delegate (FileInfo a, FileInfo b) { return b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc); });
-            foreach (FileInfo save in saves)
-            {
-                if (!IsSuspiciousSaveName(save.Name))
-                    return save.FullName;
-            }
-            return saves.Length > 0 ? saves[0].FullName : "";
+            return AnalyzeBestHostSaveCandidate().Save.Path;
         }
 
         private bool BestCleanSaveReadable()
         {
-            string save = FindBestCleanManualSave();
-            return SaveHeaderLooksReadable(save);
+            return AnalyzeBestHostSaveCandidate().Save.Readable;
         }
 
         private bool BestCleanSaveVersionOk()
         {
-            string save = FindBestCleanManualSave();
-            string saveVersion = ExtractSaveMetaValue(save, "version");
-            string installed = DetectInstalledVersion();
-            if (String.IsNullOrEmpty(saveVersion) || String.IsNullOrEmpty(installed))
-                return false;
-            return String.Equals(saveVersion, installed, StringComparison.OrdinalIgnoreCase);
+            return AnalyzeBestHostSaveCandidate().Save.VersionMatchesInstalled;
         }
 
         private bool SaveHeaderLooksReadable(string path)
@@ -552,6 +554,9 @@ namespace CK3MPS
         {
             try
             {
+                WriteHostSavePreparationReport();
+                WriteHostSuitabilityReport();
+                WriteWorkflowStatusReport();
                 string report = StabilizerFile("ck3_stabilizer_check_only_report.txt");
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine("CK3MPS compact check");

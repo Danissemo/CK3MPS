@@ -414,4 +414,77 @@ namespace CK3MPS
             return "";
         }
     }
+
+    internal static class SaveRuleUtilities
+    {
+        public static string ExtractBraceBlock(string text, string key)
+        {
+            if (String.IsNullOrEmpty(text) || String.IsNullOrEmpty(key))
+                return "";
+
+            Match match = Regex.Match(text, "(?is)\\b" + Regex.Escape(key) + "\\s*=\\s*\\{");
+            if (!match.Success)
+                return "";
+
+            int openIndex = match.Index + match.Length - 1;
+            int depth = 0;
+            for (int i = openIndex; i < text.Length; i++)
+            {
+                if (text[i] == '{')
+                    depth++;
+                else if (text[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return text.Substring(openIndex + 1, i - openIndex - 1);
+                }
+            }
+
+            return "";
+        }
+
+        public static string NormalizeRuleValue(string value)
+        {
+            if (String.IsNullOrWhiteSpace(value))
+                return "";
+
+            string normalized = value.Trim();
+            normalized = normalized.Trim('"');
+            normalized = Regex.Replace(normalized, "\\s+", " ");
+            return normalized.Trim().ToLowerInvariant();
+        }
+
+        public static bool ValueLooksDisabled(string value)
+        {
+            string normalized = NormalizeRuleValue(value);
+            return normalized == "off"
+                || normalized == "disabled"
+                || normalized == "disable"
+                || normalized == "no"
+                || normalized == "none"
+                || normalized == "false"
+                || normalized == "0";
+        }
+
+        public static bool ValueLooksNoPlayers(string value)
+        {
+            string normalized = NormalizeRuleValue(value).Replace(" ", "_");
+            return normalized == "no_players"
+                || normalized == "none"
+                || normalized == "disabled"
+                || normalized == "off";
+        }
+
+        public static int? TryParseIntValue(string value)
+        {
+            if (String.IsNullOrWhiteSpace(value))
+                return null;
+
+            Match match = Regex.Match(value, "-?\\d+");
+            int parsed;
+            if (!match.Success || !Int32.TryParse(match.Value, out parsed))
+                return null;
+            return parsed;
+        }
+    }
 }

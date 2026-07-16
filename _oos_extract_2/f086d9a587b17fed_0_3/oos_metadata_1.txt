@@ -1,0 +1,9 @@
+oos_folder_name:f086d9a587b17fed_0_3
+oos_machine_id:2
+local_machine_id:1
+time_utc: 19:55:31 2026-07-15
+language:l_english
+all_checksums:RANDOM_COUNT_LIVING_CHARACTERS
+oos_checksums:
+0:RANDOM_COUNT
+3:LIVING_CHARACTERS

@@ -39,6 +39,7 @@ namespace CK3MPS
             mainTabs.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             mainTabs.TabPages.Add(mainPage);
             mainTabs.TabPages.Add(pathsPage);
+            mainTabs.TabPages.Add(workflowPage);
             mainTabs.TabPages.Add(reportsPage);
             mainTabs.TabPages.Add(restorePage);
             mainTabs.TabPages.Add(advancedPage);
@@ -46,6 +47,7 @@ namespace CK3MPS
 
             BuildMainTab();
             BuildPathsTab();
+            BuildWorkflowTab();
             BuildReportsTab();
             BuildRestoreTab();
             BuildAdvancedTab();
@@ -167,7 +169,11 @@ namespace CK3MPS
                 "Keep current"
             });
             graphicsProfileBox.Size = new Size(200, 24);
-            graphicsProfileBox.SelectedIndexChanged += delegate { InvalidateFreshCheckOnlyScan(); };
+            graphicsProfileBox.SelectedIndexChanged += delegate
+            {
+                InvalidatePlanningSnapshot();
+                UpdateApplyButtonState();
+            };
             mainPage.Controls.Add(graphicsProfileBox);
 
             liveLogLabel.Text = "Live log:";
@@ -678,6 +684,8 @@ namespace CK3MPS
 
             mainTabs.SelectedIndexChanged += async delegate
             {
+                if (mainTabs.SelectedTab == workflowPage)
+                    ShowWorkflowSnapshot();
                 if (mainTabs.SelectedTab == advancedPage)
                     await RefreshRestorePointsListAsync();
             };
@@ -954,7 +962,7 @@ namespace CK3MPS
         {
             string key;
             CaptureExecutionSnapshot();
-            key = BuildCheckOnlyScanKey();
+            key = BuildPlanningSnapshotKey();
             try
             {
                 if (sessionScanSnapshot != null && String.Equals(sessionScanSnapshot.ScanKey, key, StringComparison.Ordinal))

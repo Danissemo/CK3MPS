@@ -120,6 +120,10 @@ namespace CK3MPS
                     portableMode = ParseBool(value, false);
                 else if (String.Equals(key, "logVerbosity", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
                     logVerbosity = value;
+                else if (String.Equals(key, "workflowSelectedSavePath", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
+                    workflowSelectedSavePath = value;
+                else if (String.Equals(key, "workflowLastOosMetadataPath", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
+                    workflowLastOosMetadataPath = value;
             }
         }
 
@@ -191,7 +195,9 @@ namespace CK3MPS
                 gamePathOverrideActive ? "ck3Install=" + ck3Install : "",
                 "updateCheckOnStartup=" + updateCheckOnStartup,
                 "portableMode=" + portableMode,
-                "logVerbosity=" + logVerbosity
+                "logVerbosity=" + logVerbosity,
+                String.IsNullOrWhiteSpace(workflowSelectedSavePath) ? "" : "workflowSelectedSavePath=" + workflowSelectedSavePath,
+                String.IsNullOrWhiteSpace(workflowLastOosMetadataPath) ? "" : "workflowLastOosMetadataPath=" + workflowLastOosMetadataPath
             }, Encoding.UTF8);
 
             foreach (string path in otherPaths)
@@ -503,9 +509,17 @@ namespace CK3MPS
                 CopyIfExists(StabilizerFile("ck3_stabilizer_check_only_report.txt"), Path.Combine(exportDir, "check_only_report.txt"));
                 CopyIfExists(StabilizerFile("ck3_stabilizer_runtime_verification.txt"), Path.Combine(exportDir, "runtime_verification.txt"));
                 CopyIfExists(StabilizerFile("ck3_stabilizer_latest_oos_summary.txt"), Path.Combine(exportDir, "latest_oos_summary.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_latest_oos_deep_report.txt"), Path.Combine(exportDir, "latest_oos_deep_report.txt"));
                 CopyIfExists(StabilizerFile("ck3_stabilizer_mp_parity_manifest.txt"), Path.Combine(exportDir, "mp_parity_manifest.txt"));
                 CopyIfExists(StabilizerFile("ck3_stabilizer_oos_risk_score.txt"), Path.Combine(exportDir, "oos_risk_score.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_session_contamination_score.txt"), Path.Combine(exportDir, "session_contamination_score.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_recovery_runbook.txt"), Path.Combine(exportDir, "recovery_runbook.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_incident_state.txt"), Path.Combine(exportDir, "incident_state.txt"));
                 CopyIfExists(StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"), Path.Combine(exportDir, "evidence_pack_index.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_host_suitability.txt"), Path.Combine(exportDir, "host_suitability.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_host_save_preparation.txt"), Path.Combine(exportDir, "host_save_preparation.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_save_surgery_report.txt"), Path.Combine(exportDir, "save_surgery_report.txt"));
+                CopyIfExists(StabilizerFile("ck3_stabilizer_workflow_status.txt"), Path.Combine(exportDir, "workflow_status.txt"));
 
                 Log("FILE Support package exported: " + exportDir);
                 Process.Start("explorer.exe", exportDir);
@@ -534,8 +548,13 @@ namespace CK3MPS
             sb.AppendLine("Installed CK3 version: " + NullText(DetectInstalledVersion()));
             sb.AppendLine("Active save version: " + NullText(DetectActiveSaveVersion()));
             sb.AppendLine("Steam build: " + NullText(DetectBuildId()));
+            sb.AppendLine("Steam branch: " + NullText(DetectSteamBranch()));
             sb.AppendLine("CK3 running: " + YesNo(IsGameRunning()));
             sb.AppendLine("Last readiness failures: " + lastReadinessFailures);
+            HostSuitabilityResult host = AnalyzeHostSuitability();
+            HostSaveCandidateResult save = AnalyzeBestHostSaveCandidate();
+            sb.AppendLine("Host suitability: " + host.Level + " (" + host.Score + "/100)");
+            sb.AppendLine("Host save verdict: " + save.Verdict + " (" + save.Score + "/100)");
             File.WriteAllText(Path.Combine(exportDir, "summary.txt"), sb.ToString(), Encoding.UTF8);
         }
 

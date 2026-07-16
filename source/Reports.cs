@@ -180,6 +180,7 @@ namespace CK3MPS
                 String.IsNullOrEmpty(latest) ? "INFO No OOS metadata summary change needed: " : "INFO Latest OOS summary already up to date: ",
                 true);
             WriteOosHistoryTimeline();
+            WriteOosDeepReports();
 
             if (String.IsNullOrEmpty(latest))
                 return;
@@ -219,6 +220,25 @@ namespace CK3MPS
             sb.AppendLine("Suggested action");
             foreach (string line in BuildOosActionPlan(signalLines))
                 sb.AppendLine(line);
+            OosDeepInsight insight = AnalyzeLatestOosDeepInsight();
+            OosIncidentState incident = AnalyzeOosIncidentState();
+            sb.AppendLine();
+            sb.AppendLine("Deep parser");
+            sb.AppendLine("- Recovery path: " + insight.RecoveryPath);
+            sb.AppendLine("- Controlled hotjoin: " + (insight.HotjoinForbidden ? "FORBIDDEN" : "ALLOWED"));
+            sb.AppendLine("- Session contamination: " + insight.SessionContaminationLevel + " (" + insight.SessionContaminationScore + "/100)");
+            sb.AppendLine("- Character signals: " + insight.CharacterMentions);
+            sb.AppendLine("- Modifier signals: " + insight.ModifierMentions);
+            sb.AppendLine("- Army signals: " + insight.ArmyMentions);
+            sb.AppendLine("- AI signals: " + insight.AiMentions);
+            sb.AppendLine("- Failed context switches: " + insight.FailedContextSwitchCount);
+            sb.AppendLine("- Null target errors: " + insight.NullTargetCount);
+            sb.AppendLine();
+            sb.AppendLine("Incident state");
+            sb.AppendLine("- Stage: " + incident.Stage);
+            sb.AppendLine("- Confidence: " + incident.Confidence);
+            sb.AppendLine("- Continuation risk: " + incident.ContinuationRiskScore + "/100");
+            sb.AppendLine("- Escalation level: " + incident.EscalationLevel);
             return sb.ToString();
         }
 
@@ -322,7 +342,7 @@ namespace CK3MPS
             Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (string file in files)
             {
-                string type = ExtractMetadataValue(file, "oos_type");
+                string type = DetectOosTypeFromMetadata(file);
                 if (String.IsNullOrEmpty(type))
                     type = "(unknown)";
                 if (!counts.ContainsKey(type))
@@ -365,7 +385,9 @@ namespace CK3MPS
             try
             {
                 string text = File.ReadAllText(path, Encoding.UTF8);
-                AddMatchedOosLine(lines, text, "oos_type");
+                string inferredType = DetectOosTypeFromMetadataText(text);
+                if (!String.IsNullOrWhiteSpace(inferredType))
+                    lines.Add("oos_type: " + inferredType);
                 AddMatchedOosLine(lines, text, "oos_machine_id");
                 AddMatchedOosLine(lines, text, "local_machine_id");
                 AddMatchedOosLine(lines, text, "game_version");
@@ -379,6 +401,54 @@ namespace CK3MPS
                 lines.Add("Could not read metadata: " + ex.Message);
             }
             return lines;
+        }
+
+        private string DetectOosTypeFromMetadata(string path)
+        {
+            try
+            {
+                if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    return "";
+                return DetectOosTypeFromMetadataText(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private string DetectOosTypeFromMetadataText(string text)
+        {
+            string direct = ExtractMetadataValueFromText(text, "oos_type");
+            if (!String.IsNullOrWhiteSpace(direct))
+                return direct;
+
+            string allChecksums = ExtractMetadataValueFromText(text, "all_checksums");
+            if (!String.IsNullOrWhiteSpace(allChecksums))
+                return NormalizeOosTypeText(allChecksums);
+
+            List<string> parts = new List<string>();
+            foreach (Match match in Regex.Matches(NullText(text), @"(?im)^\s*\d+\s*:\s*([A-Z0-9_]+)\s*$"))
+            {
+                string value = NormalizeOosTypeText(match.Groups[1].Value);
+                if (!String.IsNullOrWhiteSpace(value) && !parts.Contains(value))
+                    parts.Add(value);
+            }
+
+            return parts.Count == 0 ? "" : String.Join(", ", parts.ToArray());
+        }
+
+        private string ExtractMetadataValueFromText(string text, string key)
+        {
+            Match m = Regex.Match(text ?? "", "(?im)^\\s*" + Regex.Escape(key) + "\\s*[:=]\\s*(.+?)\\s*$");
+            return m.Success ? m.Groups[1].Value.Trim() : "";
+        }
+
+        private string NormalizeOosTypeText(string text)
+        {
+            string value = NullText(text).Trim().Replace("_", " ");
+            value = Regex.Replace(value, "\\s+", " ");
+            return value.ToUpperInvariant();
         }
 
         private IEnumerable<string> AnalyzeOosSiblingLogs(string metadataPath)

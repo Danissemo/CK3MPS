@@ -113,6 +113,7 @@ namespace CK3MPS
                     break;
                 case 17:
                     Check("Stable game-rule profile is up to date", !StableGameRuleProfileNeedsUpdate());
+                    Check("Host save preparation report is up to date", !FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_host_save_preparation.txt"), BuildHostSavePreparationReportText(), true));
                     break;
                 case 18:
                     CheckPlayerStateReadOnly();
@@ -133,6 +134,7 @@ namespace CK3MPS
                     CheckSaveHygiene();
                     Check("Active continue is not autosave/recovery/desync-like", !ActiveContinueSaveNameSuspicious());
                     Check("Active continue save version matches installed CK3", ActiveSaveVersionOk());
+                    Check("Critical host-save rules are confirmed safe", AllCriticalRulesSafe(AnalyzeBestHostSaveCandidate().Save.Rules));
                     break;
                 case 24:
                     CheckCk3DocumentsCleanupReadOnly();
@@ -153,6 +155,7 @@ namespace CK3MPS
                     Check("MP parity manifest is up to date", !MultiplayerParityManifestNeedsUpdate());
                     Check("MP parity manifest contains required comparison fields", ParityManifestComplete());
                     Check("OOS risk score report is up to date", !OosRiskScoreReportNeedsUpdate());
+                    Check("Host suitability report is up to date", !FileMeaningfullyDiffers(StabilizerFile("ck3_stabilizer_host_suitability.txt"), BuildHostSuitabilityReportText(), true));
                     break;
             }
 

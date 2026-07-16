@@ -16,6 +16,7 @@ internal static class UtilityTests
         TestChecksumExtraction();
         TestRegistryValueSerialization();
         TestRuntimeModeUtilities();
+        TestSaveRuleUtilities();
 
         if (failures > 0)
             Environment.Exit(1);
@@ -67,6 +68,16 @@ internal static class UtilityTests
         Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Normal", "INFO  | details"), "normal keeps info lines");
         Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Verbose", "VERBOSE| extra"), "verbose keeps verbose lines");
         Assert(!RuntimeModeUtilities.ShouldSuppressLogLine("Verbose", ""), "verbose keeps blank separator lines");
+    }
+
+    private static void TestSaveRuleUtilities()
+    {
+        string text = "game_rules={\n\tmultiplayer_murder_schemes=\"no_players\"\n\tgreat_steppe=\"off\"\n\tai_landless_adventurers=25\n}\n";
+        string block = SaveRuleUtilities.ExtractBraceBlock(text, "game_rules");
+        Assert(block.IndexOf("multiplayer_murder_schemes", StringComparison.OrdinalIgnoreCase) >= 0, "save-rule utility extracts game_rules block");
+        Assert(SaveRuleUtilities.ValueLooksNoPlayers("no_players"), "save-rule utility recognizes no-players value");
+        Assert(SaveRuleUtilities.ValueLooksDisabled("disabled"), "save-rule utility recognizes disabled value");
+        Assert(SaveRuleUtilities.TryParseIntValue("25").HasValue && SaveRuleUtilities.TryParseIntValue("25").Value == 25, "save-rule utility parses integer values");
     }
 
     private static void TestCompactReportNames()
