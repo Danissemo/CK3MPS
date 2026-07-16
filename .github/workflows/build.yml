@@ -30,7 +30,11 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: ./scripts/test.ps1
+        run: ./scripts/test-required.ps1
+
+      - name: Strict mutation review
+        shell: pwsh
+        run: ./scripts/check-static-danger-strict.ps1
 
       - name: Validate release metadata
         shell: pwsh
