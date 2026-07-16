@@ -1,0 +1,87 @@
+name: Apply runtime hardening
+
+on:
+  push:
+    branches:
+      - agent/fix-hardening-gaps
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message != 'Apply runtime hardening patches'
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: agent/fix-hardening-gaps
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+
+      - name: Apply runtime patches
+        shell: pwsh
+        run: |
+          ./scripts/apply-runtime-hardening.ps1
+          ./scripts/apply-runtime-hardening-fixes.ps1
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Run integration tests
+        shell: pwsh
+        run: ./scripts/test-required.ps1
+
+      - name: Run transactional tests
+        shell: pwsh
+        run: ./scripts/test-transactional-hardening.ps1
+
+      - name: Stage changes and refresh mutation-review pins
+        shell: pwsh
+        run: |
+          git add -A
+          $reviewScript = 'scripts/check-static-danger-strict.ps1'
+          $text = [IO.File]::ReadAllText($reviewScript)
+          $reviewedPaths = @(
+            'source/AppConfig.cs',
+            'source/Cleanup.cs',
+            'source/GameSettings.cs',
+            'source/Helpers.cs',
+            'source/Launchers.cs',
+            'source/Readiness.cs',
+            'source/Reports.cs',
+            'source/SaveAnalysis.cs',
+            'source/Workflow.cs'
+          )
+          foreach ($relativePath in $reviewedPaths) {
+            $sha = (git rev-parse ":$relativePath").Trim()
+            if ($LASTEXITCODE -ne 0 -or $sha -notmatch '^[0-9a-f]{40}$') {
+              throw "Could not resolve staged blob for $relativePath"
+            }
+            $escaped = [regex]::Escape($relativePath)
+            $pattern = "(?m)^(\s*'$escaped'\s*=\s*')[0-9a-f]{40}(')"
+            $regex = New-Object Text.RegularExpressions.Regex($pattern)
+            if ($regex.Matches($text).Count -ne 1) {
+              throw "Could not locate exactly one mutation-review pin for $relativePath"
+            }
+            $text = $regex.Replace($text, "`$1$sha`$2", 1)
+          }
+          [IO.File]::WriteAllText($reviewScript, $text, (New-Object Text.UTF8Encoding($false)))
+          git add $reviewScript
+
+      - name: Commit patched sources
+        shell: pwsh
+        run: |
+          if (-not (git diff --cached --quiet)) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Apply runtime hardening patches'
+            git push origin HEAD:agent/fix-hardening-gaps
+          }
