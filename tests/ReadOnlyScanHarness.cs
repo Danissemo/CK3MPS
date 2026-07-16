@@ -58,6 +58,16 @@ internal static class ReadOnlyScanHarness
                     Application.DoEvents();
                     Thread.Sleep(25);
                 }
+                if (!scanTask.IsCompleted)
+                {
+                    MethodInfo snapshotRunLogLines = mainFormType.GetMethod("SnapshotRunLogLines", flags);
+                    string[] lines = snapshotRunLogLines == null
+                        ? new string[0]
+                        : (string[])snapshotRunLogLines.Invoke(form, null);
+                    Console.Error.WriteLine("Read-only Scan timeout. Last status: " + status.Text);
+                    for (int i = Math.Max(0, lines.Length - 25); i < lines.Length; i++)
+                        Console.Error.WriteLine("SCAN " + lines[i]);
+                }
                 Assert(scanTask.IsCompleted, "full read-only Scan did not complete before timeout; last status: " + status.Text);
                 scanTask.GetAwaiter().GetResult();
                 Assert(status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) >= 0, "full read-only Scan did not complete before timeout");

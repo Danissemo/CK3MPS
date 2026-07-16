@@ -1082,19 +1082,21 @@ namespace CK3MPS
             lock (runLogSync)
                 runLogLines.Add(text ?? "");
 
+            bool shouldFlushPendingLines = false;
             lock (uiLogSync)
             {
                 if (busyUi)
                 {
                     pendingUiLogLines.Add(new PendingUiLogLine(text, color));
-                    if (pendingUiLogLines.Count >= 10)
-                        FlushPendingUiLogLines();
+                    shouldFlushPendingLines = pendingUiLogLines.Count >= 10;
                 }
                 else
                 {
                     AppendLogLineTo(logBox, text, color, true);
                 }
             }
+            if (shouldFlushPendingLines)
+                FlushPendingUiLogLines();
             AppendLiveLogLine(text);
         }
 
