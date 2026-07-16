@@ -20,7 +20,7 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm : Form
     {
-        private const string AppVersion = "v0.3";
+        private const string AppVersion = "v0.31";
         private const int ExpectedStepCount = StepCatalog.Count;
         private const long MaxSaveAnalysisFileBytes = 128L * 1024L * 1024L;
         private const int MaxSaveAnalysisPrefixBytes = 8 * 1024 * 1024;
@@ -675,6 +675,7 @@ namespace CK3MPS
         }
     }
 }
+
 
 
 
