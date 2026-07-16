@@ -37,7 +37,7 @@ namespace CK3MPS
             if (backup)
                 BackupFile(path);
 
-            File.WriteAllText(path, updated, Utf8NoBom);
+            SafeAtomicFile.WriteAllText(path, updated, Utf8NoBom);
             Log("OK   " + successMessage + " Graphics profile: " + CurrentGraphicsProfile() + ".");
         }
 

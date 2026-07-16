@@ -30,7 +30,8 @@ internal static class ParityRoomSlowClientHarness
                 MethodInfo sign = mainFormType.GetMethod("ComputeParityRoomSignature", instanceFlags);
                 MethodInfo build = mainFormType.GetMethod("BuildParityRoomPayloadText", instanceFlags);
                 MethodInfo protect = mainFormType.GetMethod("ProtectParityRoomPayload", instanceFlags);
-                if (sessionType == null || startHost == null || stopHost == null || sign == null || build == null || protect == null)
+                MethodInfo unprotect = mainFormType.GetMethod("UnprotectParityRoomPayload", instanceFlags);
+                if (sessionType == null || startHost == null || stopHost == null || sign == null || build == null || protect == null || unprotect == null)
                     throw new InvalidOperationException("Parity room host members were not found.");
 
                 object session = Activator.CreateInstance(sessionType, true);
@@ -88,7 +89,7 @@ internal static class ParityRoomSlowClientHarness
                     byte[] packet = (byte[])protect.Invoke(form, new object[] { payload, sharedSecret });
 
                     Stopwatch sw = Stopwatch.StartNew();
-                    string reply = SendPacket("127.0.0.1", port, packet, 3000);
+                    string reply = SendPacket("127.0.0.1", port, packet, 3000, form, unprotect, sharedSecret);
                     sw.Stop();
 
                     Assert(reply.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0, "fast parity client should still be accepted while a slow client is connected. Reply was: " + reply);
@@ -118,7 +119,7 @@ internal static class ParityRoomSlowClientHarness
         }
     }
 
-    private static string SendPacket(string host, int port, byte[] packet, int timeoutMs)
+    private static string SendPacket(string host, int port, byte[] packet, int timeoutMs, object form, MethodInfo unprotect, string sharedSecret)
     {
         using (TcpClient client = new TcpClient())
         {
@@ -134,28 +135,28 @@ internal static class ParityRoomSlowClientHarness
                     stream.Write(payloadBytes, 0, payloadBytes.Length);
                 stream.Flush();
                 client.Client.Shutdown(SocketShutdown.Send);
-                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true))
-                {
-                StringBuilder response = new StringBuilder();
-                char[] buffer = new char[256];
-                while (true)
-                {
-                    try
-                    {
-                        int read = reader.Read(buffer, 0, buffer.Length);
-                        if (read <= 0)
-                            break;
-                        response.Append(buffer, 0, read);
-                    }
-                    catch (IOException)
-                    {
-                        break;
-                    }
-                }
-                return response.ToString();
-                }
+                byte[] responseLengthBytes = ReadExact(stream, 4);
+                int responseLength = BitConverter.ToInt32(responseLengthBytes, 0);
+                if (responseLength <= 0 || responseLength > 1024 * 1024)
+                    throw new InvalidOperationException("Protected parity response length is invalid: " + responseLength);
+                byte[] responsePacket = ReadExact(stream, responseLength);
+                return Convert.ToString(unprotect.Invoke(form, new object[] { responsePacket, sharedSecret })) ?? "";
             }
         }
+    }
+
+    private static byte[] ReadExact(Stream stream, int length)
+    {
+        byte[] buffer = new byte[length];
+        int offset = 0;
+        while (offset < length)
+        {
+            int read = stream.Read(buffer, offset, length - offset);
+            if (read <= 0)
+                throw new EndOfStreamException("Parity response ended early.");
+            offset += read;
+        }
+        return buffer;
     }
 
     private static T GetFieldValue<T>(Type type, object instance, string fieldName)

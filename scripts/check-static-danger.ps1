@@ -30,61 +30,61 @@ $DangerRules = @(
 )
 
 $Allowlist = @(
-    @{ Path = "source/AppConfig.cs"; Rule = "File.Delete"; Reason = "Config migration and explicit cleanup of app-owned files." },
-    @{ Path = "source/AppConfig.cs"; Rule = "File.Copy"; Reason = "Portable/non-portable config migration for app-owned files." },
-    @{ Path = "source/AppConfig.cs"; Rule = "Directory.Delete"; Reason = "Portable/non-portable app-owned directory cleanup." },
+    @{ Path = "source/AppConfig.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((path|sourceFile)\);$'; Reason = "Config migration and explicit cleanup of app-owned files." },
+    @{ Path = "source/AppConfig.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((sourceFile, tempFile, false|source, dest, true)\);$'; Reason = "Portable/non-portable config migration for app-owned files." },
+    @{ Path = "source/AppConfig.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\(tempFile, targetFile\);$'; Reason = "Verified portable migration commits a temporary copy without overwrite." },
+    @{ Path = "source/AppConfig.cs"; Rule = "Directory.Delete"; LinePattern = '^Directory\.Delete\(path, false\);$'; Reason = "Portable/non-portable app-owned directory cleanup." },
     @{ Path = "source/AppConfig.cs"; Rule = "File.AppendAllText"; Reason = "Incident/export summary append for app-owned logs." },
     @{ Path = "source/AppConfig.cs"; Rule = "File.WriteAllText"; Reason = "App-owned export summary output." },
-    @{ Path = "source/AppConfig.cs"; Rule = "Process.Start"; Reason = "Explorer shell open for user-selected export folders." },
+    @{ Path = "source/AppConfig.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", exportDir\);$'; Reason = "Explorer shell open for user-selected export folders." },
     @{ Path = "source/Cleanup.cs"; Rule = "File.WriteAllText"; Reason = "App-owned cleanup report output." },
     @{ Path = "source/GameSettings.cs"; Rule = "File.ReadAllText"; Reason = "Reads CK3 config text before controlled rewrite." },
     @{ Path = "source/GameSettings.cs"; Rule = "File.WriteAllText"; Reason = "Writes CK3 config text under restore tracking." },
-    @{ Path = "source/Helpers.cs"; Rule = "File.Copy"; Reason = "Shared copy helpers for restore-backed app operations." },
-    @{ Path = "source/Helpers.cs"; Rule = "File.Move"; Reason = "Shared quarantine/move helpers for app-managed paths." },
-    @{ Path = "source/Helpers.cs"; Rule = "Directory.Move"; Reason = "Shared quarantine/move helpers for app-managed directories." },
+    @{ Path = "source/Helpers.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((path, (UniquePath\(dest\)|dest), true|file, (dest|Path\.Combine\(destDir, Path\.GetFileName\(file\)\)), false)\);$'; Reason = "Shared copy helpers for restore-backed app operations." },
+    @{ Path = "source/Helpers.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\((source|path), dest\);$'; Reason = "Shared quarantine/move helpers for app-managed paths." },
+    @{ Path = "source/Helpers.cs"; Rule = "Directory.Move"; LinePattern = '^Directory\.Move\((source|path), dest\);$'; Reason = "Shared quarantine/move helpers for app-managed directories." },
     @{ Path = "source/Helpers.cs"; Rule = "File.ReadAllText"; Reason = "Reads app-owned config and log files." },
-    @{ Path = "source/Helpers.cs"; Rule = "Process.Start"; Reason = "Explorer shell open for local folders/files only." },
-    @{ Path = "source/Helpers.cs"; Rule = "File.Delete"; Reason = "Cleanup of app-owned temp/live-log artifacts." },
-    @{ Path = "source/Helpers.cs"; Rule = "Directory.Delete"; Reason = "Cleanup of app-owned temp/live-log directories." },
+    @{ Path = "source/Helpers.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", .+\);$'; Reason = "Explorer shell open for local folders/files only." },
+    @{ Path = "source/Helpers.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\(file\);$'; Reason = "Cleanup of app-owned temp/live-log artifacts." },
+    @{ Path = "source/Helpers.cs"; Rule = "Directory.Delete"; LinePattern = '^Directory\.Delete\((dir, true|liveLogsDir, false|root, true)\);$'; Reason = "Cleanup of app-owned temp/live-log directories." },
     @{ Path = "source/Helpers.cs"; Rule = "File.WriteAllText"; Reason = "Live-log persistence to app-owned files." },
     @{ Path = "source/Helpers.cs"; Rule = "File.AppendAllText"; Reason = "Buffered live-log append to app-owned files." },
     @{ Path = "source/Launchers.cs"; Rule = "File.ReadAllText"; Reason = "Reads launcher and Steam config text before targeted edits." },
     @{ Path = "source/Launchers.cs"; Rule = "File.WriteAllText"; Reason = "Writes launcher and Steam config text under restore tracking." },
-    @{ Path = "source/MainWindow.cs"; Rule = "Process.Start"; Reason = "Explorer shell open for local folder selected by the UI." },
+    @{ Path = "source/MainWindow.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", dir\);$'; Reason = "Explorer shell open for local folder selected by the UI." },
     @{ Path = "source/Network.cs"; Rule = "File.ReadAllText"; Reason = "Reads app-owned continue marker text." },
     @{ Path = "source/OosDeepAnalysis.cs"; Rule = "SearchOption.AllDirectories"; Reason = "Recursive OOS fixture/report enumeration under user-selected OOS root." },
     @{ Path = "source/Readiness.cs"; Rule = "File.WriteAllText"; Reason = "Writes readiness reports under app-owned report paths." },
     @{ Path = "source/Readiness.cs"; Rule = "ReadToEnd"; Reason = "Consumes bounded process/stdout or text-reader content for diagnostics." },
     @{ Path = "source/Readiness.cs"; Rule = "File.ReadAllText"; Reason = "Reads config/report text for readiness checks." },
     @{ Path = "source/Readiness.cs"; Rule = "File.ReadAllBytes"; Reason = "Reads bounded binary signatures for validation." },
-    @{ Path = "source/Readiness.cs"; Rule = "Process.Start"; Reason = "Starts tightly-scoped diagnostic subprocesses." },
+    @{ Path = "source/Readiness.cs"; Rule = "Process.Start"; LinePattern = '^using \(Process p = Process\.Start\(psi\)\)$'; Reason = "Starts tightly-scoped diagnostic subprocesses." },
     @{ Path = "source/Reports.cs"; Rule = "SearchOption.AllDirectories"; Reason = "Recursive OOS metadata discovery under CK3/OOS roots." },
     @{ Path = "source/Reports.cs"; Rule = "File.ReadAllText"; Reason = "Reads report and metadata text for summaries." },
-    @{ Path = "source/Reports.cs"; Rule = "File.Copy"; Reason = "Copies report artifacts into app-owned export bundles." },
-    @{ Path = "source/Restore.cs"; Rule = "File.Copy"; Reason = "Restore backup and restore execution for allowlisted paths." },
+    @{ Path = "source/Reports.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\(source, dest, true\);$'; Reason = "Copies report artifacts into app-owned export bundles." },
+    @{ Path = "source/Restore.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((path, dest, true|entry\.BackupPath, tempPath, false)\);$'; Reason = "Restore backup and verified staging copy for allowlisted paths." },
     @{ Path = "source/Restore.cs"; Rule = "SearchOption.AllDirectories"; Reason = "Restore tree comparison over already-validated backup trees." },
     @{ Path = "source/Restore.cs"; Rule = "File.ReadAllText"; Reason = "Diff/readback for restore diagnostics." },
-    @{ Path = "source/Restore.cs"; Rule = "File.Delete"; Reason = "Restore execution deletes only revalidated allowlisted file targets." },
-    @{ Path = "source/Restore.cs"; Rule = "Directory.Delete"; Reason = "Restore execution deletes only revalidated allowlisted directory targets." },
+    @{ Path = "source/Restore.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((removed\.BackupPath|entry\.SourcePath)\);$'; Reason = "Restore execution deletes only revalidated allowlisted file targets." },
+    @{ Path = "source/Restore.cs"; Rule = "Directory.Delete"; LinePattern = '^Directory\.Delete\((removed\.BackupPath|entry\.SourcePath), true\);$'; Reason = "Restore execution deletes only revalidated allowlisted directory targets." },
     @{ Path = "source/Review.cs"; Rule = "File.ReadAllText"; Reason = "Review reads current file state for before-apply preview only." },
-    @{ Path = "source/SaveAnalysis.cs"; Rule = "File.Copy"; Reason = "Copies save baseline/export artifacts into app-owned work paths." },
+    @{ Path = "source/SaveAnalysis.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\(workflowSelectedSavePath, baselinePath, true\);$'; Reason = "Copies save baseline/export artifacts into app-owned work paths." },
     @{ Path = "source/SaveAnalysis.cs"; Rule = "File.ReadAllBytes"; Reason = "Reads bounded save payloads for repair/analysis." },
     @{ Path = "source/SaveAnalysis.cs"; Rule = "ReadToEnd"; Reason = "Consumes already-bounded archive/text entry content." },
     @{ Path = "source/SaveAnalysis.cs"; Rule = "File.WriteAllText"; Reason = "Writes app-owned rehost/export index files." },
-    @{ Path = "source/SaveAnalysis.cs"; Rule = "Process.Start"; Reason = "Explorer shell open for local export folder." },
-    @{ Path = "source/Start.cs"; Rule = "Process.Start"; Reason = "UAC relaunch entrypoint." },
-    @{ Path = "source/SystemRestore.cs"; Rule = "ExecutionPolicy Bypass"; Reason = "Legacy privileged PowerShell bridge; tracked until hardening/removal lands." },
-    @{ Path = "source/SystemRestore.cs"; Rule = "Process.Start"; Reason = "Starts tightly-scoped PowerShell subprocess for system restore operations." },
-    @{ Path = "source/Updates.cs"; Rule = "Process.Start"; Reason = "Opens vetted release page and legacy updater process path." },
-    @{ Path = "source/Utilities.cs"; Rule = "File.Move"; Reason = "SafeAtomicFile commit path uses temp-file rename." },
-    @{ Path = "source/Utilities.cs"; Rule = "File.Delete"; Reason = "SafeAtomicFile temp cleanup on failed atomic write." },
-    @{ Path = "source/Workflow.cs"; Rule = "File.Move"; Reason = "Workflow quarantine/duplicate operations for validated workflow saves." },
+    @{ Path = "source/SaveAnalysis.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", exportDir\);$'; Reason = "Explorer shell open for local export folder." },
+    @{ Path = "source/Start.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "UAC relaunch entrypoint." },
+    @{ Path = "source/SystemRestore.cs"; Rule = "Process.Start"; LinePattern = '^using \(Process process = Process\.Start\(psi\)\)$'; Reason = "Starts tightly-scoped PowerShell subprocess for system restore operations." },
+    @{ Path = "source/Updates.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "Opens only the vetted official GitHub release page; automatic installation is disabled." },
+    @{ Path = "source/Utilities.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\((tempPath, targetPath|source, destination)\);$'; Reason = "SafeAtomicFile commit and bounded history rotation use same-directory rename." },
+    @{ Path = "source/Utilities.cs"; Rule = "File.Delete"; LinePattern = '^File\.Delete\((path|destination)\);$'; Reason = "SafeAtomicFile temp cleanup and bounded history rotation." },
+    @{ Path = "source/Utilities.cs"; Rule = "File.ReadAllText"; LinePattern = '^string existing = expected\.Exists \? File\.ReadAllText\(target, effectiveEncoding\) : "";$'; Reason = "Append reads only the bounded current history file after snapshot verification." },
+    @{ Path = "source/Workflow.cs"; Rule = "File.Move"; LinePattern = '^File\.Move\((normalizedPath, destinationPath|destinationPath, normalizedPath|tempPath, copyPath)\);$'; Reason = "Workflow quarantine/duplicate operations for validated workflow saves." },
     @{ Path = "source/Workflow.cs"; Rule = "File.ReadAllText"; Reason = "Reads workflow text artifacts and parity manifest text." },
-    @{ Path = "source/Workflow.cs"; Rule = "Process.Start"; Reason = "Explorer shell open for local files/folders and packs." },
+    @{ Path = "source/Workflow.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", .+\);$'; Reason = "Explorer shell open for local files/folders and packs." },
     @{ Path = "source/Workflow.cs"; Rule = "File.WriteAllText"; Reason = "Writes app-owned workflow/parity/export reports." },
-    @{ Path = "source/Workflow.cs"; Rule = "File.Copy"; Reason = "Workflow duplicate/baseline copy operations on validated saves." },
-    @{ Path = "source/Workflow.cs"; Rule = "File.Delete"; Reason = "Workflow temp-file cleanup only." },
-    @{ Path = "source/Workflow.cs"; Rule = "ReadToEnd"; Reason = "Consumes bounded HTTP/text response content for workflow diagnostics." },
+    @{ Path = "source/Workflow.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((workflowSelectedSavePath, baselinePath, true|normalizedPath, tempPath, false)\);$'; Reason = "Workflow duplicate/baseline copy operations on validated saves." },
+    @{ Path = "source/Workflow.cs"; Rule = "File.Delete"; LinePattern = '^try \{ File\.Delete\(tempPath\); \} catch \{ \}$'; Reason = "Workflow temp-file cleanup only." },
     @{ Path = "scripts/check-repo-clean.ps1"; Rule = "\[System.IO.File\]::ReadAllBytes"; Reason = "Small binary sniff for repo-clean privacy/LFS checks." }
 )
 
@@ -99,9 +99,16 @@ function Get-RelativePath([string]$Path) {
     return ($Path -replace '\\', '/')
 }
 
-function Is-Allowlisted($RelativePath, $RuleName) {
+function Is-Allowlisted($RelativePath, $RuleName, $Line) {
+    $sitePatternRequired = $RuleName -in @("File.Delete", "Directory.Delete", "File.Move", "Directory.Move", "File.Copy", "Process.Start", "ExecutionPolicy Bypass")
     foreach ($entry in $Allowlist) {
         if ($entry.Path -ieq $RelativePath -and $entry.Rule -eq $RuleName) {
+            if ($sitePatternRequired -and -not $entry.ContainsKey('LinePattern')) {
+                continue
+            }
+            if ($entry.ContainsKey('LinePattern') -and $Line -notmatch $entry.LinePattern) {
+                continue
+            }
             return $entry
         }
     }
@@ -129,7 +136,7 @@ foreach ($target in $Targets) {
         foreach ($rule in $DangerRules) {
             $hits = Select-String -Path $file.FullName -Pattern $rule.Pattern
             foreach ($hit in $hits) {
-                $allow = Is-Allowlisted -RelativePath $relativePath -RuleName $rule.Name
+                $allow = Is-Allowlisted -RelativePath $relativePath -RuleName $rule.Name -Line $hit.Line.Trim()
                 $matches.Add([pscustomobject]@{
                     RelativePath = $relativePath
                     LineNumber = $hit.LineNumber

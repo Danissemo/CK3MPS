@@ -32,6 +32,21 @@ namespace CK3MPS
             }
         }
 
+        private sealed class RestoreOperationPathSnapshot
+        {
+            public string NormalizedPath;
+            public bool FileExists;
+            public bool DirectoryExists;
+            public long Length;
+            public DateTime LastWriteUtc;
+            public FileAttributes Attributes;
+            public bool HasReparsePoint;
+            public string RegistryValue;
+            public string Sha256;
+        }
+
+        private Dictionary<string, RestoreOperationPathSnapshot> activeRestoreOperationSnapshots;
+
         private string RestoreManifestFile()
         {
             if (String.IsNullOrEmpty(lastQuarantine) || !Directory.Exists(lastQuarantine))
@@ -458,9 +473,9 @@ namespace CK3MPS
             bool sourceExists = kind == "moved_directory" ? Directory.Exists(entry.SourcePath) : File.Exists(entry.SourcePath);
             bool backupExists = kind == "moved_directory" ? Directory.Exists(entry.BackupPath) : File.Exists(entry.BackupPath);
 
-            if (!sourceExists && backupExists)
+            if (!sourceExists && backupExists && PreparedRestoreBackupHashMatches(entry, kind))
                 nextStatus = "committed";
-            else if (sourceExists && !backupExists)
+            else if (sourceExists && !backupExists && PreparedRestoreSourceHashMatches(entry, kind))
                 nextStatus = "rolled_back";
             else
                 nextStatus = "failed";
@@ -595,8 +610,9 @@ namespace CK3MPS
             switch (kind)
             {
                 case "snapshot":
+                    return TryValidateInformationalSnapshotEntry(entry, false, out error);
                 case "system_snapshot":
-                    return true;
+                    return TryValidateInformationalSnapshotEntry(entry, true, out error);
                 case "registry":
                     return TryValidateRegistryRestorePath(entry.SourcePath, out error);
                 case "file":
@@ -611,6 +627,61 @@ namespace CK3MPS
                     error = "Restore entry kind is not supported: " + entry.Kind;
                     return false;
             }
+        }
+
+        private bool TryValidateInformationalSnapshotEntry(RestoreEntry entry, bool systemSnapshot, out string error)
+        {
+            error = "";
+            if (String.IsNullOrWhiteSpace(entry.BackupPath))
+            {
+                error = "Snapshot backup path is missing.";
+                return false;
+            }
+            if (!TryValidateManifestBackupPath(entry.BackupPath, false, out error))
+                return false;
+            if (!File.Exists(entry.BackupPath))
+            {
+                error = "Snapshot backup file is missing.";
+                return false;
+            }
+            if (!systemSnapshot && !String.Equals(entry.SourcePath, "(run snapshot)", StringComparison.Ordinal))
+            {
+                error = "Run snapshot source marker is invalid.";
+                return false;
+            }
+            if (systemSnapshot && String.IsNullOrWhiteSpace(entry.SourcePath))
+            {
+                error = "System snapshot command description is missing.";
+                return false;
+            }
+            return true;
+        }
+
+        private bool PreparedRestoreBackupHashMatches(RestoreEntry entry, string kind)
+        {
+            if (kind == "moved_directory")
+                return true;
+            string expected = PreparedRestoreExpectedHash(entry);
+            return !String.IsNullOrEmpty(expected)
+                && String.Equals(expected, FileHashOrMissing(entry.BackupPath), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool PreparedRestoreSourceHashMatches(RestoreEntry entry, string kind)
+        {
+            if (kind == "moved_directory")
+                return true;
+            string expected = PreparedRestoreExpectedHash(entry);
+            return !String.IsNullOrEmpty(expected)
+                && String.Equals(expected, FileHashOrMissing(entry.SourcePath), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string PreparedRestoreExpectedHash(RestoreEntry entry)
+        {
+            const string prefix = "sha256:";
+            string value = NullText(entry == null ? "" : entry.Before).Trim();
+            return value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                ? value.Substring(prefix.Length).Trim()
+                : "";
         }
 
         private bool TryValidateRestoreFileEntry(RestoreEntry entry, out string error)
@@ -1178,12 +1249,14 @@ namespace CK3MPS
             string targetText = entries.Count == 1
                 ? entries[0].Description + "\r\n\r\nTarget:\r\n" + entries[0].SourcePath
                 : "Restore " + entries.Count + " checked items to their recorded previous state?";
+            Dictionary<string, RestoreOperationPathSnapshot> confirmationSnapshots = CaptureRestoreOperationSnapshots(entries);
             DialogResult result = MessageBox.Show("Restore selected item(s)?\r\n\r\n" + targetText, "CK3MPS restore", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (result != DialogResult.Yes)
                 return;
 
             try
             {
+                activeRestoreOperationSnapshots = confirmationSnapshots;
                 foreach (RestoreEntry entry in entries)
                 {
                     if (entry.Kind == "file" || entry.Kind == "moved_file")
@@ -1206,6 +1279,10 @@ namespace CK3MPS
                 Log("ERROR Restore failed: " + ex.Message);
                 MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            finally
+            {
+                activeRestoreOperationSnapshots = null;
+            }
         }
 
         private void RestoreSelectedItemToDefault()
@@ -1227,6 +1304,7 @@ namespace CK3MPS
                     return;
                 }
 
+            Dictionary<string, RestoreOperationPathSnapshot> confirmationSnapshots = CaptureRestoreOperationSnapshots(entries);
             DialogResult result = MessageBox.Show(
                 entries.Count == 1
                     ? "Reset this item to game/launcher/Windows default behavior?\r\n\r\n" + entries[0].SourcePath + "\r\n\r\nCK3MPS will back up the current value first, then remove the override/file so the owner can recreate defaults."
@@ -1239,6 +1317,7 @@ namespace CK3MPS
 
             try
             {
+                activeRestoreOperationSnapshots = confirmationSnapshots;
                 foreach (RestoreEntry entry in entries)
                 {
                     RestoreDefaultEntry(entry);
@@ -1250,6 +1329,10 @@ namespace CK3MPS
             {
                 Log("ERROR Default restore failed: " + ex.Message);
                 MessageBox.Show(ex.Message, "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                activeRestoreOperationSnapshots = null;
             }
         }
 
@@ -1435,6 +1518,7 @@ namespace CK3MPS
 
             if (entry.Kind == "registry")
             {
+                MutationAudit.RecordMutation("registry-delete", entry.SourcePath);
                 RegistryKey root;
                 string subKey;
                 string name;
@@ -1480,7 +1564,19 @@ namespace CK3MPS
                 throw new IOException("A workflow save already exists at the original path. Restore will not overwrite it without a separate user decision.");
             if (File.Exists(entry.SourcePath))
                 BackupForRestore(entry.SourcePath, "Pre-restore backup of current file: " + entry.SourcePath);
-            File.Copy(entry.BackupPath, entry.SourcePath, true);
+            string tempPath = entry.SourcePath + ".restore-" + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.Copy(entry.BackupPath, tempPath, false);
+                if (!FileContentsEqual(entry.BackupPath, tempPath))
+                    throw new IOException("Restore staging copy does not match the recorded backup.");
+                EnsureRestoreOperationStillAllowed(entry, "file restore commit");
+                SafeAtomicFile.ReplaceFile(tempPath, entry.SourcePath);
+            }
+            finally
+            {
+                SafeAtomicFile.TryDeleteTempFile(tempPath);
+            }
             RecordRestoreEntry("restore_action", entry.SourcePath, entry.BackupPath, "Restored file: " + entry.SourcePath, entry.Before, DescribePath(entry.SourcePath), "restored");
         }
 
@@ -1515,6 +1611,7 @@ namespace CK3MPS
         private void RestoreRegistryEntry(RestoreEntry entry)
         {
             EnsureRestoreOperationStillAllowed(entry, "registry restore");
+            MutationAudit.RecordMutation("registry-restore", entry.SourcePath);
             RegistryKey root;
             string subKey;
             string name;
@@ -1562,6 +1659,86 @@ namespace CK3MPS
             string error;
             if (!TryValidateRestoreEntry(entry, out error))
                 throw new InvalidOperationException("Blocked " + operation + " for untrusted restore entry. " + error);
+            EnsureRestoreOperationSnapshotUnchanged(entry, operation);
+        }
+
+        private Dictionary<string, RestoreOperationPathSnapshot> CaptureRestoreOperationSnapshots(IEnumerable<RestoreEntry> entries)
+        {
+            Dictionary<string, RestoreOperationPathSnapshot> snapshots = new Dictionary<string, RestoreOperationPathSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (RestoreEntry entry in entries ?? new RestoreEntry[0])
+            {
+                if (entry == null || String.IsNullOrWhiteSpace(entry.Id))
+                    continue;
+                if (entry.Kind == "snapshot" || entry.Kind == "system_snapshot")
+                    continue;
+                snapshots[entry.Id + "|source"] = CaptureRestoreOperationPathSnapshot(entry.SourcePath, entry.Kind == "registry");
+                if (!String.IsNullOrWhiteSpace(entry.BackupPath))
+                    snapshots[entry.Id + "|backup"] = CaptureRestoreOperationPathSnapshot(entry.BackupPath, false);
+            }
+            return snapshots;
+        }
+
+        private RestoreOperationPathSnapshot CaptureRestoreOperationPathSnapshot(string path, bool registry)
+        {
+            RestoreOperationPathSnapshot snapshot = new RestoreOperationPathSnapshot();
+            if (registry)
+            {
+                snapshot.NormalizedPath = NullText(path);
+                snapshot.RegistryValue = ReadRegistryRestoreValue(path);
+                return snapshot;
+            }
+
+            string normalized;
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(path, out normalized))
+                throw new InvalidOperationException("Restore path could not be normalized before confirmation: " + NullText(path));
+            snapshot.NormalizedPath = normalized;
+            snapshot.FileExists = File.Exists(normalized);
+            snapshot.DirectoryExists = Directory.Exists(normalized);
+            snapshot.HasReparsePoint = PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalized);
+            if (snapshot.FileExists)
+            {
+                FileInfo info = new FileInfo(normalized);
+                snapshot.Length = info.Length;
+                snapshot.LastWriteUtc = info.LastWriteTimeUtc;
+                snapshot.Attributes = info.Attributes;
+                snapshot.Sha256 = FileHashOrMissing(normalized);
+            }
+            else if (snapshot.DirectoryExists)
+            {
+                DirectoryInfo info = new DirectoryInfo(normalized);
+                snapshot.LastWriteUtc = info.LastWriteTimeUtc;
+                snapshot.Attributes = info.Attributes;
+            }
+            return snapshot;
+        }
+
+        private void EnsureRestoreOperationSnapshotUnchanged(RestoreEntry entry, string operation)
+        {
+            if (activeRestoreOperationSnapshots == null || entry == null)
+                return;
+
+            EnsureRestorePathSnapshotUnchanged(entry.Id + "|source", entry.SourcePath, entry.Kind == "registry", operation);
+            if (!String.IsNullOrWhiteSpace(entry.BackupPath))
+                EnsureRestorePathSnapshotUnchanged(entry.Id + "|backup", entry.BackupPath, false, operation);
+        }
+
+        private void EnsureRestorePathSnapshotUnchanged(string key, string path, bool registry, string operation)
+        {
+            RestoreOperationPathSnapshot expected;
+            if (!activeRestoreOperationSnapshots.TryGetValue(key, out expected))
+                throw new InvalidOperationException("Blocked " + operation + ": confirmation snapshot is missing.");
+            RestoreOperationPathSnapshot current = CaptureRestoreOperationPathSnapshot(path, registry);
+            bool same = String.Equals(expected.NormalizedPath, current.NormalizedPath, StringComparison.OrdinalIgnoreCase)
+                && expected.FileExists == current.FileExists
+                && expected.DirectoryExists == current.DirectoryExists
+                && expected.Length == current.Length
+                && expected.LastWriteUtc == current.LastWriteUtc
+                && expected.Attributes == current.Attributes
+                && expected.HasReparsePoint == current.HasReparsePoint
+                && String.Equals(expected.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase)
+                && String.Equals(expected.RegistryValue, current.RegistryValue, StringComparison.Ordinal);
+            if (!same)
+                throw new InvalidOperationException("Blocked " + operation + ": source or backup changed after confirmation. Refresh Restore and try again.");
         }
 
         private object ParseRegistryValue(string value, RegistryValueKind kind)

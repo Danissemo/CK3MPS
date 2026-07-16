@@ -55,6 +55,7 @@ namespace CK3MPS
         private readonly ComboBox graphicsProfileBox = new ComboBox();
         private readonly Button stabilizeButton = new Button();
         private readonly Button checkButton = new Button();
+        private readonly Button exportScanReportButton = new Button();
         private readonly Button openFolderButton = new Button();
         private readonly Button openReportsButton = new Button();
         private readonly Button exportSupportButton = new Button();
@@ -197,6 +198,8 @@ namespace CK3MPS
         private bool hasFreshCheckOnlyScan;
         private string freshCheckOnlyScanKey = "";
         private SessionScanSnapshot sessionScanSnapshot;
+        private string lastCheckOnlyReportText = "";
+        private string[] lastReadOnlyMutationAttempts = new string[0];
         private int historyRefreshRequestId;
         private int deferredFinalizeGeneration;
         private bool applyButtonHintVisible;
@@ -320,6 +323,7 @@ namespace CK3MPS
 
         private sealed class ParityRoomPeer
         {
+            public string PeerId = "";
             public string PlayerLabel = "";
             public string Endpoint = "";
             public string ManifestText = "";
@@ -346,6 +350,10 @@ namespace CK3MPS
             public const int MaxReplayNonces = 256;
             public const int MaxReplayAgeMinutes = 15;
             public const int MaxConcurrentClients = 8;
+            public const int MaxPeers = 32;
+            public const int MaxRequestsPerMinute = 60;
+            public const string ProtocolVersion = "1";
+            public const string MessageType = "parity_update";
             public bool Hosting;
             public bool Joined;
             public string JoinHost = "";
@@ -353,9 +361,14 @@ namespace CK3MPS
             public string RoomCode = "";
             public string SharedSecret = "";
             public string LocalPlayerLabel = "";
+            public string LocalPeerId = Guid.NewGuid().ToString("N");
             public TcpListener Listener;
             public System.Threading.CancellationTokenSource CancelSource;
             public readonly SemaphoreSlim ClientSlots = new SemaphoreSlim(MaxConcurrentClients, MaxConcurrentClients);
+            public Task AcceptLoopTask;
+            public readonly List<Task> ActiveClientTasks = new List<Task>();
+            public readonly List<TcpClient> ActiveClients = new List<TcpClient>();
+            public readonly Dictionary<string, Queue<DateTime>> RequestTimesByEndpoint = new Dictionary<string, Queue<DateTime>>(StringComparer.OrdinalIgnoreCase);
             public readonly List<ParityRoomPeer> Peers = new List<ParityRoomPeer>();
             public readonly object Sync = new object();
             public string LocalManifestText = "";
@@ -370,6 +383,8 @@ namespace CK3MPS
             public string LocalOosModifierDumpText = "";
             public string LocalOosErrorLogText = "";
             public bool RawOosShareConsented;
+            public bool OosReportsShareConsented;
+            public bool RawOosDumpsShareConsented;
             public readonly HashSet<string> SeenPayloadNonces = new HashSet<string>(StringComparer.Ordinal);
             public readonly Queue<string> SeenPayloadNonceOrder = new Queue<string>();
             public string LastComparisonSignature = "";

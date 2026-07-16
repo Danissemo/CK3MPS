@@ -397,3 +397,8 @@ exit 0
 if ($LASTEXITCODE -ne 0) {
     throw "Static danger check failed with exit code $LASTEXITCODE"
 }
+
+& (Join-Path $ScriptDir "check-repo-clean.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "Repository cleanliness check failed with exit code $LASTEXITCODE"
+}

@@ -1644,7 +1644,7 @@ namespace CK3MPS
             CopyIfExists(StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"), Path.Combine(exportDir, "evidence_pack_index.txt"));
             CopyIfExists(StabilizerFile("ck3_stabilizer_session_verdict.txt"), Path.Combine(exportDir, "session_verdict.txt"));
 
-            File.WriteAllText(Path.Combine(exportDir, "rehost_pack_index.txt"), BuildRehostPackIndexText(exportDir), Encoding.UTF8);
+            SafeAtomicFile.WriteAllText(Path.Combine(exportDir, "rehost_pack_index.txt"), BuildRehostPackIndexText(exportDir), Encoding.UTF8);
             workflowLastRehostPackPath = exportDir;
             workflowIncidentStatus = "rehost_pack_created";
             SaveAppConfig();

@@ -681,6 +681,7 @@ namespace CK3MPS
             busyUi = busy;
             stabilizeButton.Enabled = !busy && HasReusableFreshCheckOnlyScan();
             checkButton.Enabled = !busy;
+            exportScanReportButton.Enabled = !busy && !String.IsNullOrWhiteSpace(lastCheckOnlyReportText);
             openFolderButton.Enabled = !busy;
             openReportsButton.Enabled = !busy;
             exportSupportButton.Enabled = !busy;

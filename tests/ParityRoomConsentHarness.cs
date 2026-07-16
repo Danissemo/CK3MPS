@@ -29,12 +29,15 @@ internal static class ParityRoomConsentHarness
                 bool denied = Convert.ToBoolean(confirm.Invoke(form, new[] { deniedSession }));
                 Assert(!denied, "raw OOS parity-room share should stop without explicit consent");
                 Assert(!GetFieldValue<bool>(sessionType, deniedSession, "RawOosShareConsented"), "denied consent should not mark the room session as approved");
+                Assert(!GetFieldValue<bool>(sessionType, deniedSession, "RawOosDumpsShareConsented"), "raw dump sharing must remain off after denied consent");
 
                 object allowedSession = Activator.CreateInstance(sessionType, true);
                 Environment.SetEnvironmentVariable("CK3MPS_TEST_RAW_OOS_CONSENT", "allow");
                 bool allowed = Convert.ToBoolean(confirm.Invoke(form, new[] { allowedSession }));
                 Assert(allowed, "raw OOS parity-room share should continue after explicit consent");
                 Assert(GetFieldValue<bool>(sessionType, allowedSession, "RawOosShareConsented"), "approved consent should be remembered for the room session");
+                Assert(GetFieldValue<bool>(sessionType, allowedSession, "OosReportsShareConsented"), "forced explicit consent should allow OOS reports");
+                Assert(GetFieldValue<bool>(sessionType, allowedSession, "RawOosDumpsShareConsented"), "forced explicit consent should allow raw dumps for the security harness");
 
                 Environment.SetEnvironmentVariable("CK3MPS_TEST_RAW_OOS_CONSENT", "deny");
                 bool stillAllowed = Convert.ToBoolean(confirm.Invoke(form, new[] { allowedSession }));

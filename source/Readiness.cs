@@ -77,6 +77,7 @@ namespace CK3MPS
                     Log("INFO Registry DWORD already set: " + subKey + "\\" + name);
                     return;
                 }
+                MutationAudit.RecordMutation("registry-write", subKey + "\\" + name);
                 RecordRegistryBeforeChange(root, subKey, name, "Before registry DWORD change: " + subKey + "\\" + name, "DWord:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
@@ -100,6 +101,7 @@ namespace CK3MPS
                     Log("INFO Registry string already set: " + subKey + "\\" + name);
                     return;
                 }
+                MutationAudit.RecordMutation("registry-write", subKey + "\\" + name);
                 RecordRegistryBeforeChange(root, subKey, name, "Before registry string change: " + subKey + "\\" + name, "String:" + value);
                 using (RegistryKey key = root.CreateSubKey(subKey))
                 {
@@ -213,7 +215,7 @@ namespace CK3MPS
                     || trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
                     sb.AppendLine(trimmed);
             }
-            File.WriteAllText(report, sb.ToString(), Encoding.UTF8);
+            SafeAtomicFile.WriteAllText(report, sb.ToString(), Encoding.UTF8);
             Log("Report written: " + report);
         }
 
@@ -537,7 +539,20 @@ namespace CK3MPS
             {
                 using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true))
-                    return reader.ReadToEnd();
+                {
+                    char[] buffer = new char[8192];
+                    StringBuilder text = new StringBuilder();
+                    int remaining = MaxOosTextReadBytes;
+                    while (remaining > 0)
+                    {
+                        int read = reader.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+                        if (read <= 0)
+                            break;
+                        text.Append(buffer, 0, read);
+                        remaining -= read;
+                    }
+                    return text.ToString();
+                }
             }
             catch
             {
@@ -558,28 +573,33 @@ namespace CK3MPS
                 WriteHostSuitabilityReport();
                 WriteWorkflowStatusReport();
                 string report = StabilizerFile("ck3_stabilizer_check_only_report.txt");
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("CK3MPS compact check");
-                sb.AppendLine("Stabilizer: " + AppVersion);
-                sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                sb.AppendLine("Result: " + (readinessFailures == 0 ? "READY" : "NOT READY"));
-                sb.AppendLine("Failed readiness checks: " + readinessFailures);
-                sb.AppendLine();
-                foreach (string line in runLogLines)
-                {
-                    string trimmed = line.Trim();
-                    if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
-                        sb.AppendLine(trimmed);
-                }
-                File.WriteAllText(report, sb.ToString(), Encoding.UTF8);
+                SafeAtomicFile.WriteAllText(report, BuildCheckOnlyReportText(readinessFailures, runLogLines), Encoding.UTF8);
                 Log("FILE Check-only report written: " + report);
             }
             catch (Exception ex)
             {
                 Log("WARN Check-only report could not be written: " + ex.Message);
             }
+        }
+
+        private string BuildCheckOnlyReportText(int readinessFailures, string[] runLogLines)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("CK3MPS compact check");
+            sb.AppendLine("Stabilizer: " + AppVersion);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Result: " + (readinessFailures == 0 ? "READY" : "NOT READY"));
+            sb.AppendLine("Failed readiness checks: " + readinessFailures);
+            sb.AppendLine();
+            foreach (string line in runLogLines ?? new string[0])
+            {
+                string trimmed = (line ?? "").Trim();
+                if (trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
+                    sb.AppendLine(trimmed);
+            }
+            return sb.ToString();
         }
 
         private void RunReadinessChecks(bool includeRestorePointCheck)
@@ -1068,8 +1088,10 @@ namespace CK3MPS
 
             try
             {
-                byte[] bytes = File.ReadAllBytes(path);
-                return bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+                byte[] bytes = new byte[3];
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    return stream.Read(bytes, 0, bytes.Length) == bytes.Length
+                        && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
             }
             catch
             {
@@ -1565,7 +1587,7 @@ namespace CK3MPS
                 if (readOnlyScanMode)
                     return;
                 string path = StabilizerFile("ck3_stabilizer_cache_diagnostics.txt");
-                File.WriteAllText(path, text, Encoding.UTF8);
+                SafeAtomicFile.WriteAllText(path, text, Encoding.UTF8);
             }
             catch (Exception ex)
             {

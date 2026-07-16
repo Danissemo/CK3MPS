@@ -4,10 +4,53 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 using Microsoft.Win32;
 
 namespace CK3MPS
 {
+    internal static class MutationAudit
+    {
+        private static readonly object Sync = new object();
+        private static int readOnlyScopeDepth;
+        private static readonly List<string> Attempts = new List<string>();
+
+        public static void BeginReadOnlyScope()
+        {
+            lock (Sync)
+            {
+                if (readOnlyScopeDepth == 0)
+                    Attempts.Clear();
+                readOnlyScopeDepth++;
+            }
+        }
+
+        public static string[] EndReadOnlyScope()
+        {
+            lock (Sync)
+            {
+                if (readOnlyScopeDepth > 0)
+                    readOnlyScopeDepth--;
+                string[] result = Attempts.ToArray();
+                if (readOnlyScopeDepth == 0)
+                    Attempts.Clear();
+                return result;
+            }
+        }
+
+        public static void RecordMutation(string kind, string target)
+        {
+            lock (Sync)
+            {
+                if (readOnlyScopeDepth <= 0)
+                    return;
+                string attempt = (kind ?? "mutation") + ":" + (target ?? "");
+                Attempts.Add(attempt);
+                throw new InvalidOperationException("Read-only Scan blocked a mutation attempt: " + attempt);
+            }
+        }
+    }
+
     internal static class Ck3PathUtilities
     {
         public static string DefaultSettingsFolder()
@@ -235,14 +278,9 @@ namespace CK3MPS
                 {
                     string relative = normalizedPath.Substring(normalizedDocs.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                     string[] parts = relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length > 0)
-                    {
-                        if (String.Equals(parts[0], "save games", StringComparison.OrdinalIgnoreCase))
-                            return RestorePathKind.ManagedWorkflowSave;
-                        if (String.Equals(parts[0], "mod", StringComparison.OrdinalIgnoreCase))
-                            return RestorePathKind.ManagedWorkflowSave;
-                    }
-                    if (normalizedPath.EndsWith(".ck3", StringComparison.OrdinalIgnoreCase))
+                    if (parts.Length == 2
+                        && String.Equals(parts[0], "save games", StringComparison.OrdinalIgnoreCase)
+                        && normalizedPath.EndsWith(".ck3", StringComparison.OrdinalIgnoreCase))
                         return RestorePathKind.ManagedWorkflowSave;
 
                     if (parts.Length == 1)
@@ -1018,8 +1056,12 @@ namespace CK3MPS
             public bool Exists;
             public long Length;
             public DateTime LastWriteUtc;
+            public FileAttributes Attributes;
+            public string Sha256;
         }
 
+        private const long MaxAppendFileBytes = 2L * 1024L * 1024L;
+        private const int MaxAppendRotations = 3;
         private static readonly object PathLocksSync = new object();
         private static readonly Dictionary<string, object> PathLocks = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
@@ -1041,14 +1083,20 @@ namespace CK3MPS
         private static FileSnapshot CaptureSnapshot(string path)
         {
             if (String.IsNullOrEmpty(path) || !File.Exists(path))
-                return new FileSnapshot { Exists = false, Length = 0, LastWriteUtc = DateTime.MinValue };
+                return new FileSnapshot { Exists = false, Length = 0, LastWriteUtc = DateTime.MinValue, Sha256 = "" };
 
             FileInfo info = new FileInfo(path);
+            string hash;
+            using (SHA256 sha = SHA256.Create())
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                hash = Convert.ToBase64String(sha.ComputeHash(stream));
             return new FileSnapshot
             {
                 Exists = true,
                 Length = info.Length,
-                LastWriteUtc = info.LastWriteTimeUtc
+                LastWriteUtc = info.LastWriteTimeUtc,
+                Attributes = info.Attributes,
+                Sha256 = hash
             };
         }
 
@@ -1060,11 +1108,14 @@ namespace CK3MPS
 
             return current.Exists == expected.Exists
                 && current.Length == expected.Length
-                && current.LastWriteUtc == expected.LastWriteUtc;
+                && current.LastWriteUtc == expected.LastWriteUtc
+                && current.Attributes == expected.Attributes
+                && String.Equals(current.Sha256, expected.Sha256, StringComparison.Ordinal);
         }
 
         public static void ReplaceFile(string tempPath, string targetPath)
         {
+            MutationAudit.RecordMutation("file-replace", targetPath);
             if (File.Exists(targetPath))
                 File.Replace(tempPath, targetPath, null, true);
             else
@@ -1076,7 +1127,10 @@ namespace CK3MPS
             try
             {
                 if (!String.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    MutationAudit.RecordMutation("file-delete", path);
                     File.Delete(path);
+                }
             }
             catch
             {
@@ -1085,21 +1139,73 @@ namespace CK3MPS
 
         public static AtomicWriteResult TryWriteAllText(string path, string content, Encoding encoding, Func<string, bool> validateTemp)
         {
+            MutationAudit.RecordMutation("file-write", path);
+            FileSnapshot expected;
+            try
+            {
+                expected = CaptureSnapshot(path);
+            }
+            catch (Exception ex)
+            {
+                return new AtomicWriteResult { Status = AtomicWriteStatus.IoError, Message = ex.Message };
+            }
             object sync = GetPathLock(path);
             lock (sync)
             {
-                return TryWriteAllTextCore(path, content, encoding, validateTemp, null);
+                return TryWriteAllTextCore(path, content, encoding, validateTemp, expected);
             }
         }
 
         public static AtomicWriteResult TryAppendText(string path, string content, Encoding encoding)
         {
             string target = path ?? "";
+            MutationAudit.RecordMutation("file-append", target);
             object sync = GetPathLock(target);
             lock (sync)
             {
-                string existing = File.Exists(target) ? File.ReadAllText(target, encoding ?? new UTF8Encoding(false)) : "";
-                return TryWriteAllTextCore(target, existing + (content ?? ""), encoding, null, null);
+                try
+                {
+                    for (int attempt = 0; attempt < 3; attempt++)
+                    {
+                        FileSnapshot expected = CaptureSnapshot(target);
+
+                        Encoding effectiveEncoding = encoding ?? new UTF8Encoding(false);
+                        string addition = content ?? "";
+                        long additionBytes = effectiveEncoding.GetByteCount(addition);
+                        if (expected.Exists && expected.Length + additionBytes > MaxAppendFileBytes)
+                        {
+                            if (!SnapshotMatches(target, expected))
+                                continue;
+                            RotateAppendFiles(target);
+                            expected = CaptureSnapshot(target);
+                        }
+
+                        string existing = expected.Exists ? File.ReadAllText(target, effectiveEncoding) : "";
+                        AtomicWriteResult result = TryWriteAllTextCore(target, existing + addition, effectiveEncoding, null, expected);
+                        if (result.Status != AtomicWriteStatus.Conflict)
+                            return result;
+                    }
+                    return new AtomicWriteResult { Status = AtomicWriteStatus.Conflict, Message = "Target file kept changing during append." };
+                }
+                catch (Exception ex)
+                {
+                    return new AtomicWriteResult { Status = AtomicWriteStatus.IoError, Message = ex.Message };
+                }
+            }
+        }
+
+        private static void RotateAppendFiles(string path)
+        {
+            MutationAudit.RecordMutation("file-rotate", path);
+            for (int index = MaxAppendRotations; index >= 1; index--)
+            {
+                string source = index == 1 ? path : path + "." + (index - 1).ToString();
+                string destination = path + "." + index.ToString();
+                if (!File.Exists(source))
+                    continue;
+                if (File.Exists(destination))
+                    File.Delete(destination);
+                File.Move(source, destination);
             }
         }
 

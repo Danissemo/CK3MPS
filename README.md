@@ -40,7 +40,7 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 CK3MPS is built for local Windows machines and should be run intentionally.
 
 - Run it as administrator when applying stabilization.
-- Run **Scan** when you only want diagnostics and review without applying changes. Scan mode is read-only and does not create or migrate stabilizer state.
+- Run **Scan** when you only want diagnostics and review without applying changes. Scan mode is read-only and does not create or migrate stabilizer state. Use **Export Scan Report** afterward to explicitly save the in-memory result to a location you choose.
 - Keep your CK3 saves. Managed workflow saves are quarantined for recovery instead of being deleted.
 - Close CK3 before applying game or launcher settings.
 - Treat imported reports, saves, launcher state and restore manifests as untrusted input. Review before applying changes on shared or unusual setups.

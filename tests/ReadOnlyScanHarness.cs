@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Threading;
+using System.Windows.Forms;
 
 internal static class ReadOnlyScanHarness
 {
@@ -35,6 +37,7 @@ internal static class ReadOnlyScanHarness
             object form = Activator.CreateInstance(mainFormType, true);
             try
             {
+                ((Form)form).CreateControl();
                 SetField(mainFormType, form, "ck3Docs", docsRoot, flags);
                 SetField(mainFormType, form, "ck3Install", installRoot, flags);
                 SetField(mainFormType, form, "ck3Bin", binariesRoot, flags);
@@ -43,11 +46,23 @@ internal static class ReadOnlyScanHarness
                 SetField(mainFormType, form, "liveLogFilePath", "", flags);
                 SetField(mainFormType, form, "liveLogWritesEnabled", false, flags);
 
-                MethodInfo runCheckOnlyScanCore = mainFormType.GetMethod("RunCheckOnlyScanCore", flags);
-                if (runCheckOnlyScanCore == null)
-                    throw new InvalidOperationException("RunCheckOnlyScanCore was not found.");
+                MethodInfo runCheckOnly = mainFormType.GetMethod("RunCheckOnly", flags);
+                if (runCheckOnly == null)
+                    throw new InvalidOperationException("RunCheckOnly was not found.");
 
-                runCheckOnlyScanCore.Invoke(form, new object[] { false, false });
+                runCheckOnly.Invoke(form, null);
+                Label status = (Label)mainFormType.GetField("statusLabel", flags).GetValue(form);
+                DateTime deadline = DateTime.UtcNow.AddSeconds(20);
+                while (DateTime.UtcNow < deadline && status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(25);
+                }
+                Assert(status.Text.IndexOf("Scan complete", StringComparison.OrdinalIgnoreCase) >= 0, "full read-only Scan did not complete before timeout");
+                string reportText = Convert.ToString(mainFormType.GetField("lastCheckOnlyReportText", flags).GetValue(form)) ?? "";
+                Assert(reportText.IndexOf("CK3MPS compact check", StringComparison.Ordinal) >= 0, "full read-only Scan should retain an in-memory export report");
+                string[] mutationAttempts = (string[])mainFormType.GetField("lastReadOnlyMutationAttempts", flags).GetValue(form);
+                Assert(mutationAttempts != null && mutationAttempts.Length == 0, "recording mutation abstraction should observe zero file, registry, or command mutations during Scan");
 
                 Assert(!Directory.Exists(stateRoot), "read-only scan must not create state root");
                 Assert(!File.Exists(Path.Combine(stateRoot, "history.txt")), "read-only scan must not create history");

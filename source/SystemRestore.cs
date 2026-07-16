@@ -72,6 +72,7 @@ namespace CK3MPS
 
         private void CreateWindowsRestorePoint()
         {
+            MutationAudit.RecordMutation("system-restore-command", "create restore point");
             if (!IsAdministrator())
                 throw new InvalidOperationException("Administrator rights are required to create a Windows restore point.");
 
@@ -309,6 +310,7 @@ namespace CK3MPS
 
         private void RepairWindowsRestorePointInfrastructure()
         {
+            MutationAudit.RecordMutation("system-restore-command", "repair restore infrastructure");
             string script =
                 "$ErrorActionPreference = 'Stop'\r\n" +
                 "Set-Service -Name VSS -StartupType Manual\r\n" +

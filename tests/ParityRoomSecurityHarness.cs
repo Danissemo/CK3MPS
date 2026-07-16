@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Net;
+using System.Net.Sockets;
 
 internal static class ParityRoomSecurityHarness
 {
@@ -26,7 +28,8 @@ internal static class ParityRoomSecurityHarness
                 MethodInfo validatePayload = mainFormType.GetMethod("ValidateAndRememberParityRoomPayload", instanceFlags);
                 MethodInfo protectPayload = mainFormType.GetMethod("ProtectParityRoomPayload", instanceFlags);
                 MethodInfo unprotectPayload = mainFormType.GetMethod("UnprotectParityRoomPayload", instanceFlags);
-                if (sessionType == null || buildPayload == null || parsePayload == null || validatePayload == null || protectPayload == null || unprotectPayload == null)
+                MethodInfo consumeRateLimit = mainFormType.GetMethod("TryConsumeParityRoomRateLimit", instanceFlags);
+                if (sessionType == null || buildPayload == null || parsePayload == null || validatePayload == null || protectPayload == null || unprotectPayload == null || consumeRateLimit == null)
                     throw new InvalidOperationException("Parity room security members were not found.");
 
                 object session = Activator.CreateInstance(sessionType, true);
@@ -41,6 +44,8 @@ internal static class ParityRoomSecurityHarness
                 SetField(sessionType, session, "LocalOosSaveDumpText", "save-dump");
                 SetField(sessionType, session, "LocalOosModifierDumpText", "modifier-dump");
                 SetField(sessionType, session, "LocalOosErrorLogText", "error-log");
+                SetField(sessionType, session, "OosReportsShareConsented", true);
+                SetField(sessionType, session, "RawOosDumpsShareConsented", true);
 
                 string payload = Convert.ToString(buildPayload.Invoke(form, new object[] { session, "Tester", true, true })) ?? "";
                 byte[] protectedPacket = (byte[])protectPayload.Invoke(form, new object[] { payload, "shared-secret-value" });
@@ -51,6 +56,9 @@ internal static class ParityRoomSecurityHarness
                 Assert(unprotected == payload, "encrypted parity packet should decrypt back to the original payload");
 
                 Dictionary<string, string> parsed = ParseDictionary(parsePayload.Invoke(form, new object[] { payload }));
+                Assert(parsed.ContainsKey("protocol_version") && parsed["protocol_version"] == "1", "parity payload should declare protocol version 1");
+                Assert(parsed.ContainsKey("message_type") && parsed["message_type"] == "parity_update", "parity payload should declare its message type");
+                Assert(parsed.ContainsKey("peer_id") && parsed["peer_id"].Length == 32, "parity payload should carry a stable peer ID");
 
                 object[] validateArgs = new object[] { session, parsed, null };
                 bool accepted = Convert.ToBoolean(validatePayload.Invoke(form, validateArgs));
@@ -72,6 +80,14 @@ internal static class ParityRoomSecurityHarness
                 Assert(!tamperedAccepted, "tampered parity payload should fail signature validation");
                 Assert((Convert.ToString(tamperedArgs[2]) ?? "").IndexOf("signature", StringComparison.OrdinalIgnoreCase) >= 0, "tampered parity payload should report a signature failure");
 
+                object spoofedPeerSession = Activator.CreateInstance(sessionType, true);
+                SetField(sessionType, spoofedPeerSession, "RoomCode", "123456");
+                SetField(sessionType, spoofedPeerSession, "SharedSecret", "shared-secret-value");
+                Dictionary<string, string> spoofedPeer = new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase);
+                spoofedPeer["peer_id"] = Guid.NewGuid().ToString("N");
+                object[] spoofedPeerArgs = new object[] { spoofedPeerSession, spoofedPeer, null };
+                Assert(!Convert.ToBoolean(validatePayload.Invoke(form, spoofedPeerArgs)), "peer ID substitution should invalidate the signed payload");
+
                 byte[] tamperedPacket = (byte[])protectedPacket.Clone();
                 tamperedPacket[20] ^= 0x5A;
                 bool transportRejected = false;
@@ -85,6 +101,31 @@ internal static class ParityRoomSecurityHarness
                     transportRejected = inner != null && inner.Message.IndexOf("authentication", StringComparison.OrdinalIgnoreCase) >= 0;
                 }
                 Assert(transportRejected, "tampered encrypted parity packet should fail transport authentication");
+
+                FieldInfo maxPeers = sessionType.GetField("MaxPeers", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                Assert(maxPeers != null && Convert.ToInt32(maxPeers.GetRawConstantValue()) == 32, "parity room should enforce a bounded peer count");
+
+                object rateSession = Activator.CreateInstance(sessionType, true);
+                TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                try
+                {
+                    int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                    using (TcpClient outbound = new TcpClient())
+                    {
+                        outbound.Connect(IPAddress.Loopback, port);
+                        using (TcpClient inbound = listener.AcceptTcpClient())
+                        {
+                            for (int i = 0; i < 60; i++)
+                                Assert(Convert.ToBoolean(consumeRateLimit.Invoke(form, new object[] { rateSession, inbound })), "parity rate limiter should allow requests within the configured budget");
+                            Assert(!Convert.ToBoolean(consumeRateLimit.Invoke(form, new object[] { rateSession, inbound })), "parity rate limiter should reject requests above the per-minute budget");
+                        }
+                    }
+                }
+                finally
+                {
+                    listener.Stop();
+                }
                 return 0;
             }
             finally

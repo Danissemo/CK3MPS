@@ -259,56 +259,88 @@ namespace CK3MPS
 
         private void MoveStabilizerRootContents(string sourceRoot, string targetRoot)
         {
+            MutationAudit.RecordMutation("state-migration", sourceRoot + " -> " + targetRoot);
             if (String.IsNullOrEmpty(sourceRoot) || String.IsNullOrEmpty(targetRoot)
                 || String.Equals(sourceRoot, targetRoot, StringComparison.OrdinalIgnoreCase)
                 || !Directory.Exists(sourceRoot))
                 return;
 
-            Directory.CreateDirectory(targetRoot);
+            string normalizedSource;
+            string normalizedTarget;
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(sourceRoot, out normalizedSource)
+                || !PathContainmentUtilities.TryNormalizeAbsolutePath(targetRoot, out normalizedTarget)
+                || PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalizedSource)
+                || PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalizedTarget))
+                throw new InvalidOperationException("Portable state migration refuses malformed or reparse-point roots.");
+            if (PathContainmentUtilities.IsWithinRoot(normalizedSource, normalizedTarget)
+                || PathContainmentUtilities.IsWithinRoot(normalizedTarget, normalizedSource))
+                throw new InvalidOperationException("Portable state roots must not contain one another.");
 
-            foreach (string file in Directory.GetFiles(sourceRoot, "*", SearchOption.TopDirectoryOnly))
-                MovePathWithMerge(file, Path.Combine(targetRoot, Path.GetFileName(file)));
+            Directory.CreateDirectory(normalizedTarget);
+            List<string> sourceFiles = new List<string>();
+            CollectMigrationFiles(normalizedSource, sourceFiles);
 
-            foreach (string dir in Directory.GetDirectories(sourceRoot, "*", SearchOption.TopDirectoryOnly))
-                MovePathWithMerge(dir, Path.Combine(targetRoot, Path.GetFileName(dir)));
-
-            TryDeleteIfEmpty(sourceRoot);
-        }
-
-        private void MovePathWithMerge(string sourcePath, string targetPath)
-        {
-            if (File.Exists(sourcePath))
+            foreach (string sourceFile in sourceFiles)
             {
-                string targetDir = Path.GetDirectoryName(targetPath);
+                string relative = sourceFile.Substring(normalizedSource.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string targetFile = Path.Combine(normalizedTarget, relative);
+                if (File.Exists(targetFile))
+                {
+                    if (!FileContentsEqual(sourceFile, targetFile))
+                        throw new IOException("Portable migration conflict; both state roots contain different data: " + relative);
+                    continue;
+                }
+
+                string targetDir = Path.GetDirectoryName(targetFile);
                 if (!String.IsNullOrEmpty(targetDir))
                     Directory.CreateDirectory(targetDir);
-                File.Copy(sourcePath, targetPath, true);
-                File.Delete(sourcePath);
-                return;
+                string tempFile = targetFile + ".migration-" + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.Copy(sourceFile, tempFile, false);
+                    if (!FileContentsEqual(sourceFile, tempFile))
+                        throw new IOException("Portable migration verification failed: " + relative);
+                    File.Move(tempFile, targetFile);
+                }
+                finally
+                {
+                    SafeAtomicFile.TryDeleteTempFile(tempFile);
+                }
             }
 
-            if (!Directory.Exists(sourcePath))
-                return;
+            foreach (string sourceFile in sourceFiles)
+            {
+                string relative = sourceFile.Substring(normalizedSource.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string targetFile = Path.Combine(normalizedTarget, relative);
+                if (!File.Exists(targetFile) || !FileContentsEqual(sourceFile, targetFile))
+                    throw new IOException("Portable migration destination changed before source cleanup: " + relative);
+            }
 
-            Directory.CreateDirectory(targetPath);
-            foreach (string file in Directory.GetFiles(sourcePath, "*", SearchOption.TopDirectoryOnly))
-                MovePathWithMerge(file, Path.Combine(targetPath, Path.GetFileName(file)));
-            foreach (string dir in Directory.GetDirectories(sourcePath, "*", SearchOption.TopDirectoryOnly))
-                MovePathWithMerge(dir, Path.Combine(targetPath, Path.GetFileName(dir)));
-            TryDeleteIfEmpty(sourcePath);
+            foreach (string sourceFile in sourceFiles)
+                File.Delete(sourceFile);
+            DeleteEmptyMigrationDirectories(normalizedSource);
         }
 
-        private void TryDeleteIfEmpty(string path)
+        private void CollectMigrationFiles(string root, List<string> files)
+        {
+            if (!Directory.Exists(root))
+                return;
+            if (PathContainmentUtilities.ContainsReparsePointInExistingSegments(root))
+                throw new InvalidOperationException("Portable migration encountered a reparse-point directory: " + root);
+            files.AddRange(Directory.GetFiles(root, "*", SearchOption.TopDirectoryOnly));
+            foreach (string directory in Directory.GetDirectories(root, "*", SearchOption.TopDirectoryOnly))
+                CollectMigrationFiles(directory, files);
+        }
+
+        private void DeleteEmptyMigrationDirectories(string path)
         {
             if (!Directory.Exists(path))
                 return;
-
-            if (Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly).Length != 0)
-                return;
-            if (Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length != 0)
-                return;
-
-            Directory.Delete(path, false);
+            foreach (string directory in Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly))
+                DeleteEmptyMigrationDirectories(directory);
+            if (Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly).Length == 0
+                && Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length == 0)
+                Directory.Delete(path, false);
         }
 
         private void RelinkLiveLogPath(string oldRoot, string newRoot, string oldLiveLogPath)
@@ -565,7 +597,7 @@ namespace CK3MPS
             HostSaveCandidateResult save = AnalyzeBestHostSaveCandidate();
             sb.AppendLine("Host suitability: " + host.Level + " (" + host.Score + "/100)");
             sb.AppendLine("Host save verdict: " + save.Verdict + " (" + save.Score + "/100)");
-            File.WriteAllText(Path.Combine(exportDir, "summary.txt"), sb.ToString(), Encoding.UTF8);
+            SafeAtomicFile.WriteAllText(Path.Combine(exportDir, "summary.txt"), sb.ToString(), Encoding.UTF8);
         }
 
         private void CopyIfExists(string source, string dest)

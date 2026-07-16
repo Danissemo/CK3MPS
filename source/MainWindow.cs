@@ -71,6 +71,13 @@ namespace CK3MPS
             checkButton.Click += delegate { RunCheckOnly(); };
             mainPage.Controls.Add(checkButton);
 
+            exportScanReportButton.Text = "Export Scan Report";
+            exportScanReportButton.Size = new Size(150, 34);
+            exportScanReportButton.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            exportScanReportButton.Enabled = false;
+            exportScanReportButton.Click += delegate { ExportLastScanReport(); };
+            mainPage.Controls.Add(exportScanReportButton);
+
             mainPage.MouseMove += delegate(object sender, MouseEventArgs e)
             {
                 if (!stabilizeButton.Enabled && stabilizeButton.Bounds.Contains(e.Location))
@@ -251,7 +258,8 @@ namespace CK3MPS
             progress.Size = new Size(mainPage.ClientSize.Width - (leftMargin * 2), 22);
 
             checkButton.Location = new Point(leftMargin, actionButtonTop);
-            previewButton.Location = new Point(checkButton.Right + gap, actionButtonTop);
+            exportScanReportButton.Location = new Point(checkButton.Right + gap, actionButtonTop);
+            previewButton.Location = new Point(exportScanReportButton.Right + gap, actionButtonTop);
             stabilizeButton.Location = new Point(previewButton.Right + gap, actionButtonTop);
         }
 
@@ -937,6 +945,8 @@ namespace CK3MPS
                 });
                 string[] runLogLines = SnapshotRunLogLines();
                 int readinessFailures = lastReadinessFailures;
+                lastCheckOnlyReportText = BuildCheckOnlyReportText(readinessFailures, runLogLines);
+                exportScanReportButton.Enabled = true;
                 string historyResult;
 
                 if (readinessFailures == 0)
@@ -1071,7 +1081,11 @@ namespace CK3MPS
 
         private void RunCheckOnlyScanCore(bool writeReport, bool advanceProgress)
         {
+            bool resumeOosWatcher = oosWatcherCancelSource != null && !oosWatcherCancelSource.IsCancellationRequested;
+            if (resumeOosWatcher)
+                StopOosWatcherServices(3000);
             readOnlyScanMode = true;
+            MutationAudit.BeginReadOnlyScope();
             try
             {
                 for (int i = 0; i < steps.Items.Count; i++)
@@ -1085,7 +1099,12 @@ namespace CK3MPS
             }
             finally
             {
+                lastReadOnlyMutationAttempts = MutationAudit.EndReadOnlyScope();
                 readOnlyScanMode = false;
+                if (resumeOosWatcher)
+                    StartOosWatcherServices();
+                if (lastReadOnlyMutationAttempts.Length > 0)
+                    throw new InvalidOperationException("Read-only Scan attempted " + lastReadOnlyMutationAttempts.Length + " mutation(s): " + String.Join(", ", lastReadOnlyMutationAttempts));
             }
         }
 
@@ -1115,6 +1134,27 @@ namespace CK3MPS
                 if (finalizeGeneration != deferredFinalizeGeneration)
                     return;
             });
+        }
+
+        private void ExportLastScanReport()
+        {
+            if (String.IsNullOrWhiteSpace(lastCheckOnlyReportText))
+            {
+                MessageBox.Show("Run Scan before exporting its report.", "Export Scan Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (SaveFileDialog dialog = new SaveFileDialog())
+            {
+                dialog.Title = "Export Scan Report";
+                dialog.Filter = "Text report (*.txt)|*.txt|All files (*.*)|*.*";
+                dialog.FileName = "CK3MPS_scan_report_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                SafeAtomicFile.WriteAllText(dialog.FileName, lastCheckOnlyReportText, Encoding.UTF8);
+                SetStatusText("Scan report exported: " + dialog.FileName);
+            }
         }
 
         private void BeginDeferredStabilizeFinalize(int finalizeGeneration, int readinessFailures, string[] runLogLines, string historyLine, bool shouldStartGuard)

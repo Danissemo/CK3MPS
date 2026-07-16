@@ -70,7 +70,7 @@ namespace CK3MPS
             }
 
             BackupFile(path);
-            File.WriteAllText(path, target, Utf8NoBom);
+            SafeAtomicFile.WriteAllText(path, target, Utf8NoBom);
             Log("No-mod/no-disabled-DLC dlc_load.json written.");
         }
 

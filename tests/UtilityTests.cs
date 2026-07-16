@@ -56,6 +56,9 @@ internal static class UtilityTests
         Assert(RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "pdx_settings.txt"), ck3Docs, localLauncher, roamingLauncher), "default restore allows explicit CK3 config file");
         Assert(!RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "save games", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher), "default restore denies managed workflow save");
         Assert(!RestoreManifestUtilities.IsDefaultRestorablePath(Path.Combine(ck3Docs, "mod"), ck3Docs, localLauncher, roamingLauncher), "default restore denies mod root");
+        Assert(RestoreManifestUtilities.GetRestorePathKind(Path.Combine(ck3Docs, "save games", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher) == RestoreManifestUtilities.RestorePathKind.ManagedWorkflowSave, "restore selected recognizes a direct managed save");
+        Assert(RestoreManifestUtilities.GetRestorePathKind(Path.Combine(ck3Docs, "save games", "nested", "campaign.ck3"), ck3Docs, localLauncher, roamingLauncher) == RestoreManifestUtilities.RestorePathKind.Unknown, "restore selected rejects nested save paths");
+        Assert(RestoreManifestUtilities.GetRestorePathKind(Path.Combine(ck3Docs, "mod", "payload.bin"), ck3Docs, localLauncher, roamingLauncher) == RestoreManifestUtilities.RestorePathKind.Unknown, "restore selected rejects arbitrary mod files");
         Assert(RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR\AppCaptureEnabled"), "registry allowlist accepts known GameDVR value");
         Assert(RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\Software\Microsoft\DirectX\UserGpuPreferences\C:\Games\Crusader Kings III\binaries\ck3.exe"), "registry allowlist accepts CK3 GPU preference value");
         Assert(!RestoreManifestUtilities.IsAllowedRegistryRestoreTarget(@"HKCU\Software\Microsoft\DirectX\UserGpuPreferences\C:\Games\OtherGame\game.exe"), "registry allowlist rejects foreign executable value");
@@ -106,6 +109,12 @@ internal static class UtilityTests
             Task.WaitAll(writers);
             string[] lines = File.ReadAllLines(target);
             Assert(lines.Length == 10, "atomic append serializes concurrent writers");
+
+            File.WriteAllText(target, new string('x', (2 * 1024 * 1024) - 4));
+            AtomicWriteResult rotated = SafeAtomicFile.TryAppendText(target, "rotation-trigger", new System.Text.UTF8Encoding(false));
+            Assert(rotated.Succeeded, "bounded history append succeeds after rotation");
+            Assert(File.Exists(target + ".1"), "bounded history append rotates the previous file");
+            Assert(File.ReadAllText(target) == "rotation-trigger", "bounded history append starts a fresh current file");
         }
         finally
         {
