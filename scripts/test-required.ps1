@@ -62,6 +62,8 @@ $newMonitorBlock = @'
                             context.ExitThread();
                         }
 '@
+$oldMonitorBlock = $oldMonitorBlock -replace "`r`n", "`n"
+$newMonitorBlock = $newMonitorBlock -replace "`r`n", "`n"
 if (-not $harnessText.Contains($oldMonitorBlock)) {
     throw 'Could not locate the ReadOnlyScan monitor shutdown block.'
 }
@@ -77,6 +79,7 @@ $helperBlock = @'
     }
 
 '@
+$helperBlock = $helperBlock -replace "`r`n", "`n"
 $helperIndex = $harnessText.IndexOf($helperNeedle, [System.StringComparison]::Ordinal)
 if ($helperIndex -lt 0) {
     throw 'Could not locate the ReadOnlyScan helper insertion point.'
