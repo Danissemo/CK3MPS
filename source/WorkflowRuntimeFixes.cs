@@ -6,7 +6,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -22,9 +22,54 @@ namespace CK3MPS
 
         private void ConfigureWorkflowRuntimeFixes()
         {
+            ConfigureMainButtonLabels();
+            ConfigureChecklistLabels();
             ConfigureCombinedWorkflowFixButton();
-            ConfigureOnlineParityRoomButton();
+            ConfigureWorkflowParityControls();
             UpdateWorkflowRuntimeFixLayout();
+
+            workflowModeBox.SelectedIndexChanged += delegate
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    ConfigureCombinedWorkflowFixButton();
+                    ConfigureWorkflowParityControls();
+                    UpdateWorkflowRuntimeFixLayout();
+                });
+            };
+        }
+
+        private void ConfigureMainButtonLabels()
+        {
+            checkButton.Text = "Scan Settings";
+            checkButton.Size = new Size(130, checkButton.Height);
+            exportScanReportButton.Text = "Scan Export";
+            exportScanReportButton.Size = new Size(130, exportScanReportButton.Height);
+            previewButton.Text = "Review Settings";
+            previewButton.Size = new Size(130, previewButton.Height);
+            ReplaceClickHandlers(checkButton, delegate { RunCheckOnlyAndUnlockExport(); });
+            if (!String.IsNullOrWhiteSpace(lastCheckOnlyReportText))
+                exportScanReportButton.Enabled = true;
+            LayoutMainTabControls();
+        }
+
+        private void ConfigureChecklistLabels()
+        {
+            foreach (StepGroupUi group in stepGroups)
+            {
+                if (String.Equals(group.Title, "Safety Options", StringComparison.OrdinalIgnoreCase))
+                {
+                    group.Title = "Backup";
+                    group.TitleLabel.Text = "Backup";
+                }
+            }
+        }
+
+        private async void RunCheckOnlyAndUnlockExport()
+        {
+            await RunCheckOnlyAsync();
+            if (!String.IsNullOrWhiteSpace(lastCheckOnlyReportText))
+                exportScanReportButton.Enabled = true;
         }
 
         private void ConfigureCombinedWorkflowFixButton()
@@ -37,18 +82,32 @@ namespace CK3MPS
             stepToolTip.SetToolTip(workflowApplySafeStartButton, BuildWorkflowFixSaveAndHostHintText());
         }
 
-        private void ConfigureOnlineParityRoomButton()
+        private void ConfigureWorkflowParityControls()
         {
-            workflowParityRoomButton.Text = "Online parity";
-            ReplaceClickHandlers(workflowParityRoomButton, delegate { OpenOnlineParityRoom(); });
-            stepToolTip.SetToolTip(workflowParityRoomButton, "Online direct parity room. Host creates a TCP room and shares host/IP, port, code and secret with other players.");
+            workflowParityRoomButton.Text = "Parity room";
+            ReplaceClickHandlers(workflowParityRoomButton, delegate { OpenParityRoomWithOnlineDashboardText(); });
+            stepToolTip.SetToolTip(workflowParityRoomButton, "Online-capable parity room dashboard. Host creates a TCP room and shares host/IP, port, code and secret with other players.");
+
+            workflowCompareParityButton.Visible = false;
+            workflowCompareParityButton.Enabled = false;
+            AddCompareParityToMoreMenu();
+        }
+
+        private void AddCompareParityToMoreMenu()
+        {
+            foreach (ToolStripItem item in workflowMoreMenu.Items)
+            {
+                if (String.Equals(item.Text, "Compare parity", StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            workflowMoreMenu.Items.Insert(0, new ToolStripMenuItem("Compare parity", null, delegate { CompareWorkflowParity(); }));
         }
 
         private void UpdateWorkflowRuntimeFixLayout()
         {
             const int actionGap = 8;
-            workflowCompareParityButton.Location = new Point(workflowApplySafeStartButton.Right + actionGap, workflowCompareParityButton.Top);
-            workflowParityRoomButton.Location = new Point(workflowCompareParityButton.Right + actionGap, workflowParityRoomButton.Top);
+            workflowParityRoomButton.Location = new Point(workflowApplySafeStartButton.Right + actionGap, workflowParityRoomButton.Top);
             workflowMoreButton.Location = new Point(workflowParityRoomButton.Right + actionGap, workflowMoreButton.Top);
             workflowSaveBox.Width = Math.Max(160, workflowHeaderPanel.ClientSize.Width - workflowSaveBox.Left - workflowSaveBrowseButton.Width - 28);
             workflowSaveBrowseButton.Location = new Point(workflowSaveBox.Right + 10, workflowSaveBrowseButton.Top);
@@ -77,7 +136,6 @@ namespace CK3MPS
             }
             catch
             {
-                // If reflection fails, keep the replacement at the end. The combined action is idempotent enough to stay safe.
             }
 
             button.Click += replacement;
@@ -152,23 +210,48 @@ namespace CK3MPS
                 InvalidateHostSuitabilityCache();
                 InvalidateHostSaveAnalysisCache();
                 ClearWorkflowScenarioSnapshots();
-                BeginWorkflowScenarioRefresh();
 
                 HostSuitabilityResult afterHost = AnalyzeHostSuitability();
                 HostSaveCandidateResult afterSave = AnalyzeWorkflowHostSaveCandidate();
                 afterHostScore = afterHost.Score;
                 afterSaveScore = afterSave.Score;
 
+                List<string> blockers = CollectRemainingWorkflowAutoBlockers();
+                bool ready = blockers.Count == 0;
                 string status = "Fix save + host finished. Host " + beforeHostScore + " -> " + afterHostScore + ", save " + beforeSaveScore + " -> " + afterSaveScore + ".";
+                if (!ready)
+                    status += " Remaining blockers: " + blockers.Count + ".";
                 if (warnings.Count > 0)
                     status += " Warnings: " + warnings.Count + ".";
-                SetStatusText(status);
-                Log("OK   " + status);
 
-                if (warnings.Count > 0)
-                    MessageBox.Show(status + "\r\n\r\n" + String.Join("\r\n", warnings.ToArray()), "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                BeginWorkflowScenarioRefresh();
+                SetStatusText(status);
+                Log((ready ? "OK   " : "WARN ") + status);
+
+                if (!ready || warnings.Count > 0)
+                {
+                    List<string> lines = new List<string>();
+                    lines.Add(status);
+                    if (blockers.Count > 0)
+                    {
+                        lines.Add("");
+                        lines.Add("Still not OK:");
+                        foreach (string blocker in blockers)
+                            lines.Add("- " + blocker);
+                    }
+                    if (warnings.Count > 0)
+                    {
+                        lines.Add("");
+                        lines.Add("Warnings:");
+                        foreach (string warning in warnings)
+                            lines.Add("- " + warning);
+                    }
+                    MessageBox.Show(String.Join("\r\n", lines.ToArray()), "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
                 else
+                {
                     MessageBox.Show(status, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
             catch (Exception ex)
             {
@@ -181,214 +264,96 @@ namespace CK3MPS
                 UseWaitCursor = false;
                 workflowApplySafeStartButton.Enabled = true;
                 UpdateWorkflowActionAvailability();
+                ConfigureCombinedWorkflowFixButton();
             }
         }
 
-        private void OpenOnlineParityRoom()
+        private List<string> CollectRemainingWorkflowAutoBlockers()
         {
-            ParityRoomSession session = new ParityRoomSession();
-            session.LocalPlayerLabel = Environment.UserName;
-
-            Form form = new Form();
-            form.Text = "CK3MPS online parity room";
-            form.StartPosition = FormStartPosition.CenterParent;
-            form.Size = new Size(860, 560);
-            form.MinimumSize = new Size(760, 500);
-            form.Padding = new Padding(12);
-
-            TableLayoutPanel layout = new TableLayoutPanel();
-            layout.Dock = DockStyle.Fill;
-            layout.ColumnCount = 1;
-            layout.RowCount = 3;
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            form.Controls.Add(layout);
-
-            FlowLayoutPanel bar = new FlowLayoutPanel();
-            bar.AutoSize = true;
-            bar.Dock = DockStyle.Fill;
-            bar.WrapContents = true;
-            bar.Margin = new Padding(0, 0, 0, 8);
-            layout.Controls.Add(bar, 0, 0);
-
-            Button createButton = new Button { Text = "Create online room", Size = new Size(150, 32), Margin = new Padding(0, 0, 8, 8) };
-            Button joinButton = new Button { Text = "Join room", Size = new Size(100, 32), Margin = new Padding(0, 0, 8, 8) };
-            Button sendParityButton = new Button { Text = "Send parity", Size = new Size(104, 32), Margin = new Padding(0, 0, 8, 8) };
-            Button sendOosButton = new Button { Text = "Send OOS", Size = new Size(96, 32), Margin = new Padding(0, 0, 8, 8) };
-            Button compareButton = new Button { Text = "Compare", Size = new Size(92, 32), Margin = new Padding(0, 0, 8, 8) };
-            bar.Controls.Add(createButton);
-            bar.Controls.Add(joinButton);
-            bar.Controls.Add(sendParityButton);
-            bar.Controls.Add(sendOosButton);
-            bar.Controls.Add(compareButton);
-
-            Label infoLabel = new Label();
-            infoLabel.AutoSize = false;
-            infoLabel.Height = 56;
-            infoLabel.Dock = DockStyle.Fill;
-            infoLabel.Text = "Create an online room or join a host by address. This uses direct TCP, not loopback/LAN-only 127.0.0.1.";
-            layout.Controls.Add(infoLabel, 0, 1);
-
-            RichTextBox output = new RichTextBox();
-            ConfigureLogView(output);
-            output.Dock = DockStyle.Fill;
-            output.Text = "Online parity room is ready.\r\n\r\nHost: click Create online room, then share host/IP, port, code and secret.\r\nPlayer: click Join room and paste the host's details.";
-            layout.Controls.Add(output, 0, 2);
-
-            Action refreshStatus = delegate { RefreshOnlineParityRoomStatus(session, infoLabel, output, false); };
-
-            createButton.Click += delegate
+            List<string> blockers = new List<string>();
+            WorkflowScenarioSnapshot snapshot = BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None);
+            foreach (WorkflowStepState state in snapshot.States)
             {
-                try
-                {
-                    StartParityRoomHost(session, delegate
-                    {
-                        if (!form.IsDisposed && form.IsHandleCreated)
-                            form.BeginInvoke((MethodInvoker)delegate { RefreshOnlineParityRoomStatus(session, infoLabel, output, false); });
-                    });
-                    RefreshParityRoomLocalState(session, true, true);
-                    RefreshOnlineParityRoomStatus(session, infoLabel, output, false);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Could not create online parity room.\r\n\r\n" + ex.Message, "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    Log("WARN Online parity room create failed: " + ex.Message);
-                }
-            };
-
-            joinButton.Click += async delegate
-            {
-                string host;
-                int port;
-                string code;
-                string secret;
-                string playerLabel;
-                if (!ShowParityJoinDialog(form, out host, out port, out code, out secret, out playerLabel))
-                    return;
-
-                session.Joined = true;
-                session.Hosting = false;
-                session.JoinHost = host;
-                session.JoinPort = port;
-                session.RoomCode = code;
-                session.SharedSecret = secret;
-                session.LocalPlayerLabel = playerLabel;
-
-                await RunOnlineParityAction(form, joinButton, "join room", delegate
-                {
-                    SendParityRoomPayload(session, true, false);
-                }, delegate
-                {
-                    RefreshOnlineParityRoomStatus(session, infoLabel, output, false);
-                    MessageBox.Show("Joined the online parity room and sent your manifest.", "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                });
-            };
-
-            sendParityButton.Click += async delegate
-            {
-                if (!session.Joined)
-                {
-                    MessageBox.Show("Join a room first.", "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-                await RunOnlineParityAction(form, sendParityButton, "send parity", delegate
-                {
-                    SendParityRoomPayload(session, true, false);
-                }, delegate { RefreshOnlineParityRoomStatus(session, infoLabel, output, false); });
-            };
-
-            sendOosButton.Click += async delegate
-            {
-                if (!session.Joined)
-                {
-                    MessageBox.Show("Join a room first.", "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-                if (!TryConfirmParityRoomOosShare(session))
-                    return;
-                await RunOnlineParityAction(form, sendOosButton, "send OOS", delegate
-                {
-                    SendParityRoomPayload(session, false, true);
-                }, delegate { RefreshOnlineParityRoomStatus(session, infoLabel, output, false); });
-            };
-
-            compareButton.Click += delegate { RefreshOnlineParityRoomStatus(session, infoLabel, output, true); };
-
-            form.FormClosed += delegate { StopParityRoomHost(session); };
-            form.ShowDialog(this);
+                if (state.Required && state.AutoManaged && !state.Passed)
+                    blockers.Add(MakeWorkflowStepLabelReadable(state));
+            }
+            return blockers;
         }
 
-        private async Task RunOnlineParityAction(Form owner, Button button, string actionName, Action work, Action success)
+        private void OpenParityRoomWithOnlineDashboardText()
         {
+            Timer patchTimer = new Timer();
+            patchTimer.Interval = 250;
+            patchTimer.Tick += delegate
+            {
+                Form form = FindOpenParityRoomForm();
+                if (form == null)
+                    return;
+                PatchParityRoomOnlineText(form);
+                if (form.IsDisposed)
+                    patchTimer.Stop();
+            };
+            patchTimer.Start();
             try
             {
-                button.Enabled = false;
-                await Task.Run(work);
-                if (!owner.IsDisposed && success != null)
-                    success();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not " + actionName + ".\r\n\r\n" + ex.Message, "CK3MPS parity room", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                Log("WARN Online parity room " + actionName + " failed: " + ex.Message);
+                OpenParityRoom();
             }
             finally
             {
-                if (!owner.IsDisposed)
-                    button.Enabled = true;
+                patchTimer.Stop();
+                patchTimer.Dispose();
             }
         }
 
-        private void RefreshOnlineParityRoomStatus(ParityRoomSession session, Label infoLabel, RichTextBox output, bool compare)
+        private Form FindOpenParityRoomForm()
         {
-            if (session == null)
-                return;
-
-            if (session.Hosting && session.Listener != null)
+            foreach (Form form in Application.OpenForms)
             {
-                string host = GetOnlineParityAdvertisedAddress();
-                infoLabel.Text = "Online direct room | Host/IP to share: " + host + " | Port: " + session.JoinPort + " | Code: " + session.RoomCode + " | Secret: " + session.SharedSecret;
+                if (form != null && form != this && form.Text.IndexOf("parity room", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return form;
             }
-            else if (session.Joined)
+            return null;
+        }
+
+        private void PatchParityRoomOnlineText(Control root)
+        {
+            foreach (Control control in root.Controls)
             {
-                infoLabel.Text = "Joined online room | Host: " + session.JoinHost + ":" + session.JoinPort + " | Code: " + session.RoomCode + " | Player: " + session.LocalPlayerLabel;
+                Button button = control as Button;
+                if (button != null)
+                {
+                    if (String.Equals(button.Text, "Create local room", StringComparison.OrdinalIgnoreCase))
+                        button.Text = "Create online room";
+                }
+
+                Label label = control as Label;
+                if (label != null)
+                    label.Text = PatchParityRoomOnlineString(label.Text);
+
+                RichTextBox richText = control as RichTextBox;
+                if (richText != null)
+                {
+                    string patched = PatchParityRoomOnlineString(richText.Text);
+                    if (!String.Equals(richText.Text, patched, StringComparison.Ordinal))
+                        richText.Text = patched;
+                }
+
+                if (control.HasChildren)
+                    PatchParityRoomOnlineText(control);
             }
-            else
-            {
-                infoLabel.Text = "Create an online room or join one by host/IP. Do not use 127.0.0.1 for another player.";
-            }
+        }
 
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine(infoLabel.Text);
-            sb.AppendLine();
-            sb.AppendLine("Connection notes");
-            sb.AppendLine("- Other players must connect to the host's reachable online address, not 127.0.0.1.");
-            sb.AppendLine("- If the host is behind NAT/router, forward the shown TCP port to the host PC or use a VPN/mesh network that gives players a reachable address.");
-            sb.AppendLine("- Windows Firewall must allow CK3MPS on that TCP port.");
-            sb.AppendLine();
-
-            List<ParityRoomPeer> peers;
-            lock (session.Sync)
-                peers = new List<ParityRoomPeer>(session.Peers);
-            sb.AppendLine("Connected players: " + peers.Count);
-            foreach (ParityRoomPeer peer in peers)
-                sb.AppendLine("- " + NullText(peer.PlayerLabel) + " | endpoint=" + NullText(peer.Endpoint) + " | parity=" + (String.IsNullOrWhiteSpace(peer.ManifestText) ? "missing" : "received") + " | OOS=" + (String.IsNullOrWhiteSpace(peer.OosSummaryText) && String.IsNullOrWhiteSpace(peer.OosMetadataText) ? "missing" : "received"));
-
-            if (compare)
-            {
-                string differencesText;
-                string actionsText;
-                List<ParityDifferenceRow> rows;
-                bool safeToStart;
-                BuildParityRoomComparisonTexts(session, out differencesText, out actionsText, out rows, out safeToStart);
-                sb.AppendLine();
-                sb.AppendLine(differencesText);
-                sb.AppendLine();
-                sb.AppendLine(actionsText);
-            }
-
-            output.Text = sb.ToString();
+        private string PatchParityRoomOnlineString(string value)
+        {
+            string text = value ?? "";
+            string host = GetOnlineParityAdvertisedAddress();
+            text = text.Replace("Create a local loopback room or join an existing local host room.", "Create an online direct room or join a host by reachable IP. Do not use 127.0.0.1 for another player.");
+            text = text.Replace("Create a local loopback room or join an existing local host room", "Create an online direct room or join a host by reachable IP");
+            text = text.Replace("local room", "online room");
+            text = text.Replace("local host room", "online host room");
+            text = text.Replace("Live local room", "Live online-capable room");
+            text = text.Replace("Host: 127.0.0.1", "Host/IP to share: " + host);
+            return text;
         }
 
         private string GetOnlineParityAdvertisedAddress()
