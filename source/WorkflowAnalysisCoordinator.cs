@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace CK3MPS
 {
@@ -17,6 +18,9 @@ namespace CK3MPS
         private readonly AsyncLocal<WorkflowAnalysisSnapshot> workflowAnalysisContext = new AsyncLocal<WorkflowAnalysisSnapshot>();
         private readonly object workflowRefreshCancellationSync = new object();
         private CancellationTokenSource workflowRefreshCancellation;
+        private int workflowRefreshOwnerGeneration = -1;
+        private string workflowRefreshOwnerScenario = "";
+        private bool workflowRefreshShuttingDown;
 
         private WorkflowAnalysisSnapshot CaptureWorkflowAnalysisSnapshot(CancellationToken cancellationToken)
         {
@@ -82,7 +86,18 @@ namespace CK3MPS
                     try { workflowRefreshCancellation.Cancel(); } catch { }
                     workflowRefreshCancellation.Dispose();
                 }
+
+                if (workflowRefreshShuttingDown)
+                {
+                    workflowRefreshCancellation = null;
+                    workflowRefreshOwnerGeneration = -1;
+                    workflowRefreshOwnerScenario = "";
+                    return new CancellationToken(true);
+                }
+
                 workflowRefreshCancellation = new CancellationTokenSource();
+                workflowRefreshOwnerGeneration = workflowLoadGeneration;
+                workflowRefreshOwnerScenario = currentWorkflowScenario ?? "";
                 return workflowRefreshCancellation.Token;
             }
         }
@@ -92,6 +107,8 @@ namespace CK3MPS
             lock (workflowRefreshCancellationSync)
             {
                 workflowLoadGeneration++;
+                workflowRefreshOwnerGeneration = -1;
+                workflowRefreshOwnerScenario = "";
                 if (workflowRefreshCancellation != null)
                 {
                     try { workflowRefreshCancellation.Cancel(); } catch { }
@@ -99,15 +116,44 @@ namespace CK3MPS
                     workflowRefreshCancellation = null;
                 }
             }
+
             workflowRefreshPending = false;
-            workflowRenderTimer.Stop();
+            try
+            {
+                if (!workflowRenderTimer.IsDisposed)
+                    workflowRenderTimer.Stop();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
         private bool WorkflowRefreshStillCurrent(int generation, string scenario, CancellationToken cancellationToken)
         {
-            return !cancellationToken.IsCancellationRequested
-                && generation == workflowLoadGeneration
-                && String.Equals(scenario, currentWorkflowScenario, StringComparison.OrdinalIgnoreCase);
+            lock (workflowRefreshCancellationSync)
+            {
+                if (workflowRefreshShuttingDown
+                    || workflowRefreshCancellation == null
+                    || cancellationToken.IsCancellationRequested
+                    || !workflowRefreshCancellation.Token.Equals(cancellationToken))
+                    return false;
+
+                return generation == workflowLoadGeneration
+                    && generation == workflowRefreshOwnerGeneration
+                    && String.Equals(scenario, currentWorkflowScenario, StringComparison.OrdinalIgnoreCase)
+                    && String.Equals(scenario, workflowRefreshOwnerScenario, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (e.Cancel)
+                return;
+
+            lock (workflowRefreshCancellationSync)
+                workflowRefreshShuttingDown = true;
+            CancelWorkflowScenarioRefresh();
         }
     }
 }
