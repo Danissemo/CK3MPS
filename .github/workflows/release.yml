@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish release
+    name: Build, validate, and publish release
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -22,29 +22,44 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
 
-      - name: Build release artifacts
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Verify build output
         shell: pwsh
         run: |
-          ./scripts/build.ps1 -UpdateReleaseArtifacts
-          ./scripts/test-required.ps1
-          ./scripts/test-transactional-hardening.ps1
-          ./scripts/check-static-danger-strict.ps1
-          ./scripts/check-version-consistency.ps1
-          $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
-          $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $version) {
-            throw "Release tag mismatch: pushed $env:GITHUB_REF_NAME but AppVersion is $version"
+          if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
+            throw 'Build completed without bin\CK3MPS.exe.'
           }
-          ./scripts/check-repo-clean.ps1
+          Write-Host 'Verified build output: bin\CK3MPS.exe'
+
+      - name: Run all tests
+        shell: pwsh
+        run: ./scripts/test-all.ps1
+
+      - name: Strict mutation review
+        shell: pwsh
+        run: ./scripts/check-static-danger-strict.ps1
+
+      - name: Validate release gates
+        shell: pwsh
+        run: |
+          ./scripts/check-version-consistency.ps1 -RequireReleaseTag
           ./scripts/validate-release.ps1
-          ./scripts/package-release.ps1
+
+      - name: Package tested release artifacts
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -SkipBuild
 
       - name: Resolve release metadata
         id: meta
         shell: pwsh
         run: |
           $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          if (-not $versionLine) { throw 'Could not parse AppVersion.' }
           $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'AppVersion is empty.' }
           "version=$version" >> $env:GITHUB_OUTPUT
           "notes=docs/release-notes-$version.md" >> $env:GITHUB_OUTPUT
 

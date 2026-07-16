@@ -3,14 +3,8 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 
-# The base script terminates the PowerShell process with exit 1 on failure.
-# On success it returns normally, so reading $LASTEXITCODE here would reuse an
-# unrelated native command's exit code.
 & (Join-Path $ScriptDir 'check-static-danger.ps1')
 
-# These files currently contain one or more broad mutation allowlist entries.
-# Pinning the complete reviewed blob means any edit forces an explicit security
-# review and a deliberate hash update instead of silently inheriting permission.
 $ReviewedBlobs = [ordered]@{
     'source/AppConfig.cs' = '87e66749af2a63356071c57c1d26973e3047fd60'
     'source/Cleanup.cs' = '9240e1fe9fc3f50c9fb770f0475adc1ce08a11f3'
@@ -29,12 +23,18 @@ foreach ($relativePath in $ReviewedBlobs.Keys) {
         throw "Reviewed mutation file is missing: $relativePath"
     }
 
+    # Resolve the blob from the checked-out commit tree, not from working-tree
+    # bytes. This keeps the reviewed identity independent of CRLF conversion.
     $actual = git -C $Root rev-parse "HEAD:$relativePath"
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($actual)) {
-        throw "Could not calculate Git blob hash for $relativePath"
+        throw "Could not calculate the committed Git blob hash for $relativePath"
     }
 
     $actual = $actual.Trim()
+    if ($actual -notmatch '^[0-9a-f]{40}$') {
+        throw "Invalid committed Git blob hash for ${relativePath}: $actual"
+    }
+
     $expected = $ReviewedBlobs[$relativePath]
     if ($actual -ne $expected) {
         throw "Broad mutation allowlist review expired for $relativePath. Expected reviewed blob $expected, found $actual. Review every dangerous call and update the pin deliberately."

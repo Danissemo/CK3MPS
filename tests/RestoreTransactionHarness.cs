@@ -329,7 +329,7 @@ internal static class RestoreTransactionHarness
             context.SetField("restoreTransactionTestAfterCommitReached", reached);
             context.SetField("restoreTransactionTestContinueAfterCommit", proceed);
             Exception workerError = null;
-            Thread worker = new Thread(delegate
+            Thread worker = new Thread((ThreadStart)delegate
             {
                 try
                 {
