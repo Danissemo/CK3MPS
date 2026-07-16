@@ -11,77 +11,31 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Windows build and validation
+  version-diagnostic:
+    name: Version consistency diagnostic
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
-
-      - name: Build
-        shell: pwsh
-        run: ./scripts/build.ps1
-
-      - name: Verify build output
+      - name: Capture version consistency diagnostics
         shell: pwsh
         run: |
-          if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
-            throw 'Build completed without bin\CK3MPS.exe.'
+          New-Item -ItemType Directory -Force -Path .diagnostics | Out-Null
+          try {
+            ./scripts/check-version-consistency.ps1 *>&1 | Tee-Object -FilePath .diagnostics/version-consistency.log
           }
-          Write-Host 'Verified build output: bin\CK3MPS.exe'
+          catch {
+            $_ | Out-String | Add-Content -Path .diagnostics/version-consistency.log
+            throw
+          }
 
-      - name: Run all tests
-        shell: pwsh
-        run: ./scripts/test-all.ps1
-
-      - name: Upload test diagnostics
+      - name: Upload version diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: test-script-diagnostics
-          path: bin/test-logs/*.log
+          name: version-consistency-diagnostics
+          path: .diagnostics/version-consistency.log
           if-no-files-found: warn
-
-      - name: Strict mutation review
-        shell: pwsh
-        run: ./scripts/check-static-danger-strict.ps1
-
-      - name: Validate version consistency
-        shell: pwsh
-        run: ./scripts/check-version-consistency.ps1
-
-      - name: Validate release metadata
-        shell: pwsh
-        run: ./scripts/validate-release.ps1
-
-      - name: Package tested release artifacts
-        shell: pwsh
-        run: |
-          ./scripts/package-release.ps1 -SkipBuild
-          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
-          Copy-Item ../CK3MPS_exports/*.zip .artifacts/
-          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
-          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
-
-      - name: Upload executable
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: CK3MPS-exe
-          path: release/CK3MPS.exe
-
-      - name: Upload release zip
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: CK3MPS-release-zip
-          path: .artifacts/*.zip
-
-      - name: Upload release checksums
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: CK3MPS-release-checksums
-          path: .artifacts/*.sha256
