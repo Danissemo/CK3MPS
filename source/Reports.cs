@@ -247,13 +247,13 @@ namespace CK3MPS
             List<string> files = new List<string>();
             string activeOos = Path.Combine(ck3Docs, "oos");
             if (Directory.Exists(activeOos))
-                files.AddRange(Directory.GetFiles(activeOos, "oos_metadata_*.txt", SearchOption.AllDirectories));
+                files.AddRange(EnumerateOosMetadataFiles(activeOos));
 
             if (!String.IsNullOrEmpty(lastQuarantine))
             {
                 string quarantineReports = Path.Combine(lastQuarantine, "reports");
                 if (Directory.Exists(quarantineReports))
-                    files.AddRange(Directory.GetFiles(quarantineReports, "oos_metadata_*.txt", SearchOption.AllDirectories));
+                    files.AddRange(EnumerateOosMetadataFiles(quarantineReports));
             }
 
             if (Directory.Exists(ck3Docs))
@@ -262,7 +262,7 @@ namespace CK3MPS
                 {
                     string reports = Path.Combine(quarantine, "reports");
                     if (Directory.Exists(reports))
-                        files.AddRange(Directory.GetFiles(reports, "oos_metadata_*.txt", SearchOption.AllDirectories));
+                        files.AddRange(EnumerateOosMetadataFiles(reports));
                 }
             }
 
@@ -281,7 +281,7 @@ namespace CK3MPS
             List<string> files = new List<string>();
             string activeOos = Path.Combine(ck3Docs, "oos");
             if (Directory.Exists(activeOos))
-                files.AddRange(Directory.GetFiles(activeOos, "oos_metadata_*.txt", SearchOption.AllDirectories));
+                files.AddRange(EnumerateOosMetadataFiles(activeOos));
 
             if (Directory.Exists(ck3Docs))
             {
@@ -289,7 +289,7 @@ namespace CK3MPS
                 {
                     string reports = Path.Combine(quarantine, "reports");
                     if (Directory.Exists(reports))
-                        files.AddRange(Directory.GetFiles(reports, "oos_metadata_*.txt", SearchOption.AllDirectories));
+                        files.AddRange(EnumerateOosMetadataFiles(reports));
                 }
             }
 
@@ -297,6 +297,24 @@ namespace CK3MPS
             {
                 return File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a));
             });
+            return files;
+        }
+
+        private IEnumerable<string> EnumerateOosMetadataFiles(string root)
+        {
+            List<string> files = new List<string>();
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(root, "oos_metadata_*.txt", SearchOption.AllDirectories))
+                {
+                    files.Add(file);
+                    if (files.Count >= MaxWatcherFiles)
+                        break;
+                }
+            }
+            catch
+            {
+            }
             return files;
         }
 

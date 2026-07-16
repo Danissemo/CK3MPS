@@ -478,7 +478,7 @@ namespace CK3MPS
                     return false;
                 }
 
-                File.WriteAllText(path, content, Utf8NoBom);
+                SafeAtomicFile.WriteAllText(path, content, Utf8NoBom);
                 if (!String.IsNullOrEmpty(writtenMessage))
                     Log(writtenMessage + path);
                 return true;
@@ -941,6 +941,8 @@ namespace CK3MPS
 
         private void EnsureStabilizerRoot()
         {
+            if (readOnlyScanMode)
+                return;
             if (!Directory.Exists(stabilizerRoot))
                 Directory.CreateDirectory(stabilizerRoot);
         }
@@ -993,7 +995,6 @@ namespace CK3MPS
 
         private string StabilizerFile(string name)
         {
-            EnsureStabilizerRoot();
             return Path.Combine(stabilizerRoot, CompactStabilizerFileName(name));
         }
 
@@ -1006,6 +1007,11 @@ namespace CK3MPS
         {
             try
             {
+                if (readOnlyScanMode)
+                {
+                    Log("INFO Scan mode: legacy stabilizer artifact migration is disabled.");
+                    return;
+                }
                 if (!Directory.Exists(ck3Docs))
                     return;
 

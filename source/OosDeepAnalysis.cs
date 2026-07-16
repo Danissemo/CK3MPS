@@ -58,10 +58,14 @@ namespace CK3MPS
                 string activeOos = Path.Combine(ck3Docs, "oos");
                 if (Directory.Exists(activeOos))
                 {
-                    foreach (string file in Directory.GetFiles(activeOos, "*.*", SearchOption.AllDirectories))
+                    int seen = 0;
+                    foreach (string file in Directory.EnumerateFiles(activeOos, "*.*", SearchOption.AllDirectories))
                     {
+                        if (seen >= MaxWatcherFiles)
+                            break;
                         FileInfo info = new FileInfo(file);
                         sb.Append("\n").Append(file).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+                        seen++;
                     }
                 }
 
@@ -576,16 +580,21 @@ namespace CK3MPS
                 if (state == null || String.IsNullOrWhiteSpace(state.IncidentId))
                     return;
 
-                string line = EscapeIncidentHistory(DateTime.UtcNow.ToString("o")) + "\t"
-                    + EscapeIncidentHistory(trigger) + "\t"
-                    + EscapeIncidentHistory(state.IncidentId) + "\t"
-                    + EscapeIncidentHistory(state.Stage) + "\t"
-                    + EscapeIncidentHistory(state.RecommendedPath) + "\t"
-                    + state.ContinuationRiskScore.ToString() + "\t"
-                    + EscapeIncidentHistory(state.Confidence) + "\t"
-                    + EscapeIncidentHistory(state.HotjoinAllowed ? "allowed" : "blocked") + "\t"
-                    + EscapeIncidentHistory(note);
-                File.AppendAllText(StabilizerFile("ck3_stabilizer_incident_history.jsonl"), line + Environment.NewLine, Encoding.UTF8);
+                string path = StabilizerFile("ck3_stabilizer_incident_history.jsonl");
+                List<string> lines = new List<string>();
+                if (File.Exists(path))
+                    lines.AddRange(File.ReadAllLines(path, Encoding.UTF8));
+                lines.Add(IncidentHistoryJsonUtilities.BuildJsonLine(
+                    DateTime.UtcNow.ToString("o"),
+                    EscapeIncidentHistory(trigger),
+                    EscapeIncidentHistory(state.IncidentId),
+                    EscapeIncidentHistory(state.Stage),
+                    EscapeIncidentHistory(state.RecommendedPath),
+                    state.ContinuationRiskScore,
+                    EscapeIncidentHistory(state.Confidence),
+                    state.HotjoinAllowed,
+                    EscapeIncidentHistory(note)));
+                SafeAtomicFile.WriteAllLines(path, lines, Encoding.UTF8);
             }
             catch
             {
@@ -605,7 +614,9 @@ namespace CK3MPS
                 {
                     if (String.IsNullOrWhiteSpace(raw))
                         continue;
-                    rows.Add(raw.Split('\t'));
+                    string[] parsed = IncidentHistoryJsonUtilities.ParseLine(raw);
+                    if (parsed != null && parsed.Length > 0)
+                        rows.Add(parsed);
                 }
             }
             catch
@@ -761,7 +772,24 @@ namespace CK3MPS
         {
             try
             {
-                return File.ReadAllText(path, Encoding.UTF8);
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true))
+                {
+                    int limit = MaxOosTextReadBytes;
+                    char[] buffer = new char[8192];
+                    StringBuilder sb = new StringBuilder();
+                    while (limit > 0)
+                    {
+                        int read = reader.Read(buffer, 0, Math.Min(buffer.Length, limit));
+                        if (read <= 0)
+                            break;
+                        sb.Append(buffer, 0, read);
+                        limit -= read;
+                    }
+                    if (!reader.EndOfStream)
+                        sb.Append(Environment.NewLine).Append("[truncated by CK3MPS]");
+                    return sb.ToString();
+                }
             }
             catch
             {

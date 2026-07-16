@@ -399,7 +399,7 @@ namespace CK3MPS
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
                 string saveDir = Path.Combine(ck3Docs, "save games");
-                dialog.Filter = "CK3 saves (*.ck3)|*.ck3|All files (*.*)|*.*";
+                dialog.Filter = "CK3 saves (*.ck3)|*.ck3";
                 dialog.Title = "Select host save for workflow";
                 dialog.CheckFileExists = true;
                 dialog.Multiselect = false;
@@ -415,19 +415,58 @@ namespace CK3MPS
             }
         }
 
+        private string WorkflowManagedSaveRoot()
+        {
+            return Path.Combine(ck3Docs ?? "", "save games");
+        }
+
+        private bool TryGetManagedWorkflowSavePath(string path, out string normalizedPath, out string reason)
+        {
+            normalizedPath = "";
+            reason = "";
+            if (String.IsNullOrWhiteSpace(path))
+            {
+                reason = "No save is selected.";
+                return false;
+            }
+
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(path, out normalizedPath))
+            {
+                reason = "The selected save path is malformed or unsupported.";
+                return false;
+            }
+
+            string saveRoot = WorkflowManagedSaveRoot();
+            if (!PathContainmentUtilities.IsManagedSaveFilePath(saveRoot, normalizedPath))
+            {
+                reason = "Managed workflow actions are only allowed for regular .ck3 files inside the CK3 save-games folder.";
+                return false;
+            }
+
+            if (!File.Exists(normalizedPath))
+            {
+                reason = "The selected save file does not exist.";
+                return false;
+            }
+
+            return true;
+        }
+
         private void DeleteSelectedWorkflowSave()
         {
             WorkflowSaveOption selected = workflowSaveBox.SelectedItem as WorkflowSaveOption;
             string path = selected == null ? workflowSelectedSavePath : selected.Path;
-            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            string normalizedPath;
+            string reason;
+            if (!TryGetManagedWorkflowSavePath(path, out normalizedPath, out reason))
             {
-                MessageBox.Show("Select an existing save first.", "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(reason, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            string fileName = Path.GetFileName(path);
+            string fileName = Path.GetFileName(normalizedPath);
             DialogResult confirm = MessageBox.Show(
-                "Delete this save file?\r\n\r\n" + fileName + "\r\n" + path,
+                "Move this save to CK3MPS quarantine?\r\n\r\n" + fileName + "\r\n" + normalizedPath,
                 "CK3MPS workflow",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
@@ -436,18 +475,24 @@ namespace CK3MPS
 
             try
             {
-                File.Delete(path);
-                Log("OK   Deleted workflow host save: " + path);
-                if (String.Equals(workflowSelectedSavePath, path, StringComparison.OrdinalIgnoreCase))
+                if (String.IsNullOrEmpty(lastQuarantine) || !Directory.Exists(lastQuarantine))
+                    CreateQuarantine();
+                string targetDir = Path.Combine(lastQuarantine, "user_state", "workflow_deleted_saves");
+                MoveToQuarantine(normalizedPath, targetDir);
+                if (File.Exists(normalizedPath))
+                    throw new IOException("Save move to quarantine did not complete.");
+
+                Log("OK   Quarantined workflow host save: " + normalizedPath);
+                if (String.Equals(workflowSelectedSavePath, normalizedPath, StringComparison.OrdinalIgnoreCase))
                     workflowSelectedSavePath = "";
                 SaveAppConfig();
                 InvalidateWorkflowSaveSelectionState();
-                SetStatusText("Deleted workflow host save: " + fileName);
+                SetStatusText("Quarantined workflow host save: " + fileName);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Could not delete the selected save.\r\n\r\n" + ex.Message, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                Log("WARN Could not delete workflow host save: " + path + " | " + ex.Message);
+                MessageBox.Show("Could not quarantine the selected save.\r\n\r\n" + ex.Message, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Log("WARN Could not quarantine workflow host save: " + normalizedPath + " | " + ex.Message);
             }
         }
 
@@ -1187,17 +1232,22 @@ namespace CK3MPS
         private void DuplicateSelectedWorkflowSave()
         {
             string path = workflowSelectedSavePath;
-            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            string normalizedPath;
+            string reason;
+            if (!TryGetManagedWorkflowSavePath(path, out normalizedPath, out reason))
             {
-                MessageBox.Show("Select an existing save first.", "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(reason, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            string dir = Path.GetDirectoryName(path);
-            string name = Path.GetFileNameWithoutExtension(path);
-            string ext = Path.GetExtension(path);
+            string dir = Path.GetDirectoryName(normalizedPath);
+            string name = Path.GetFileNameWithoutExtension(normalizedPath);
+            string ext = Path.GetExtension(normalizedPath);
             string copyPath = Path.Combine(dir, name + "_workflow_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ext);
-            File.Copy(path, copyPath, false);
+            copyPath = UniquePath(copyPath);
+            string tempPath = copyPath + ".tmp";
+            File.Copy(normalizedPath, tempPath, false);
+            File.Move(tempPath, copyPath);
             workflowSelectedSavePath = copyPath;
             SaveAppConfig();
             InvalidateWorkflowSaveSelectionState();
@@ -1593,8 +1643,9 @@ namespace CK3MPS
                 string host;
                 int port;
                 string code;
+                string secret;
                 string playerLabel;
-                if (!ShowParityJoinDialog(form, out host, out port, out code, out playerLabel))
+                if (!ShowParityJoinDialog(form, out host, out port, out code, out secret, out playerLabel))
                     return;
 
                 session.Joined = true;
@@ -1602,6 +1653,7 @@ namespace CK3MPS
                 session.JoinHost = host;
                 session.JoinPort = port;
                 session.RoomCode = code;
+                session.SharedSecret = secret;
                 session.LocalPlayerLabel = playerLabel;
 
                 try
@@ -1709,10 +1761,10 @@ namespace CK3MPS
         private string BuildParityRoomInfoText(ParityRoomSession session)
         {
             if (session.Hosting && session.Listener != null)
-                return "Room mode: hosting | IP: " + DetectPrimaryIpv4Address() + " | Port: " + session.JoinPort + " | Code: " + session.RoomCode;
+                return "Room mode: hosting | Host: 127.0.0.1 | Port: " + session.JoinPort + " | Code: " + session.RoomCode + " | Secret: " + session.SharedSecret;
             if (session.Joined)
                 return "Room mode: joined | Host: " + session.JoinHost + ":" + session.JoinPort + " | Code: " + session.RoomCode + " | Player: " + session.LocalPlayerLabel;
-            return "Create a local room or join an existing host room.";
+            return "Create a local loopback room or join an existing local host room.";
         }
 
         private void RefreshParityRoomLocalState(ParityRoomSession session, bool refreshManifest, bool refreshOos)
@@ -2030,7 +2082,7 @@ namespace CK3MPS
         {
             StopParityRoomHost(session);
 
-            TcpListener listener = new TcpListener(IPAddress.Any, 0);
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             session.Listener = listener;
             session.CancelSource = new CancellationTokenSource();
@@ -2038,6 +2090,7 @@ namespace CK3MPS
             session.Joined = false;
             session.JoinPort = ((IPEndPoint)listener.LocalEndpoint).Port;
             session.RoomCode = GenerateParityRoomCode();
+            session.SharedSecret = GenerateParityRoomSecret();
             lock (session.Sync)
                 session.Peers.Clear();
 
@@ -2094,29 +2147,38 @@ namespace CK3MPS
             using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true))
             using (StreamWriter writer = new StreamWriter(stream, Encoding.UTF8, 4096, true))
             {
+                client.ReceiveTimeout = ParityRoomSession.SocketTimeoutMs;
+                client.SendTimeout = ParityRoomSession.SocketTimeoutMs;
                 writer.NewLine = "\n";
                 writer.AutoFlush = true;
-                string payload = reader.ReadToEnd();
+                string payload = ReadParityRoomMessage(stream);
                 Dictionary<string, string> fields = ParseParityRoomPayload(payload);
                 string code = DictionaryValue(fields, "room_code");
+                string secret = DictionaryValue(fields, "room_secret");
                 if (!String.Equals(code, session.RoomCode, StringComparison.Ordinal))
                 {
                     writer.WriteLine("ERROR");
                     writer.WriteLine("bad room code");
                     return;
                 }
+                if (!String.Equals(secret, session.SharedSecret, StringComparison.Ordinal))
+                {
+                    writer.WriteLine("ERROR");
+                    writer.WriteLine("bad room secret");
+                    return;
+                }
 
                 ParityRoomPeer peer = new ParityRoomPeer();
-                peer.PlayerLabel = DecodePayloadField(fields, "player");
-                peer.ManifestText = DecodePayloadField(fields, "manifest");
-                peer.OosSummaryText = DecodePayloadField(fields, "oos_summary");
-                peer.OosMetadataText = DecodePayloadField(fields, "oos_metadata");
-                peer.OosDeepReportText = DecodePayloadField(fields, "oos_deep_report");
-                peer.OosRecoveryRunbookText = DecodePayloadField(fields, "oos_runbook");
-                peer.OosContaminationText = DecodePayloadField(fields, "oos_contamination");
-                peer.OosSaveDumpText = DecodePayloadField(fields, "oos_save_dump");
-                peer.OosModifierDumpText = DecodePayloadField(fields, "oos_modifier_dump");
-                peer.OosErrorLogText = DecodePayloadField(fields, "oos_error_log");
+                peer.PlayerLabel = DecodePayloadField(fields, "player", 256);
+                peer.ManifestText = DecodePayloadField(fields, "manifest", ParityRoomSession.MaxFieldChars);
+                peer.OosSummaryText = DecodePayloadField(fields, "oos_summary", ParityRoomSession.MaxFieldChars);
+                peer.OosMetadataText = DecodePayloadField(fields, "oos_metadata", ParityRoomSession.MaxFieldChars);
+                peer.OosDeepReportText = DecodePayloadField(fields, "oos_deep_report", ParityRoomSession.MaxFieldChars);
+                peer.OosRecoveryRunbookText = DecodePayloadField(fields, "oos_runbook", ParityRoomSession.MaxFieldChars);
+                peer.OosContaminationText = DecodePayloadField(fields, "oos_contamination", ParityRoomSession.MaxFieldChars);
+                peer.OosSaveDumpText = DecodePayloadField(fields, "oos_save_dump", ParityRoomSession.MaxFieldChars);
+                peer.OosModifierDumpText = DecodePayloadField(fields, "oos_modifier_dump", ParityRoomSession.MaxFieldChars);
+                peer.OosErrorLogText = DecodePayloadField(fields, "oos_error_log", ParityRoomSession.MaxFieldChars);
                 peer.Endpoint = NullText(client.Client.RemoteEndPoint == null ? "" : client.Client.RemoteEndPoint.ToString());
                 peer.ReceivedUtc = DateTime.UtcNow;
                 if (String.IsNullOrWhiteSpace(peer.PlayerLabel))
@@ -2171,13 +2233,15 @@ namespace CK3MPS
             string payload = BuildParityRoomPayload(session, session.LocalPlayerLabel, includeManifest, includeOos);
             using (TcpClient client = new TcpClient())
             {
+                client.ReceiveTimeout = ParityRoomSession.SocketTimeoutMs;
+                client.SendTimeout = ParityRoomSession.SocketTimeoutMs;
                 client.Connect(session.JoinHost, session.JoinPort);
                 using (NetworkStream stream = client.GetStream())
                 using (StreamWriter writer = new StreamWriter(stream, Encoding.UTF8, 4096, true))
                 using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true))
                 {
                     writer.AutoFlush = true;
-                    writer.Write(payload);
+                    WriteParityRoomMessage(stream, payload);
                     client.Client.Shutdown(SocketShutdown.Send);
                     string reply = reader.ReadToEnd();
                     if (reply.IndexOf("OK", StringComparison.OrdinalIgnoreCase) < 0)
@@ -2231,6 +2295,7 @@ namespace CK3MPS
 
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("room_code=" + session.RoomCode);
+            sb.AppendLine("room_secret=" + session.SharedSecret);
             sb.AppendLine("player=" + EncodePayloadField(playerLabel));
             sb.AppendLine("manifest=" + EncodePayloadField(manifestText));
             sb.AppendLine("oos_summary=" + EncodePayloadField(oosSummary));
@@ -2244,32 +2309,35 @@ namespace CK3MPS
             return sb.ToString();
         }
 
-        private bool ShowParityJoinDialog(IWin32Window owner, out string host, out int port, out string code, out string playerLabel)
+        private bool ShowParityJoinDialog(IWin32Window owner, out string host, out int port, out string code, out string secret, out string playerLabel)
         {
             host = "";
             port = 0;
             code = "";
+            secret = "";
             playerLabel = "";
 
             using (Form dialog = new Form())
             {
                 dialog.Text = "Join parity room";
                 dialog.StartPosition = FormStartPosition.CenterParent;
-                dialog.Size = new Size(420, 250);
+                dialog.Size = new Size(420, 290);
                 dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
                 dialog.MaximizeBox = false;
                 dialog.MinimizeBox = false;
 
-                Label hostLabel = new Label { Text = "Host IP", Left = 16, Top = 20, Width = 100 };
-                TextBox hostBox = new TextBox { Left = 130, Top = 16, Width = 240 };
+                Label hostLabel = new Label { Text = "Host", Left = 16, Top = 20, Width = 100 };
+                TextBox hostBox = new TextBox { Left = 130, Top = 16, Width = 240, Text = "127.0.0.1" };
                 Label portLabel = new Label { Text = "Port", Left = 16, Top = 58, Width = 100 };
                 TextBox portBox = new TextBox { Left = 130, Top = 54, Width = 120 };
                 Label codeLabel = new Label { Text = "Room code", Left = 16, Top = 96, Width = 100 };
                 TextBox codeBox = new TextBox { Left = 130, Top = 92, Width = 120 };
-                Label playerLabelCaption = new Label { Text = "Player label", Left = 16, Top = 134, Width = 100 };
-                TextBox playerBox = new TextBox { Left = 130, Top = 130, Width = 240, Text = Environment.UserName };
-                Button okButton = new Button { Text = "Join", Left = 214, Top = 170, Width = 74, DialogResult = DialogResult.OK };
-                Button cancelButton = new Button { Text = "Cancel", Left = 296, Top = 170, Width = 74, DialogResult = DialogResult.Cancel };
+                Label secretLabel = new Label { Text = "Room secret", Left = 16, Top = 134, Width = 100 };
+                TextBox secretBox = new TextBox { Left = 130, Top = 130, Width = 240 };
+                Label playerLabelCaption = new Label { Text = "Player label", Left = 16, Top = 172, Width = 100 };
+                TextBox playerBox = new TextBox { Left = 130, Top = 168, Width = 240, Text = Environment.UserName };
+                Button okButton = new Button { Text = "Join", Left = 214, Top = 208, Width = 74, DialogResult = DialogResult.OK };
+                Button cancelButton = new Button { Text = "Cancel", Left = 296, Top = 208, Width = 74, DialogResult = DialogResult.Cancel };
 
                 dialog.Controls.Add(hostLabel);
                 dialog.Controls.Add(hostBox);
@@ -2277,6 +2345,8 @@ namespace CK3MPS
                 dialog.Controls.Add(portBox);
                 dialog.Controls.Add(codeLabel);
                 dialog.Controls.Add(codeBox);
+                dialog.Controls.Add(secretLabel);
+                dialog.Controls.Add(secretBox);
                 dialog.Controls.Add(playerLabelCaption);
                 dialog.Controls.Add(playerBox);
                 dialog.Controls.Add(okButton);
@@ -2297,8 +2367,9 @@ namespace CK3MPS
                 host = hostBox.Text.Trim();
                 port = parsedPort;
                 code = codeBox.Text.Trim();
+                secret = secretBox.Text.Trim();
                 playerLabel = playerBox.Text.Trim();
-                return !String.IsNullOrWhiteSpace(host) && !String.IsNullOrWhiteSpace(code);
+                return !String.IsNullOrWhiteSpace(host) && !String.IsNullOrWhiteSpace(code) && !String.IsNullOrWhiteSpace(secret);
             }
         }
 
@@ -2377,6 +2448,14 @@ namespace CK3MPS
             return DateTime.Now.ToString("HHmmss");
         }
 
+        private string GenerateParityRoomSecret()
+        {
+            byte[] bytes = new byte[24];
+            using (System.Security.Cryptography.RandomNumberGenerator rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+                rng.GetBytes(bytes);
+            return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
+
         private string DetectPrimaryIpv4Address()
         {
             try
@@ -2409,17 +2488,63 @@ namespace CK3MPS
             return fields;
         }
 
+        private string ReadParityRoomMessage(NetworkStream stream)
+        {
+            if (stream == null)
+                throw new InvalidOperationException("Parity room stream is unavailable.");
+
+            byte[] lengthBytes = ReadExactBytes(stream, 4);
+            int length = BitConverter.ToInt32(lengthBytes, 0);
+            if (length < 0 || length > ParityRoomSession.MaxPayloadBytes)
+                throw new InvalidOperationException("Parity room payload is too large.");
+            byte[] payloadBytes = ReadExactBytes(stream, length);
+            return Encoding.UTF8.GetString(payloadBytes);
+        }
+
+        private void WriteParityRoomMessage(NetworkStream stream, string payload)
+        {
+            if (stream == null)
+                throw new InvalidOperationException("Parity room stream is unavailable.");
+
+            byte[] payloadBytes = Encoding.UTF8.GetBytes(NullText(payload));
+            if (payloadBytes.Length > ParityRoomSession.MaxPayloadBytes)
+                throw new InvalidOperationException("Parity room payload exceeds the size limit.");
+
+            byte[] lengthBytes = BitConverter.GetBytes(payloadBytes.Length);
+            stream.Write(lengthBytes, 0, lengthBytes.Length);
+            if (payloadBytes.Length > 0)
+                stream.Write(payloadBytes, 0, payloadBytes.Length);
+            stream.Flush();
+        }
+
+        private byte[] ReadExactBytes(Stream stream, int length)
+        {
+            byte[] buffer = new byte[length];
+            int offset = 0;
+            while (offset < length)
+            {
+                int read = stream.Read(buffer, offset, length - offset);
+                if (read <= 0)
+                    throw new EndOfStreamException("Parity room connection closed before the payload was complete.");
+                offset += read;
+            }
+            return buffer;
+        }
+
         private string EncodePayloadField(string text)
         {
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(NullText(text)));
         }
 
-        private string DecodePayloadField(Dictionary<string, string> fields, string key)
+        private string DecodePayloadField(Dictionary<string, string> fields, string key, int maxChars)
         {
             string value = DictionaryValue(fields, key);
             if (String.IsNullOrWhiteSpace(value))
                 return "";
-            return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            if (decoded.Length > maxChars)
+                throw new InvalidOperationException("Parity room field exceeds the allowed size: " + key);
+            return decoded;
         }
 
         private string DictionaryValue(Dictionary<string, string> fields, string key)
@@ -2430,7 +2555,34 @@ namespace CK3MPS
 
         private string ReadTextIfExists(string path)
         {
-            return !String.IsNullOrWhiteSpace(path) && File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
+            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return "";
+
+            try
+            {
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true))
+                {
+                    char[] buffer = new char[8192];
+                    int remaining = MaxOosTextReadBytes;
+                    StringBuilder sb = new StringBuilder();
+                    while (remaining > 0)
+                    {
+                        int read = reader.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+                        if (read <= 0)
+                            break;
+                        sb.Append(buffer, 0, read);
+                        remaining -= read;
+                    }
+                    if (!reader.EndOfStream)
+                        sb.Append(Environment.NewLine).Append("[truncated by CK3MPS]");
+                    return sb.ToString();
+                }
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         private string ReadTrimmedTextIfExists(string path, int maxChars)

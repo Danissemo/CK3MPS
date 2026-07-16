@@ -4,8 +4,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 
 $ForbiddenPaths = @(
-    ".codex-remote-attachments",
     "_oos_extract",
+    "_oos_extract_2",
     "CK3MPS_exports",
     ".artifacts",
     "assets/screenshots/main-window-v0.2-current.png"

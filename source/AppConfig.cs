@@ -121,7 +121,11 @@ namespace CK3MPS
                 else if (String.Equals(key, "logVerbosity", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
                     logVerbosity = value;
                 else if (String.Equals(key, "workflowSelectedSavePath", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
-                    workflowSelectedSavePath = value;
+                {
+                    string normalizedWorkflowPath;
+                    if (PathContainmentUtilities.TryNormalizeAbsolutePath(value, out normalizedWorkflowPath))
+                        workflowSelectedSavePath = normalizedWorkflowPath;
+                }
                 else if (String.Equals(key, "workflowLastOosMetadataPath", StringComparison.OrdinalIgnoreCase) && !String.IsNullOrEmpty(value))
                     workflowLastOosMetadataPath = value;
             }
@@ -189,7 +193,7 @@ namespace CK3MPS
                 LegacyPortableAppConfigFile()
             };
 
-            File.WriteAllLines(targetPath, new[]
+            SafeAtomicFile.WriteAllLines(targetPath, new[]
             {
                 settingsPathOverrideActive ? "ck3Docs=" + ck3Docs : "",
                 gamePathOverrideActive ? "ck3Install=" + ck3Install : "",

@@ -305,8 +305,11 @@ namespace CK3MPS
 
             try
             {
-                byte[] fileBytes = File.ReadAllBytes(path);
-                using (MemoryStream stream = new MemoryStream(fileBytes, false))
+                FileInfo info = new FileInfo(path);
+                if (info.Length <= 0 || info.Length > MaxSaveAnalysisFileBytes)
+                    return false;
+
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     byte[] signature = new byte[4];
                     int read = stream.Read(signature, 0, signature.Length);
@@ -314,25 +317,28 @@ namespace CK3MPS
                     bool isZip = read >= 4 && signature[0] == (byte)'P' && signature[1] == (byte)'K';
                     if (!isZip)
                     {
-                        byte[] prefixBytes = ReadStreamPrefixBytes(stream, 4 * 1024 * 1024);
+                        byte[] prefixBytes = ReadStreamPrefixBytes(stream, MaxSaveAnalysisPrefixBytes);
                         text = Encoding.UTF8.GetString(prefixBytes);
-                        int embeddedZipOffset = FindEmbeddedZipOffset(fileBytes);
-                        if (embeddedZipOffset > 0)
+                        int embeddedZipOffset = FindEmbeddedZipOffset(prefixBytes);
+                        if (embeddedZipOffset > 0 && info.Length - embeddedZipOffset <= MaxEmbeddedZipAnalysisBytes)
                         {
-                            byte[] zipBytes = new byte[fileBytes.Length - embeddedZipOffset];
-                            Buffer.BlockCopy(fileBytes, embeddedZipOffset, zipBytes, 0, zipBytes.Length);
-                            using (MemoryStream zipStream = new MemoryStream(zipBytes, false))
-                            using (ZipArchive archive = new ZipArchive(zipStream, ZipArchiveMode.Read, true))
+                            stream.Position = embeddedZipOffset;
+                            using (MemoryStream zipStream = new MemoryStream())
                             {
-                                StringBuilder sb = new StringBuilder();
-                                AppendZipEntryText(archive, sb, "meta", 1024 * 1024);
-                                AppendZipEntryText(archive, sb, "gamestate", 3 * 1024 * 1024);
-                                string zipText = sb.ToString();
-                                if (zipText.Length > 0)
+                                CopyFixedBytes(stream, zipStream, (int)Math.Min(MaxEmbeddedZipAnalysisBytes, info.Length - embeddedZipOffset));
+                                zipStream.Position = 0;
+                                using (ZipArchive archive = new ZipArchive(zipStream, ZipArchiveMode.Read, true))
                                 {
-                                    text = zipText;
-                                    sourceKind = "hybrid embedded zip meta/gamestate";
-                                    return true;
+                                    StringBuilder sb = new StringBuilder();
+                                    AppendZipEntryText(archive, sb, "meta", 1024 * 1024);
+                                    AppendZipEntryText(archive, sb, "gamestate", 3 * 1024 * 1024);
+                                    string zipText = sb.ToString();
+                                    if (zipText.Length > 0)
+                                    {
+                                        text = zipText;
+                                        sourceKind = "hybrid embedded zip meta/gamestate";
+                                        return true;
+                                    }
                                 }
                             }
                         }
@@ -366,7 +372,16 @@ namespace CK3MPS
 
         private byte[] ReadStreamPrefixBytes(Stream stream, int maxBytes)
         {
-            int capacity = (int)Math.Min(maxBytes, Math.Max(0, stream.Length));
+            long safeLength = 0;
+            try
+            {
+                safeLength = Math.Max(0, stream.Length);
+            }
+            catch
+            {
+                safeLength = maxBytes;
+            }
+            int capacity = (int)Math.Min(maxBytes, safeLength);
             byte[] buffer = new byte[capacity];
             int read = stream.Read(buffer, 0, capacity);
             if (read == buffer.Length)
@@ -375,6 +390,20 @@ namespace CK3MPS
             byte[] actual = new byte[read];
             Buffer.BlockCopy(buffer, 0, actual, 0, read);
             return actual;
+        }
+
+        private void CopyFixedBytes(Stream source, Stream destination, int maxBytes)
+        {
+            int remaining = Math.Max(0, maxBytes);
+            byte[] buffer = new byte[8192];
+            while (remaining > 0)
+            {
+                int read = source.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+                if (read <= 0)
+                    break;
+                destination.Write(buffer, 0, read);
+                remaining -= read;
+            }
         }
 
         private void AppendZipEntryText(ZipArchive archive, StringBuilder sb, string entryName, int maxBytes)

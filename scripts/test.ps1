@@ -5,6 +5,28 @@ $Root = Split-Path -Parent $ScriptDir
 $OutDir = Join-Path $Root "bin\tests"
 $TestExe = Join-Path $OutDir "CK3MPS.UtilityTests.exe"
 $Csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+function Invoke-PowerShellSnippet {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptText,
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    $tempScript = Join-Path ([System.IO.Path]::GetTempPath()) ("CK3MPS-test-" + [guid]::NewGuid().ToString("N") + ".ps1")
+    try {
+        [System.IO.File]::WriteAllText($tempScript, $ScriptText, $Utf8NoBom)
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $tempScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "$FailureMessage (exit code $LASTEXITCODE)"
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
+    }
+}
 
 if (-not (Test-Path $Csc)) {
     throw "C# compiler was not found: $Csc"
@@ -31,10 +53,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $BuiltExe = Join-Path $Root "bin\CK3MPS.exe"
 if (Test-Path $BuiltExe) {
-@'
+Invoke-PowerShellSnippet @'
 Add-Type -AssemblyName System.Windows.Forms
 $root = Resolve-Path "."
-$sample = Join-Path $root "_oos_extract_2\f086d9a587b17fed_0_3"
+$sample = Join-Path $root "tests\fixtures\oos_smoke"
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("CK3MPS-oos-smoke-" + [guid]::NewGuid().ToString("N"))
 $docs = Join-Path $temp "Crusader Kings III"
 $oos = Join-Path $docs "oos\sample"
@@ -73,15 +95,12 @@ $form.Dispose()
 [System.GC]::WaitForPendingFinalizers()
 Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 exit 0
-'@ | powershell -NoProfile -
-    if ($LASTEXITCODE -ne 0) {
-        throw "Deep OOS smoke test failed with exit code $LASTEXITCODE"
-    }
+'@ "Deep OOS smoke test failed"
 
-@'
+Invoke-PowerShellSnippet @'
 Add-Type -AssemblyName System.Windows.Forms
 $root = Resolve-Path "."
-$sample = Join-Path $root "_oos_extract_2\f086d9a587b17fed_0_3"
+$sample = Join-Path $root "tests\fixtures\oos_smoke"
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("CK3MPS-incident-history-" + [guid]::NewGuid().ToString("N"))
 $docs = Join-Path $temp "Crusader Kings III"
 $oos = Join-Path $docs "oos\sample"
@@ -131,8 +150,5 @@ $form2.Dispose()
 [System.GC]::WaitForPendingFinalizers()
 Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 exit 0
-'@ | powershell -NoProfile -
-    if ($LASTEXITCODE -ne 0) {
-        throw "Incident history smoke test failed with exit code $LASTEXITCODE"
-    }
+'@ "Incident history smoke test failed"
 }

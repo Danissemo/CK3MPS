@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -162,10 +163,10 @@ namespace CK3MPS
                 return false;
             if (IsUserGameDataPath(path, ck3Docs))
                 return false;
-            if (!String.IsNullOrEmpty(ck3Docs) && path.StartsWith(ck3Docs, StringComparison.OrdinalIgnoreCase))
+            if (!String.IsNullOrEmpty(ck3Docs) && PathContainmentUtilities.IsWithinRoot(ck3Docs, path))
                 return true;
-            return (!String.IsNullOrEmpty(localLauncher) && path.StartsWith(localLauncher, StringComparison.OrdinalIgnoreCase))
-                || (!String.IsNullOrEmpty(roamingLauncher) && path.StartsWith(roamingLauncher, StringComparison.OrdinalIgnoreCase));
+            return (!String.IsNullOrEmpty(localLauncher) && PathContainmentUtilities.IsWithinRoot(localLauncher, path))
+                || (!String.IsNullOrEmpty(roamingLauncher) && PathContainmentUtilities.IsWithinRoot(roamingLauncher, path));
         }
 
         public static bool IsUserGameDataPath(string path, string ck3Docs)
@@ -177,7 +178,7 @@ namespace CK3MPS
             string normalizedDocs = Ck3PathUtilities.NormalizeDirectoryPath(ck3Docs);
             if (String.IsNullOrEmpty(normalizedPath) || String.IsNullOrEmpty(normalizedDocs))
                 return false;
-            if (!normalizedPath.StartsWith(normalizedDocs, StringComparison.OrdinalIgnoreCase))
+            if (!PathContainmentUtilities.IsWithinRoot(normalizedDocs, normalizedPath))
                 return false;
 
             string relative = normalizedPath.Substring(normalizedDocs.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -485,6 +486,267 @@ namespace CK3MPS
             if (!match.Success || !Int32.TryParse(match.Value, out parsed))
                 return null;
             return parsed;
+        }
+    }
+
+    internal static class PathContainmentUtilities
+    {
+        public static bool TryNormalizeAbsolutePath(string path, out string normalized)
+        {
+            normalized = "";
+            if (String.IsNullOrWhiteSpace(path))
+                return false;
+
+            string candidate = path.Trim();
+            if (candidate.IndexOf('\0') >= 0 || candidate.IndexOf('*') >= 0 || candidate.IndexOf('?') >= 0)
+                return false;
+            if (candidate.StartsWith(@"\\.\", StringComparison.Ordinal) || candidate.StartsWith(@"\\?\", StringComparison.Ordinal))
+                return false;
+            if (!Path.IsPathRooted(candidate))
+                return false;
+            if (HasAlternateDataStream(candidate))
+                return false;
+
+            try
+            {
+                normalized = Path.GetFullPath(candidate);
+                return !String.IsNullOrWhiteSpace(normalized);
+            }
+            catch
+            {
+                normalized = "";
+                return false;
+            }
+        }
+
+        public static bool IsWithinRoot(string rootPath, string targetPath)
+        {
+            string normalizedRoot;
+            string normalizedTarget;
+            if (!TryNormalizeAbsolutePath(rootPath, out normalizedRoot) || !TryNormalizeAbsolutePath(targetPath, out normalizedTarget))
+                return false;
+
+            normalizedRoot = normalizedRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (String.Equals(normalizedRoot, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            string prefix = normalizedRoot + Path.DirectorySeparatorChar;
+            return normalizedTarget.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool ContainsReparsePointInExistingSegments(string path)
+        {
+            string normalized;
+            if (!TryNormalizeAbsolutePath(path, out normalized))
+                return true;
+
+            string current = Path.GetPathRoot(normalized);
+            if (String.IsNullOrEmpty(current))
+                return true;
+
+            string remainder = normalized.Substring(current.Length);
+            string[] parts = remainder.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string part in parts)
+            {
+                current = Path.Combine(current, part);
+                if (!Directory.Exists(current) && !File.Exists(current))
+                    break;
+
+                try
+                {
+                    FileAttributes attributes = File.GetAttributes(current);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        return true;
+                }
+                catch
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static bool IsManagedSaveFilePath(string saveRoot, string path)
+        {
+            string normalizedSaveRoot;
+            string normalizedPath;
+            if (!TryNormalizeAbsolutePath(saveRoot, out normalizedSaveRoot) || !TryNormalizeAbsolutePath(path, out normalizedPath))
+                return false;
+            if (!normalizedPath.EndsWith(".ck3", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (!IsWithinRoot(normalizedSaveRoot, normalizedPath))
+                return false;
+            return !ContainsReparsePointInExistingSegments(normalizedPath);
+        }
+
+        private static bool HasAlternateDataStream(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path))
+                return false;
+
+            int driveSeparator = path.IndexOf(':');
+            if (driveSeparator < 0)
+                return false;
+
+            return path.IndexOf(':', driveSeparator + 1) >= 0;
+        }
+    }
+
+    internal static class SafeAtomicFile
+    {
+        public static void WriteAllText(string path, string content, Encoding encoding)
+        {
+            string target = path ?? "";
+            string dir = Path.GetDirectoryName(target);
+            if (String.IsNullOrEmpty(dir))
+                throw new InvalidOperationException("Target directory is missing.");
+
+            Directory.CreateDirectory(dir);
+            string tempPath = Path.Combine(dir, Path.GetFileName(target) + ".tmp-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using (FileStream stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (StreamWriter writer = new StreamWriter(stream, encoding ?? new UTF8Encoding(false)))
+                {
+                    writer.Write(content ?? "");
+                    writer.Flush();
+                    stream.Flush(true);
+                }
+
+                if (File.Exists(target))
+                    File.Replace(tempPath, target, null, true);
+                else
+                    File.Move(tempPath, target);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        public static void WriteAllLines(string path, IEnumerable<string> lines, Encoding encoding)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (string line in lines ?? new string[0])
+                sb.AppendLine(line ?? "");
+            WriteAllText(path, sb.ToString(), encoding);
+        }
+    }
+
+    internal static class IncidentHistoryJsonUtilities
+    {
+        public static string BuildJsonLine(string timestampUtc, string trigger, string incidentId, string stage, string recommendedPath, int continuationRiskScore, string confidence, bool hotjoinAllowed, string note)
+        {
+            return "{"
+                + "\"schemaVersion\":1,"
+                + "\"timestampUtc\":\"" + EscapeJson(timestampUtc) + "\","
+                + "\"trigger\":\"" + EscapeJson(trigger) + "\","
+                + "\"incidentId\":\"" + EscapeJson(incidentId) + "\","
+                + "\"stage\":\"" + EscapeJson(stage) + "\","
+                + "\"recommendedPath\":\"" + EscapeJson(recommendedPath) + "\","
+                + "\"continuationRiskScore\":" + continuationRiskScore.ToString(System.Globalization.CultureInfo.InvariantCulture) + ","
+                + "\"confidence\":\"" + EscapeJson(confidence) + "\","
+                + "\"hotjoin\":\"" + (hotjoinAllowed ? "allowed" : "blocked") + "\","
+                + "\"note\":\"" + EscapeJson(note) + "\""
+                + "}";
+        }
+
+        public static string[] ParseLine(string raw)
+        {
+            string line = raw ?? "";
+            if (String.IsNullOrWhiteSpace(line))
+                return null;
+
+            if (line.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            {
+                return new[]
+                {
+                    ExtractJsonString(line, "timestampUtc"),
+                    ExtractJsonString(line, "trigger"),
+                    ExtractJsonString(line, "incidentId"),
+                    ExtractJsonString(line, "stage"),
+                    ExtractJsonString(line, "recommendedPath"),
+                    ExtractJsonNumber(line, "continuationRiskScore"),
+                    ExtractJsonString(line, "confidence"),
+                    ExtractJsonString(line, "hotjoin"),
+                    ExtractJsonString(line, "note")
+                };
+            }
+
+            return line.Split('\t');
+        }
+
+        private static string EscapeJson(string value)
+        {
+            string text = value ?? "";
+            StringBuilder sb = new StringBuilder(text.Length + 8);
+            foreach (char ch in text)
+            {
+                switch (ch)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default: sb.Append(ch); break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        private static string ExtractJsonString(string json, string field)
+        {
+            Match match = Regex.Match(json ?? "", "\"" + Regex.Escape(field) + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"", RegexOptions.CultureInvariant);
+            return match.Success ? UnescapeJson(match.Groups[1].Value) : "";
+        }
+
+        private static string ExtractJsonNumber(string json, string field)
+        {
+            Match match = Regex.Match(json ?? "", "\"" + Regex.Escape(field) + "\"\\s*:\\s*(-?\\d+)", RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value : "0";
+        }
+
+        private static string UnescapeJson(string value)
+        {
+            string text = value ?? "";
+            StringBuilder sb = new StringBuilder(text.Length);
+            bool escape = false;
+            foreach (char ch in text)
+            {
+                if (escape)
+                {
+                    switch (ch)
+                    {
+                        case '\\': sb.Append('\\'); break;
+                        case '"': sb.Append('"'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 'n': sb.Append('\n'); break;
+                        case 't': sb.Append('\t'); break;
+                        default: sb.Append(ch); break;
+                    }
+                    escape = false;
+                }
+                else if (ch == '\\')
+                {
+                    escape = true;
+                }
+                else
+                {
+                    sb.Append(ch);
+                }
+            }
+            if (escape)
+                sb.Append('\\');
+            return sb.ToString();
         }
     }
 }

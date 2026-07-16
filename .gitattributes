@@ -9,4 +9,3 @@
 *.png binary
 *.exe binary
 *.zip binary
-_oos_extract_2/**/*.oos filter=lfs diff=lfs merge=lfs -text

@@ -20,6 +20,11 @@ namespace CK3MPS
     {
         private const string AppVersion = "v0.3";
         private const int ExpectedStepCount = 29;
+        private const long MaxSaveAnalysisFileBytes = 128L * 1024L * 1024L;
+        private const int MaxSaveAnalysisPrefixBytes = 8 * 1024 * 1024;
+        private const int MaxEmbeddedZipAnalysisBytes = 32 * 1024 * 1024;
+        private const int MaxOosTextReadBytes = 4 * 1024 * 1024;
+        private const int MaxWatcherFiles = 256;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private readonly CheckedListBox steps = new CheckedListBox();
@@ -173,6 +178,7 @@ namespace CK3MPS
         private int uiLogLinesSinceLastScroll;
         private bool busyUi;
         private bool executionSnapshotActive;
+        private bool readOnlyScanMode;
         private string executionPreset = "";
         private string executionGraphicsProfile = "";
         private readonly bool[] executionStepChecks = new bool[ExpectedStepCount];
@@ -314,11 +320,15 @@ namespace CK3MPS
 
         private sealed class ParityRoomSession
         {
+            public const int MaxPayloadBytes = 1024 * 1024;
+            public const int MaxFieldChars = 262144;
+            public const int SocketTimeoutMs = 10000;
             public bool Hosting;
             public bool Joined;
             public string JoinHost = "";
             public int JoinPort;
             public string RoomCode = "";
+            public string SharedSecret = "";
             public string LocalPlayerLabel = "";
             public TcpListener Listener;
             public System.Threading.CancellationTokenSource CancelSource;

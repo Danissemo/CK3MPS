@@ -1024,14 +1024,22 @@ namespace CK3MPS
 
         private void RunCheckOnlyScanCore(bool writeReport, bool advanceProgress)
         {
-            for (int i = 0; i < steps.Items.Count; i++)
-                RunCheckStep(i, advanceProgress);
+            readOnlyScanMode = true;
+            try
+            {
+                for (int i = 0; i < steps.Items.Count; i++)
+                    RunCheckStep(i, advanceProgress);
 
-            LogSection("Final readiness summary");
-            RunReadinessChecks(false);
-            if (writeReport)
-                WriteCheckOnlyReport();
-            StoreFreshCheckOnlySessionSnapshot();
+                LogSection("Final readiness summary");
+                RunReadinessChecks(false);
+                if (writeReport)
+                    WriteCheckOnlyReport();
+                StoreFreshCheckOnlySessionSnapshot();
+            }
+            finally
+            {
+                readOnlyScanMode = false;
+            }
         }
 
         private void RunStep(int index, string label, Action action)

@@ -17,6 +17,8 @@ internal static class UtilityTests
         TestRegistryValueSerialization();
         TestRuntimeModeUtilities();
         TestSaveRuleUtilities();
+        TestPathContainmentUtilities();
+        TestIncidentHistoryJsonUtilities();
 
         if (failures > 0)
             Environment.Exit(1);
@@ -78,6 +80,46 @@ internal static class UtilityTests
         Assert(SaveRuleUtilities.ValueLooksNoPlayers("no_players"), "save-rule utility recognizes no-players value");
         Assert(SaveRuleUtilities.ValueLooksDisabled("disabled"), "save-rule utility recognizes disabled value");
         Assert(SaveRuleUtilities.TryParseIntValue("25").HasValue && SaveRuleUtilities.TryParseIntValue("25").Value == 25, "save-rule utility parses integer values");
+    }
+
+    private static void TestPathContainmentUtilities()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "CK3MPS-path-policy-" + Guid.NewGuid().ToString("N"));
+        string saveRoot = Path.Combine(root, "Documents", "Paradox Interactive", "Crusader Kings III", "save games");
+        string validSave = Path.Combine(saveRoot, "campaign.ck3");
+        string sibling = Path.Combine(Path.GetDirectoryName(saveRoot), "save games hacked", "campaign.ck3");
+
+        try
+        {
+            Directory.CreateDirectory(saveRoot);
+            File.WriteAllText(validSave, "save");
+            string normalizedValid;
+            Assert(PathContainmentUtilities.TryNormalizeAbsolutePath(validSave, out normalizedValid) && normalizedValid == Path.GetFullPath(validSave), "path policy normalizes absolute path");
+            Assert(PathContainmentUtilities.IsWithinRoot(saveRoot, validSave), "path policy accepts path inside root");
+            Assert(!PathContainmentUtilities.IsWithinRoot(saveRoot, sibling), "path policy rejects sibling with shared prefix");
+            Assert(PathContainmentUtilities.IsManagedSaveFilePath(saveRoot, validSave), "path policy accepts managed CK3 save");
+            Assert(!PathContainmentUtilities.IsManagedSaveFilePath(saveRoot, Path.Combine(saveRoot, "descriptor.mod")), "path policy rejects non-ck3 file in save root");
+            string ignored;
+            Assert(!PathContainmentUtilities.TryNormalizeAbsolutePath("relative\\campaign.ck3", out ignored), "path policy rejects relative path");
+            Assert(!PathContainmentUtilities.TryNormalizeAbsolutePath(validSave + ":evil", out ignored), "path policy rejects alternate data stream path");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    private static void TestIncidentHistoryJsonUtilities()
+    {
+        string line = IncidentHistoryJsonUtilities.BuildJsonLine("2026-07-16T12:34:56Z", "watcher_detected", "incident-1", "Repeated OOS", "Rollback", 87, "high", false, "note with \"quotes\"");
+        string[] parsed = IncidentHistoryJsonUtilities.ParseLine(line);
+        Assert(parsed != null && parsed.Length >= 9, "incident history JSON line parses into fields");
+        Assert(parsed[0] == "2026-07-16T12:34:56Z", "incident history JSON keeps timestamp");
+        Assert(parsed[2] == "incident-1", "incident history JSON keeps incident id");
+        Assert(parsed[4] == "Rollback", "incident history JSON keeps recommended path");
+        Assert(parsed[5] == "87", "incident history JSON keeps risk score");
+        Assert(parsed[7] == "blocked", "incident history JSON keeps hotjoin state");
     }
 
     private static void TestCompactReportNames()

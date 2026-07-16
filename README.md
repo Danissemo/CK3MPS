@@ -40,10 +40,19 @@ CK3MPS is a small Windows utility for preparing a cleaner, more predictable Crus
 CK3MPS is built for local Windows machines and should be run intentionally.
 
 - Run it as administrator when applying stabilization.
-- Run **Scan** when you only want diagnostics and review without applying changes.
-- Keep your CK3 saves. The cleanup logic is designed to preserve saves.
+- Run **Scan** when you only want diagnostics and review without applying changes. Scan mode is read-only and does not create or migrate stabilizer state.
+- Keep your CK3 saves. Managed workflow saves are quarantined for recovery instead of being deleted.
 - Close CK3 before applying game or launcher settings.
+- Treat imported reports, saves, launcher state and restore manifests as untrusted input. Review before applying changes on shared or unusual setups.
 - Review any warning in the final readiness report before starting multiplayer.
+
+## Data and Network Boundaries
+
+- CK3MPS writes reports, history, quarantine data and restore metadata only under `Documents\Paradox Interactive\CK3MPS`, or under `CK3MPS_Data` next to the executable in portable mode.
+- Workflow save actions are limited to managed `.ck3` files under the CK3 user save roots. Selected saves are duplicated atomically and deleted saves are moved into quarantine history.
+- Large save and OOS inputs are read with explicit size limits. When a text source exceeds the configured bound, CK3MPS truncates the read and marks the result.
+- The parity room host listens on `127.0.0.1` only. Joining requires both the room code and the session secret, and payload sizes are bounded.
+- Release checks can detect newer versions, but the app only opens the official GitHub release page. Automatic unsigned updater execution is intentionally disabled.
 
 ## Requirements
 
@@ -120,6 +129,7 @@ The package is written outside the repository to `CK3MPS_exports`.
 1. Run `Scan` to read the current CK3 / launcher / Windows state without changing files.
 2. Open `Review` to inspect the exact actions and reports that would run now.
 3. Run `Apply Settings` only after the same-session scan looks correct.
+4. If you remove a managed workflow save by mistake, recover it from the stabilizer quarantine history instead of the original save folder.
 
 ## Release Maintenance
 

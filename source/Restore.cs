@@ -23,6 +23,7 @@ namespace CK3MPS
             public string Status;
             public string RunId;
             public string DisplayText;
+            public string ValidationError;
 
             public override string ToString()
             {
@@ -54,7 +55,7 @@ namespace CK3MPS
             Directory.CreateDirectory(RestoreBackupRoot());
             string manifest = RestoreManifestFile();
             if (!File.Exists(manifest))
-                File.WriteAllText(manifest, "id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\trun_id\r\n", Encoding.UTF8);
+                SafeAtomicFile.WriteAllText(manifest, "id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\trun_id\r\n", Encoding.UTF8);
 
             CapturePreChangeSnapshot();
             RefreshRestoreList();
@@ -82,7 +83,7 @@ namespace CK3MPS
                 sb.AppendLine("active continue title: " + NullText(DetectActiveSaveTitle()));
                 sb.AppendLine("Steam launch options: " + NullText(ExtractSteamLaunchOptions()));
                 sb.AppendLine("Steam Cloud disabled/unknown: " + YesNo(SteamCloudDisabledOrUnknownQuiet()));
-                File.WriteAllText(snapshot, sb.ToString(), Encoding.UTF8);
+                SafeAtomicFile.WriteAllText(snapshot, sb.ToString(), Encoding.UTF8);
                 RecordRestoreEntry("snapshot", "(run snapshot)", snapshot, "Pre-change snapshot", "Current CK3/Steam/Launcher settings before CK3MPS changes.", "", "");
             }
             catch (Exception ex)
@@ -154,7 +155,7 @@ namespace CK3MPS
                     return;
                 string file = UniquePath(Path.Combine(RestoreBackupRoot(), SafeFileName(description) + ".txt"));
                 Directory.CreateDirectory(RestoreBackupRoot());
-                File.WriteAllText(file, "Command: " + command + Environment.NewLine + output, Encoding.UTF8);
+                SafeAtomicFile.WriteAllText(file, "Command: " + command + Environment.NewLine + output, Encoding.UTF8);
                 RecordRestoreEntry("system_snapshot", command, file, description, output, "", "");
             }
             catch (Exception ex)
@@ -186,7 +187,13 @@ namespace CK3MPS
                 RestoreManifestUtilities.EscapeTsv(status),
                 RestoreManifestUtilities.EscapeTsv(currentRestoreRunId)
             });
-            File.AppendAllText(manifest, line + Environment.NewLine, Encoding.UTF8);
+            List<string> lines = new List<string>();
+            if (File.Exists(manifest))
+                lines.AddRange(File.ReadAllLines(manifest, Encoding.UTF8));
+            if (lines.Count == 0)
+                lines.Add("id\tcreated\tkind\tsource\tbackup\tdescription\tbefore\tafter\tstatus\trun_id");
+            lines.Add(line);
+            SafeAtomicFile.WriteAllLines(manifest, lines, Encoding.UTF8);
         }
 
         private string DescribePath(string path)
@@ -272,11 +279,181 @@ namespace CK3MPS
                     Status = parts[8],
                     RunId = RestoreManifestUtilities.RunIdFromManifestParts(parts, parts[1])
                 };
+                ValidateRestoreEntry(entry);
                 entry.DisplayText = BuildListDisplayText(entry);
                 entries.Add(entry);
             }
             ApplyRestoreStatusOverlay(entries);
             return entries;
+        }
+
+        private void ValidateRestoreEntry(RestoreEntry entry)
+        {
+            if (entry == null)
+                return;
+
+            string error;
+            if (!TryValidateRestoreEntry(entry, out error))
+            {
+                entry.ValidationError = error;
+                entry.Status = "invalid";
+            }
+        }
+
+        private bool TryValidateRestoreEntry(RestoreEntry entry, out string error)
+        {
+            error = "";
+            if (entry == null)
+            {
+                error = "Restore entry is missing.";
+                return false;
+            }
+
+            if (String.IsNullOrWhiteSpace(entry.Id))
+            {
+                error = "Restore entry ID is missing.";
+                return false;
+            }
+
+            string kind = NullText(entry.Kind).Trim().ToLowerInvariant();
+            switch (kind)
+            {
+                case "snapshot":
+                case "system_snapshot":
+                    return true;
+                case "registry":
+                    return TryValidateRegistryRestorePath(entry.SourcePath, out error);
+                case "file":
+                case "moved_file":
+                    return TryValidateRestoreFileEntry(entry, out error);
+                case "created_file":
+                    return TryValidateCreatedFileEntry(entry, out error);
+                case "directory":
+                case "moved_directory":
+                    return TryValidateRestoreDirectoryEntry(entry, out error);
+                default:
+                    error = "Restore entry kind is not supported: " + entry.Kind;
+                    return false;
+            }
+        }
+
+        private bool TryValidateRestoreFileEntry(RestoreEntry entry, out string error)
+        {
+            return TryValidateManifestBackupPath(entry.BackupPath, false, out error)
+                && TryValidateManifestSourcePath(entry.SourcePath, false, true, out error);
+        }
+
+        private bool TryValidateCreatedFileEntry(RestoreEntry entry, out string error)
+        {
+            return TryValidateManifestSourcePath(entry.SourcePath, false, true, out error);
+        }
+
+        private bool TryValidateRestoreDirectoryEntry(RestoreEntry entry, out string error)
+        {
+            return TryValidateManifestBackupPath(entry.BackupPath, true, out error)
+                && TryValidateManifestSourcePath(entry.SourcePath, true, true, out error);
+        }
+
+        private bool TryValidateManifestBackupPath(string path, bool directoryExpected, out string error)
+        {
+            error = "";
+            string normalized;
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(path, out normalized))
+            {
+                error = "Backup path is malformed.";
+                return false;
+            }
+
+            string backupRoot = RestoreBackupRoot();
+            if (String.IsNullOrWhiteSpace(backupRoot) || !PathContainmentUtilities.IsWithinRoot(backupRoot, normalized) || String.Equals(Ck3PathUtilities.NormalizeDirectoryPath(backupRoot), normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Backup path is outside the current restore backup root.";
+                return false;
+            }
+
+            if (PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalized))
+            {
+                error = "Backup path uses a reparse point.";
+                return false;
+            }
+
+            if (directoryExpected)
+            {
+                if (File.Exists(normalized))
+                {
+                    error = "Backup path points to a file instead of a directory.";
+                    return false;
+                }
+            }
+            else if (Directory.Exists(normalized))
+            {
+                error = "Backup path points to a directory instead of a file.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryValidateManifestSourcePath(string path, bool directoryExpected, bool allowCreatedMissing, out string error)
+        {
+            error = "";
+            string normalized;
+            if (!PathContainmentUtilities.TryNormalizeAbsolutePath(path, out normalized))
+            {
+                error = "Source path is malformed.";
+                return false;
+            }
+
+            if (!IsOwnedByCk3OrParadoxLauncher(normalized))
+            {
+                error = "Source path is outside the CK3/Paradox allowlist.";
+                return false;
+            }
+
+            if (PathContainmentUtilities.ContainsReparsePointInExistingSegments(normalized))
+            {
+                error = "Source path uses a reparse point.";
+                return false;
+            }
+
+            if (!allowCreatedMissing || File.Exists(normalized) || Directory.Exists(normalized))
+            {
+                if (directoryExpected && File.Exists(normalized))
+                {
+                    error = "Source path points to a file instead of a directory.";
+                    return false;
+                }
+                if (!directoryExpected && Directory.Exists(normalized))
+                {
+                    error = "Source path points to a directory instead of a file.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryValidateRegistryRestorePath(string path, out string error)
+        {
+            error = "";
+            try
+            {
+                RegistryKey root;
+                string subKey;
+                string name;
+                ParseRegistryRestorePath(path, out root, out subKey, out name);
+                if (String.IsNullOrWhiteSpace(subKey) || String.IsNullOrWhiteSpace(name))
+                {
+                    error = "Registry restore path is incomplete.";
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         private void ApplyRestoreStatusOverlay(List<RestoreEntry> entries)
@@ -421,6 +598,12 @@ namespace CK3MPS
             sb.AppendLine();
             sb.AppendLine("Current item state:");
             sb.AppendLine(DescribeRestoreCurrentState(entry));
+            if (!String.IsNullOrEmpty(entry.ValidationError))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Validation:");
+                sb.AppendLine("Invalid restore entry. " + entry.ValidationError);
+            }
             sb.AppendLine();
             sb.AppendLine("Restore selected:");
             sb.AppendLine(RestoreSelectedExplanation(entry));
@@ -613,6 +796,8 @@ namespace CK3MPS
 
         private string RestoreSelectedExplanation(RestoreEntry entry)
         {
+            if (!String.IsNullOrEmpty(entry.ValidationError))
+                return "Blocked. CK3MPS marked this restore entry invalid: " + entry.ValidationError;
             if (entry.Kind == "snapshot" || entry.Kind == "system_snapshot")
                 return "This is informational only. There is nothing to restore directly from the app.";
             if (entry.Kind == "registry")
@@ -628,6 +813,8 @@ namespace CK3MPS
 
         private string DescribeRestoreCurrentState(RestoreEntry entry)
         {
+            if (!String.IsNullOrEmpty(entry.ValidationError))
+                return "Invalid restore entry. No action is allowed until the manifest row is trusted again.";
             if (entry.Kind == "registry")
                 return ReadRegistryRestoreValue(entry.SourcePath);
             if (entry.Kind == "system_snapshot" || entry.Kind == "snapshot")
@@ -696,6 +883,9 @@ namespace CK3MPS
             List<RestoreEntry> entries = GetTargetRestoreEntries();
             if (entries.Count == 0)
                 return;
+            foreach (RestoreEntry entry in entries)
+                if (!String.IsNullOrEmpty(entry.ValidationError))
+                    throw new InvalidOperationException("Restore entry is invalid: " + entry.ValidationError);
 
             string targetText = entries.Count == 1
                 ? entries[0].Description + "\r\n\r\nTarget:\r\n" + entries[0].SourcePath
@@ -736,6 +926,12 @@ namespace CK3MPS
             if (entries.Count == 0)
                 return;
 
+            foreach (RestoreEntry entry in entries)
+                if (!String.IsNullOrEmpty(entry.ValidationError))
+                {
+                    MessageBox.Show("One or more selected restore entries are invalid. CK3MPS will not apply default restore to untrusted manifest rows.", "CK3MPS restore", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
             foreach (RestoreEntry entry in entries)
                 if (!DefaultRestoreSupported(entry))
                 {
@@ -865,7 +1061,7 @@ namespace CK3MPS
                 if (parts.Length == 0 || !toDelete.Contains(parts[0]))
                     kept.Add(line);
             }
-            File.WriteAllLines(manifest, kept.ToArray(), Encoding.UTF8);
+            SafeAtomicFile.WriteAllLines(manifest, kept.ToArray(), Encoding.UTF8);
 
             HashSet<string> remainingBackups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (RestoreEntry existing in ReadRestoreEntries())
@@ -875,6 +1071,9 @@ namespace CK3MPS
             foreach (RestoreEntry removed in entries)
             {
                 if (!toDelete.Contains(removed.Id) || String.IsNullOrEmpty(removed.BackupPath) || remainingBackups.Contains(removed.BackupPath))
+                    continue;
+                string backupDeleteError;
+                if (!TryValidateManifestBackupPath(removed.BackupPath, Directory.Exists(removed.BackupPath), out backupDeleteError))
                     continue;
 
                 if (File.Exists(removed.BackupPath))
@@ -886,6 +1085,8 @@ namespace CK3MPS
 
         private bool DefaultRestoreSupported(RestoreEntry entry)
         {
+            if (entry == null || !String.IsNullOrEmpty(entry.ValidationError))
+                return false;
             if (entry.Kind == "registry")
                 return true;
             if (IsSteamLocalConfigEntry(entry) || IsSteamSharedConfigEntry(entry))
@@ -911,7 +1112,7 @@ namespace CK3MPS
         {
             if (String.IsNullOrEmpty(path))
                 return false;
-            if (!String.IsNullOrEmpty(ck3Docs) && path.StartsWith(ck3Docs, StringComparison.OrdinalIgnoreCase))
+            if (!String.IsNullOrEmpty(ck3Docs) && PathContainmentUtilities.IsWithinRoot(ck3Docs, path))
                 return true;
             string localLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Paradox Interactive", "launcher-v2");
             string roamingLauncher = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Paradox Interactive", "launcher-v2");

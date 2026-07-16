@@ -1,0 +1,12 @@
+character_modifier={
+    owner=64739
+    instance={
+        data={
+            name="name"
+            ai_boldness=35
+            ai_energy=75
+            ai_rationality=20
+            modifier=scheme_success_bonus
+        }
+    }
+}

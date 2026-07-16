@@ -13,6 +13,7 @@ namespace CK3MPS
     internal sealed partial class MainForm
     {
         private const string ReleasesApiUrl = "https://api.github.com/repos/Danissemo/CK3MPS/releases?per_page=10";
+        private const string ReleasesPageUrl = "https://github.com/Danissemo/CK3MPS/releases";
         private bool updateCheckStarted;
         private bool updateCheckRunning;
 
@@ -22,6 +23,7 @@ namespace CK3MPS
             public string AssetName;
             public string DownloadUrl;
             public string ChecksumUrl;
+            public string ReleasePageUrl;
         }
 
         private void CheckForUpdatesOnStartup()
@@ -85,15 +87,18 @@ namespace CK3MPS
                     return;
                 }
 
+                if (String.IsNullOrEmpty(release.ReleasePageUrl))
+                    release.ReleasePageUrl = ReleasesPageUrl;
+
                 if (String.IsNullOrEmpty(release.DownloadUrl))
                 {
                     Log("WARN New CK3MPS release found (" + release.TagName + "), but it has no downloadable CK3MPS asset.");
                     return;
                 }
 
-                Log("WARN New CK3MPS release available: " + release.TagName + " (current " + AppVersion + ").");
+                Log("WARN New CK3MPS release available: " + release.TagName + " (current " + AppVersion + "). Automatic install is disabled until CK3MPS has a signed release channel.");
                 DialogResult result = MessageBox.Show(
-                    "A new CK3MPS release is available.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName + "\r\n\r\nDownload and install it now?",
+                    "A new CK3MPS release is available.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName + "\r\n\r\nAutomatic install is disabled until CK3MPS ships a signed release channel.\r\n\r\nOpen the official releases page now?",
                     "CK3MPS update available",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information);
@@ -104,7 +109,7 @@ namespace CK3MPS
                     return;
                 }
 
-                await DownloadAndStartUpdater(release);
+                OpenOfficialReleasePage(release.ReleasePageUrl);
             }
             catch (Exception ex)
             {
@@ -130,9 +135,20 @@ namespace CK3MPS
                     return null;
                 ReleaseInfo release = new ReleaseInfo();
                 release.TagName = JsonStringValue(releaseJson, "tag_name");
+                release.ReleasePageUrl = JsonStringValue(releaseJson, "html_url");
                 PickReleaseAsset(releaseJson, release);
                 return release;
             }
+        }
+
+        private void OpenOfficialReleasePage(string url)
+        {
+            string target = String.IsNullOrWhiteSpace(url) ? ReleasesPageUrl : url;
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = target;
+            info.UseShellExecute = true;
+            Process.Start(info);
+            Log("INFO Opened official CK3MPS release page: " + target);
         }
 
         private WebClient CreateGitHubWebClient()
