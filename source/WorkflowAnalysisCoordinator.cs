@@ -120,8 +120,7 @@ namespace CK3MPS
             workflowRefreshPending = false;
             try
             {
-                if (!workflowRenderTimer.IsDisposed)
-                    workflowRenderTimer.Stop();
+                workflowRenderTimer.Stop();
             }
             catch (ObjectDisposedException)
             {
