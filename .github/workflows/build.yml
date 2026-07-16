@@ -33,6 +33,7 @@ jobs:
         run: |
           ./scripts/apply-runtime-hardening.ps1
           ./scripts/apply-runtime-hardening-fixes.ps1
+          ./scripts/apply-runtime-hardening-lan-fix.ps1
 
       - name: Build patched sources
         shell: pwsh
