@@ -66,6 +66,7 @@
     <Compile Include="source\SaveAnalysis.cs" />
     <Compile Include="source\OosDeepAnalysis.cs" />
     <Compile Include="source\Workflow.cs" />
+    <Compile Include="source\WorkflowRuntimeFixes.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />
