@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -19,32 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-
-      - name: Disambiguate restore harness thread delegate
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/pr1-ci-finalization'
-        shell: pwsh
-        run: |
-          $path = 'tests/RestoreTransactionHarness.cs'
-          $old = 'Thread worker = new Thread(delegate'
-          $new = 'Thread worker = new Thread((ThreadStart)delegate'
-          $text = [System.IO.File]::ReadAllText($path)
-          $matches = ([regex]::Matches($text, [regex]::Escape($old))).Count
-          if ($matches -eq 0) {
-            Write-Host 'Restore harness ThreadStart patch already applied.'
-            exit 0
-          }
-          if ($matches -ne 1) {
-            throw "Expected exactly one ambiguous Thread constructor, found $matches."
-          }
-          $encoding = New-Object System.Text.UTF8Encoding($false)
-          [System.IO.File]::WriteAllText($path, $text.Replace($old, $new), $encoding)
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- tests/RestoreTransactionHarness.cs
-          git commit -m 'Disambiguate restore harness ThreadStart'
-          git push origin HEAD:${{ github.head_ref }}
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
