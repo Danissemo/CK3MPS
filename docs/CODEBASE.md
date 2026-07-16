@@ -1,542 +1,172 @@
 # Codebase Guide
 
-This document explains how CK3MPS is structured, why the code is split the way it is, and how the main runtime flow works.
+This document describes the current CK3MPS architecture after the hardening work integrated through the `agent/fix-hardening-gaps` line. It is intentionally factual: it names the files, classes, transaction data, and recovery behavior that exist in the repository now.
 
 ## Purpose
 
-CK3MPS is a Windows desktop utility that prepares a cleaner, more predictable Crusader Kings III multiplayer environment.
+CK3MPS is a Windows desktop utility that prepares a cleaner, more predictable Crusader Kings III multiplayer environment. It coordinates CK3 user files, Steam local/shared config, Paradox Launcher files, Windows networking and firewall, Windows restore points, restore/rollback metadata, OOS/readiness/support reports, workflow save analysis, and parity-room exchange in one WinForms process.
 
-The application has to coordinate several different domains in one run:
+## Platform And Runtime Boundaries
 
-- CK3 user files in Documents
-- Steam local/shared config
-- Paradox Launcher files
-- Windows networking and firewall
-- Windows restore points
-- Restore/rollback metadata
-- OOS/readiness/support reports
+- Windows-only desktop application.
+- .NET Framework 4.8 project.
+- Most feature code is still one large `partial MainForm`. This is practical for shared UI/runtime state, but it remains a real maintenance cost.
+- Some behaviors depend on Windows state and rights. Registry rollback can fail if permissions, hives, or values changed outside CK3MPS.
+- Directory replacement uses same-parent rename operations where possible; CK3MPS does not claim cross-volume atomicity.
+- Automated parity and UI-race tests cannot reproduce every real router, firewall, VPN, multi-NIC, slow UI, or two-machine LAN condition. Manual LAN validation is still required before relying on LAN parity-room behavior for release confidence.
 
-Because these areas interact during one user action, the project keeps them in one process and one `partial MainForm`, but splits the source by feature ownership to keep editing practical.
+## Main Runtime Flow
 
-## Why The Project Uses `partial MainForm`
+### Startup
 
-The source is not split into a deep service/container architecture. Instead, most feature files are `partial MainForm`.
+`Start.cs` is the application entry point. It checks administrator rights, relaunches with UAC when needed, and starts `MainForm`. Startup also gives `AppConfig.cs` a chance to load the current stabilizer root and to recover any interrupted portable/non-portable state-root migration through `TransactionalStateMigration.Recover`.
 
-That choice trades abstract layering for a few pragmatic benefits:
+### Main form creation
 
-- all tabs and actions can share the same state without plumbing many interfaces
-- low-level Windows actions can be wired directly to UI and restore/report code
-- feature edits stay local to a file even though the app is highly stateful
-- refactors are less risky for a local admin tool with many side effects
+`AppState.cs` holds shared fields and nested state records. `MainWindow.cs` builds tabs, controls, checklist rows, presets, and the high-level `Scan`, `Review`, and `Apply Settings` entry points.
 
-The downside is that shared state is broad, which is why `AppState.cs` and `source/README.md` matter: they are the map to what exists and where to edit it.
+### Read-only scan and review
 
-## Top-Level Runtime Flow
+`Scan.cs` runs the read-only checklist pass. It logs findings, runs readiness checks in read-only mode, and stores a same-session snapshot. `Review.cs` turns that snapshot plus the current UI selections into the before-apply plan.
 
-## 1. Startup
+### Apply and finalization
 
-`Start.cs` is the application entry point.
+Mutation work is distributed across `Launchers.cs`, `GameSettings.cs`, `Cleanup.cs`, `Network.cs`, `Reports.cs`, `Readiness.cs`, `Restore.cs`, `SystemRestore.cs`, `Workflow.cs`, `TransactionalOperations.cs`, and `RestoreTransactions.cs`. Reports, live logs, restore manifests, and parity/support outputs are product artifacts, not incidental debug files.
 
-It:
+## Source File Responsibilities
 
-- checks for administrator rights
-- relaunches via UAC when needed
-- starts `MainForm`
+- `Start.cs` — process startup and administrator elevation.
+- `AppState.cs` — shared UI/runtime state, version, path fields, scan/review snapshots, workflow fields, restore fields, and defaults.
+- `AppConfig.cs` — `settings.ini`, path overrides, portable-mode flag, log verbosity, and portable/non-portable state-root moves.
+- `MainWindow.cs` — visible UI layout and high-level flow orchestration.
+- `StepChecklist.cs` — grouped checklist UI, expand/collapse behavior, virtual scrolling, and tooltips.
+- `StepCatalog.cs` — named checklist IDs, 29 expected labels, and stable Recommended preset validation.
+- `Scan.cs` — read-only inspection.
+- `Review.cs` — before-apply plan text and review dialog.
+- `Launchers.cs` — Steam and Paradox Launcher stabilization.
+- `GameSettings.cs` — CK3 settings profiles, runtime profile checks, and settings guard.
+- `Cleanup.cs` — cache/report cleanup and suspicious descriptor/binary quarantine.
+- `Network.cs` — Windows networking checks and firewall/DNS mutations.
+- `Reports.cs` — OOS, parity, save, support, evidence, and profile reporting.
+- `Readiness.cs` — final readiness verdict and detection helpers.
+- `Restore.cs` — restore manifest model, restore UI, restore-default rules, and legacy restore entry handling.
+- `RestoreTransactions.cs` — batch restore transaction execution, reverse snapshots, manifest rollback, same-parent directory replacement, and rollback diagnostics.
+- `SystemRestore.cs` — Windows restore-point integration.
+- `Updates.cs` — GitHub release lookup and user-initiated navigation to the official release page. It does not perform automatic unsigned in-place updating.
+- `Workflow.cs` — scenario UI, host/save/OOS workflow, parity comparison, and parity-room transport surface.
+- `WorkflowAnalysisCoordinator.cs` — cancelable workflow refreshes, generation/scenario checks, immutable per-refresh analysis snapshots, and LAN-bound parity listener implementation.
+- `TransactionalOperations.cs` — `TransactionalStateMigration`, portable-mode migration journaling, staging, commit, rollback, and startup recovery.
+- `Helpers.cs` — shared operational helpers, preset application, log buffering, file writes, path selection, and scan/apply snapshot reuse.
+- `Utilities.cs` — path normalization, version comparison, preset constants, restore manifest serialization, ownership rules, and checksum helpers.
+- `RuntimeModeUtilities.cs` — portable/non-portable root helpers and log filtering behavior.
 
-This up-front elevation is intentional because CK3MPS can touch firewall, registry, launcher files, and restore infrastructure. The tool wants one predictable privilege level instead of mixed behavior later.
+## Portable Mode And Transactional State Migration
 
-## 2. Main form creation
+Portable mode is a state-root switch, not a separate build:
 
-`AppState.cs` defines shared fields and `MainWindow.cs` builds the visible UI.
+- non-portable data lives under the Documents stabilizer root;
+- portable data lives under `CK3MPS_Data` next to the executable.
 
-During startup the app:
+`TransactionalStateMigration` in `TransactionalOperations.cs` performs recoverable migration between those roots. It uses:
 
-- creates controls and tabs
-- loads app config and portable-mode state
-- auto-detects CK3 / Steam / settings paths
-- fills the checklist items
-- wires `Scan`, `Review`, `Apply Settings`, reports, restore, and advanced actions
+- journal file `.ck3mps-state-migration`;
+- staging directories named `.ck3mps-migration-stage-<transaction>`;
+- `.backup` for replaced target data;
+- version-2 journals with checksum/hash information while retaining compatibility with older recovery data;
+- SHA-256 verification before exposing staged content;
+- `settings.ini` commit last, so the `portableMode` flag moves at the transaction boundary.
 
-## 3. Scan
+The persisted phases are `Prepared`, `Copied`, `Committing`, `Committed`, and `Cleanup`.
 
-`Scan` is the read-only pass.
+Pre-commit failures in `Prepared`, `Copied`, or `Committing` are treated as uncommitted and CK3MPS attempts to roll back staged/created/replaced target data. If rollback cannot complete, journal data is left so startup recovery can retry or report the issue. Post-commit failures in `Committed` or `Cleanup` are treated as committed: startup recovery verifies committed targets, moves to cleanup when needed, completes cleanup idempotently, and then removes both journal copies.
 
-The UI button is wired in `MainWindow.cs`, while the actual item-by-item read-only logic lives in `Scan.cs`.
+Failure-injection tests use `CK3MPS_TEST_MIGRATION_FAULT`, including crash-style phases, to cover before-copy, after-copy, before-commit, after-commit, committed cleanup, corruption, journal compatibility, and recovery paths. These are tests of implemented recovery paths, not a promise that every possible OS/storage failure can be repaired automatically.
 
-The scan:
+## Restore Transactions
 
-- walks every checklist item
-- writes live log output
-- runs final readiness checks in read-only mode
-- stores a same-session snapshot of the current selected state
+Restore execution is batch-oriented through `ExecuteRestoreBatch` in `RestoreTransactions.cs`. A batch creates app-owned transaction data under the stabilizer root:
 
-That snapshot is important. It is what lets `Apply Settings` avoid repeating every expensive inspection step if the user already ran `Scan` in the current session with the same relevant inputs.
+```text
+<stabilizerRoot>\restore_transactions\<timestamp>_<guid>\
+```
 
-## 4. Review
+For each restore entry, CK3MPS prepares a `RestoreRollbackRecord`, captures reverse snapshots, stages backups, checks for reparse points, and then commits. File restores use verified temporary files. Directory replacement uses a sibling staged directory and same-parent rename/swap logic rather than recursive in-place overwrite.
 
-`Review.cs` turns the latest scan state plus the current UI selections into a concrete plan.
+The transaction also snapshots `restore_manifest.tsv` before applying changes. If any later item fails, CK3MPS walks already-prepared/applied records in reverse order and restores files, directories, created targets, registry values, and the manifest snapshot. If rollback succeeds, transaction data is removed. If rollback also reports errors, CK3MPS preserves the transaction directory and reports that recovery data path.
 
-It answers questions like:
+Important behavior:
 
-- what core actions will run
-- which selected items actually need a change
-- which selected items are already in target state
-- which items are report-only
-- what files/outputs/restore safety apply
+- identical targets are no-ops;
+- `moved_file` and `moved_directory` refuse to overwrite user data that appeared at the original path;
+- targets, backups, staging trees, and cleanup paths reject reparse points;
+- post-commit user changes are protected by confirmation snapshots where implemented;
+- registry rollback is best-effort and depends on current Windows registry state and rights.
 
-This layer exists because the tool is not a blind batch runner. It tries to be explicit about what will happen before writing anything.
+## Workflow Refresh And Parity Room
 
-## 5. Apply Settings
+Workflow refreshes are coordinated by `WorkflowAnalysisCoordinator.cs`:
 
-`MainWindow.cs` owns the high-level apply sequence.
+- `BeginWorkflowRefreshCancellation` cancels the previous refresh and records the owner generation/scenario;
+- `CancelWorkflowScenarioRefresh` increments `workflowLoadGeneration` and cancels pending work;
+- `WorkflowRefreshStillCurrent` requires the same cancellation token, generation, and scenario before rendering or applying results;
+- `CaptureWorkflowAnalysisSnapshot` creates one immutable host/save/OOS/incident snapshot for the refresh;
+- `CurrentWorkflowAnalysis` reuses the per-refresh snapshot while nested workflow code builds steps, verdict, summary, and recommendation text.
 
-The actual mutation work is spread across feature files:
+The parity room keeps its security checks when LAN support is enabled. The transport deliberately binds loopback plus one selected private LAN IPv4 endpoint instead of `IPAddress.Any`, rejects routed clients outside the selected subnet before payload processing, and preserves room-code/session-secret authentication, encryption, signature/HMAC validation, replay/nonce checks, payload limits, peer/client limits, rate limiting, slow-client handling, and listener shutdown/port release behavior.
 
-- `Launchers.cs`
-- `GameSettings.cs`
-- `Cleanup.cs`
-- `Network.cs`
-- `Reports.cs`
-- `Readiness.cs`
-- `Restore.cs`
-- `SystemRestore.cs`
+Automated parity tests cover loopback/LAN binding, wrong room code, wrong shared secret, nonce replay, tampered transport, payload size, peer/client limits, slow clients, and listener shutdown. A real two-machine LAN smoke test is still required because CI cannot model the user's router, firewall prompts, VPNs, or adapter priority.
 
-Before mutating, the app reuses the latest same-session scan/review snapshot when possible. It also records restore information before destructive or mutating changes.
+## StepCatalog And Stable IDs
 
-## 6. Finalization
+`StepCatalog` defines named constants for all 29 checklist actions and validates the exact label order plus the Recommended preset mapping. Do not reorder, remove, or repurpose a step ID casually. If a step meaning changes, update the catalog, tests, presets, review text, and documentation in the same change so old indexes do not silently point at new behavior.
 
-After scan or apply, the app writes compact support artifacts:
+## App-Owned Transaction Data
 
-- run history
-- readiness output
-- OOS summaries
-- parity/support package files
-- restore manifests and snapshots
-- live log files
+CK3MPS-owned transaction/recovery data includes:
 
-The project treats these outputs as part of the product, not just internal debugging noise.
+- `.ck3mps-state-migration` journal copies in both state roots;
+- `.ck3mps-migration-stage-*` staging directories;
+- migration `.backup` data;
+- `restore_transactions\*` transaction directories;
+- `restore_manifest.tsv` and its transaction snapshot;
+- generated test-only transaction data under `bin\tests` when scripts run locally.
 
-## Shared State Model
+User CK3 saves, launcher files, Steam configs, and registry values are not app-owned merely because CK3MPS can inspect or restore them.
 
-`AppState.cs` is the shared state hub.
+## Updates And Releases
 
-Important groups inside it:
+`Updates.cs` checks GitHub releases and opens the official release page after explicit user action. The current code does not run an automatic updater, does not download and execute replacement binaries, and should not be documented as a built-in automatic update installer.
 
-- UI controls
-- current discovered or overridden paths
-- portable/non-portable state roots
-- live log buffering state
-- busy/progress flags
-- scan/apply snapshot state
-- restore UI state
-- settings guard state
+Release governance is implemented in scripts and workflows rather than application runtime code. `check-version-consistency.ps1 -RequireReleaseTag` enforces exact release tag equality with `AppVersion` during release publishing. `package-release.ps1 -SkipBuild` packages the already-tested build output instead of rebuilding after the validation pipeline.
 
-It also defines small nested data shapes such as:
+## Operational Recovery Guidance
 
-- grouped checklist UI records
-- pending log line buffers
-- step planning snapshots
-- session scan snapshot
-- network route profile snapshot
+After an interrupted portable migration:
 
-These nested types exist because the app needs structured in-memory state, but the project intentionally avoids spreading many tiny standalone classes across the repo.
+1. Start CK3MPS again from the intended executable location.
+2. Let startup recovery process the migration journal.
+3. Do not manually delete `.ck3mps-state-migration`, `.ck3mps-migration-stage-*`, or `.backup` until recovery has either completed or the preserved data has been inspected.
+4. If recovery reports a path/permission/hash issue, preserve both state roots before manual cleanup.
 
-## File-By-File Responsibilities
+After an interrupted restore batch:
 
-## `Start.cs`
+1. Do not immediately delete `restore_transactions`.
+2. Reopen CK3MPS and inspect the Restore tab and logs.
+3. If the error says recovery data was preserved, keep that transaction folder and compare the target files/registry values against the recorded restore entries before retrying.
+4. Registry recovery may require elevated rights and may still depend on current Windows state.
 
-What:
+## Reading Order
 
-- application entry point
-- administrator elevation
-
-Why:
-
-- many actions require elevation, and mixed privilege state would make behavior less predictable
-
-How:
-
-- checks Windows principal role
-- relaunches the executable with `runas`
-- starts WinForms when elevation is available
-
-## `AppState.cs`
-
-What:
-
-- long-lived state fields used by all partial form files
-
-Why:
-
-- feature files need shared access to controls, paths, logs, progress, review snapshots, and runtime flags
-
-How:
-
-- declares controls, strings, booleans, buffers, nested UI records, and constructor defaults
-
-## `AppConfig.cs`
-
-What:
-
-- app configuration and path override persistence
-
-Why:
-
-- the tool needs to remember custom folders, portable mode, update preferences, and log verbosity between runs
-
-How:
-
-- reads/writes `settings.ini`
-- handles legacy config/path override migration
-- resolves non-portable vs portable config locations
-- moves state when portable mode changes
-
-## `MainWindow.cs`
-
-What:
-
-- UI construction, layout, and top-level run orchestration
-
-Why:
-
-- all tabs and action buttons originate here
-
-How:
-
-- builds `Main`, `Paths`, `Reports`, `Restore`, and `Advanced`
-- fills checklist items
-- starts `Scan`, `Review`, and `Apply Settings`
-- handles deferred finalization after scan/apply
-
-## `StepChecklist.cs`
-
-What:
-
-- checklist grouping and interaction behavior
-
-Why:
-
-- the app has many actions, so it needs grouped display, collapse state, and per-item help
-
-How:
-
-- builds group headers and rows
-- manages expand/collapse state
-- synchronizes group checkbox state with child item state
-- manages tooltip behavior and virtual scrolling
-
-## `Scan.cs`
-
-What:
-
-- read-only scan implementation
-
-Why:
-
-- users need a no-change diagnostic pass before applying changes
-
-How:
-
-- dispatches each checklist index to a read-only check
-- logs findings
-- runs readiness in read-only mode
-- stores a fresh same-session scan snapshot
-
-## `Review.cs`
-
-What:
-
-- detailed before-apply review plan generation and rendering
-
-Why:
-
-- apply should explain what changes are actually needed now, not only what is selected
-
-How:
-
-- builds review lines by tone/category
-- separates core actions, changes, report-only actions, and already-satisfied items
-- renders a rich review dialog
-- computes per-step detailed preview text
-
-## `Launchers.cs`
-
-What:
-
-- Steam and Paradox Launcher stabilization
-
-Why:
-
-- launcher state is a common source of multiplayer instability, mod noise, and override drift
-
-How:
-
-- backs up launcher configs
-- normalizes Steam launch options
-- disables risky launch/debug options
-- disables Steam Cloud override when needed
-- rebuilds launcher database by quarantining it
-- enforces no-mod `dlc_load.json`
-
-## `GameSettings.cs`
-
-What:
-
-- CK3 settings stabilization and runtime-profile verification
-
-Why:
-
-- CK3 graphics and settings drift can affect stability and reproducibility, and the app wants to detect rollback after launch
-
-How:
-
-- writes stable `pdx_settings.txt`
-- applies graphics sub-profiles
-- writes expected profile snapshots
-- runs a timer-based settings guard
-- checks runtime logs for renderer/profile drift
-- writes stable game-rule profile output
-
-## `Cleanup.cs`
-
-What:
-
-- CK3 user-state cleanup and suspicious-file quarantine
-
-Why:
-
-- stale reports, caches, descriptors, and suspicious loader files can pollute multiplayer troubleshooting
-
-How:
-
-- archives OOS/crash reports
-- clears caches
-- quarantines suspicious `.mod` and binary-like files
-- clears selected player UI state
-- writes cleanup markers and reports
-
-## `Network.cs`
-
-What:
-
-- Windows network diagnostics and network mutation helpers
-
-Why:
-
-- CK3 multiplayer problems often mix app-level and route/DNS/firewall problems
-
-How:
-
-- builds route/adaptor profile snapshots
-- checks VPN, PPPoE, mobile, IPv6-only, CGNAT, and DNS signals
-- logs adaptive network plans
-- flushes DNS
-- ensures CK3 firewall rules
-- checks overlays, background apps, services, and online reachability
-
-## `Reports.cs`
-
-What:
-
-- support, OOS, save, parity, and Windows profile reporting
-
-Why:
-
-- the project wants compact outputs that explain what happened and what still looks risky
-
-How:
-
-- writes latest OOS summary
-- writes OOS history timeline
-- writes parity manifest
-- writes OOS risk score report
-- writes support/evidence package index
-- writes save launch notes
-- owns some Windows profile actions and snapshots used in readiness/support output
-
-## `Readiness.cs`
-
-What:
-
-- final verdict generation plus many detection helpers
-
-Why:
-
-- all user-facing success/failure summaries need one ordered readiness model
-
-How:
-
-- runs final readiness checks
-- writes stability, runtime, portable-transfer, pre-session, and verdict reports
-- detects Steam roots, manifests, install path, active save data, versions, DLC/workshop fingerprints, etc.
-
-This file is large because it is the convergence point for “are we actually ready?” logic.
-
-## `Restore.cs`
-
-What:
-
-- rollback manifest, restore UI backing logic, and restore execution
-
-Why:
-
-- CK3MPS is intentionally reversible wherever possible
-
-How:
-
-- records file, directory, registry, and snapshot entries before mutation
-- stores them in `restore_manifest.tsv`
-- populates restore filters/sorting/details
-- restores selected items or resets supported overrides to default behavior
-
-## `SystemRestore.cs`
-
-What:
-
-- Windows restore-point integration
-
-Why:
-
-- some users want a system-level fallback outside CK3MPS’s own file/registry restore manifest
-
-How:
-
-- creates restore points
-- checks restore-point infrastructure in read-only mode
-- lists restore points via PowerShell
-- deletes selected restore points
-- attempts limited restore-infrastructure repair when needed
-
-## `Updates.cs`
-
-What:
-
-- GitHub release checking and safe navigation to the official release
-
-Why:
-
-- the app can detect newer published releases without performing an unsafe in-place self-update
-
-How:
-
-- queries the GitHub releases API
-- compares the latest release tag with the running version
-- opens the official release page after explicit user action
-- keeps automatic in-place installation disabled
-
-## `Helpers.cs`
-
-What:
-
-- large shared support layer
-
-Why:
-
-- many operational patterns repeat across the project: snapshots, file writes, path browsing, log formatting, presets, live log persistence, scan/apply reuse
-
-How:
-
-- contains utility methods that depend on `MainForm` state
-- centralizes preset application and busy/progress handling
-- centralizes live log buffering and file writes
-- centralizes path selection and status indicators
-- owns same-session scan snapshot invalidation/reuse helpers
-
-## `Utilities.cs`
-
-What:
-
-- mostly pure static utility logic
-
-Why:
-
-- some rules should be testable without booting the whole WinForms app
-
-How:
-
-- path normalization and validation
-- version comparison
-- preset constants
-- restore manifest serialization and ownership rules
-- checksum parsing
-- compact filename rules
-
-## `RuntimeModeUtilities.cs`
-
-What:
-
-- tiny runtime-mode helpers
-
-Why:
-
-- portable-mode root selection and log suppression behavior are simple enough to stay in standalone statics
-
-How:
-
-- resolves state-root location
-- decides which log lines should be suppressed for each verbosity mode
-
-## Restore And Report Model
-
-CK3MPS has two separate safety/explanation systems:
-
-- restore data
-- report data
-
-Restore data exists so user changes can be rolled back.
-
-Report data exists so the user can understand what the app saw, what it changed, and what still looks risky.
-
-Those concerns intentionally live in different files because “can restore it” and “can explain it” are not the same problem.
-
-## Portable Mode
-
-Portable mode is not a separate app build.
-
-It is a state-root switch:
-
-- non-portable mode writes under the Documents stabilizer root
-- portable mode writes under `CK3MPS_Data` next to the executable
-
-That logic is coordinated through `AppConfig.cs`, `AppState.cs`, `RuntimeModeUtilities.cs`, and helper methods that always resolve the current stabilizer root before writing.
-
-## Release And Repo-Maintenance Sources
-
-The codebase itself also participates in release governance.
-
-Important files:
-
-- `source/AppState.cs`
-  User-visible app version
-- `CK3MPS.csproj`
-  Package version
-- `scripts/validate-release.ps1`
-  Release metadata and file validation
-- `scripts/check-version-consistency.ps1`
-  Version consistency check
-- `scripts/check-repo-clean.ps1`
-  Repo hygiene check
-
-If you change versioning, screenshots, release notes, or maintainer flow, you should check the scripts and docs under `scripts/` and `docs/` together.
-
-## Where To Start Reading
-
-If you are new to the code:
+For architecture orientation, read:
 
 1. `Start.cs`
 2. `AppState.cs`
 3. `MainWindow.cs`
 4. `Scan.cs`
 5. `Review.cs`
-6. `Restore.cs`
-7. `Readiness.cs`
-
-That order gives the clearest picture of startup, shared state, UI, read-only analysis, before-apply planning, rollback, and final verdict generation.
-
-## Transactional Safety
-
-- Portable-mode migration copies into a staging tree, records progress in both state roots, verifies content, commits the destination, and recovers or finishes cleanup on the next startup.
-- Directory restore stages and verifies the backup before swapping sibling directories with atomic renames.
-- Multi-item restore captures reverse snapshots and the restore manifest, then rolls back already-applied entries if a later entry fails.
-- Workflow refreshes use cancellation tokens and generation/scenario checks. One immutable host/save/OOS/incident snapshot feeds steps, verdict, summary, and recommendation for a refresh.
-- Parity room listens on the detected primary IPv4 interface for LAN sessions. Payload encryption, authentication, replay checks, size limits, peer limits, and rate limits remain mandatory.
+6. `TransactionalOperations.cs`
+7. `Restore.cs`
+8. `RestoreTransactions.cs`
+9. `WorkflowAnalysisCoordinator.cs`
+10. `Workflow.cs`
+11. `Readiness.cs`
