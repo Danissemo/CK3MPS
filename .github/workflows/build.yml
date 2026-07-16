@@ -32,6 +32,14 @@ jobs:
         shell: pwsh
         run: ./scripts/test-required.ps1
 
+      - name: Upload Workflow Parity diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: workflow-parity-validation
+          path: .artifacts/workflow-parity-validation.log
+          if-no-files-found: warn
+
       - name: Transactional recovery tests
         shell: pwsh
         run: ./scripts/test-transactional-hardening.ps1
