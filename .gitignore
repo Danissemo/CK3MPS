@@ -11,6 +11,7 @@ source.zip
 
 # User/local runtime artifacts
 *.log
+!tests/fixtures/oos_smoke/error_1.log
 *.tmp
 *.user
 *.suo

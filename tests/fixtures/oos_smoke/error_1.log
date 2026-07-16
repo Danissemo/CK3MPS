@@ -1,0 +1,3 @@
+[19:55:31][E][multiplayer.cpp:101]: OOS detected between machine 1 and machine 2.
+[19:55:31][E][gamestate.cpp:202]: RANDOM_COUNT checksum mismatch.
+[19:55:32][E][character.cpp:303]: Living character state differs for character 64739.
