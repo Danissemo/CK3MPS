@@ -28,6 +28,10 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1
 
+      - name: Build standalone UI preview
+        shell: pwsh
+        run: msbuild CK3MPS.UiPreview.csproj /m /p:Configuration=Release /p:Platform=AnyCPU
+
       - name: Integration tests
         shell: pwsh
         run: ./scripts/test-required.ps1
@@ -58,6 +62,12 @@ jobs:
         with:
           name: CK3MPS-exe
           path: release/CK3MPS.exe
+
+      - name: Upload standalone UI preview executable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CK3MPS-UI-Preview-exe
+          path: preview/CK3MPS-UI-Preview.exe
 
       - name: Upload release zip
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
