@@ -1,7 +1,10 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -24,6 +27,13 @@ namespace CK3MPS
             public string DownloadUrl;
             public string ChecksumUrl;
             public string ReleasePageUrl;
+        }
+
+        private sealed class PreparedUpdate
+        {
+            public string WorkRoot;
+            public string StagedAppRoot;
+            public string DownloadedAssetPath;
         }
 
         [DataContract]
@@ -119,9 +129,9 @@ namespace CK3MPS
                     return;
                 }
 
-                Log("WARN New CK3MPS release available: " + release.TagName + " (current " + AppVersion + "). Automatic install is disabled until CK3MPS has a signed release channel.");
+                Log("WARN New CK3MPS release available: " + release.TagName + " (current " + AppVersion + ").");
                 DialogResult result = MessageBox.Show(
-                    "A new CK3MPS release is available.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName + "\r\n\r\nAutomatic install is disabled until CK3MPS ships a signed release channel.\r\n\r\nOpen the official releases page now?",
+                    "A new CK3MPS release is available.\r\n\r\nCurrent: " + AppVersion + "\r\nLatest: " + release.TagName + "\r\n\r\nInstall it now? CK3MPS will download the update, close itself, replace the files, and reopen automatically.",
                     "CK3MPS update available",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information);
@@ -132,7 +142,20 @@ namespace CK3MPS
                     return;
                 }
 
-                OpenOfficialReleasePage(release.ReleasePageUrl);
+                PreparedUpdate prepared = null;
+                try
+                {
+                    prepared = await PrepareUpdatePackage(release);
+                    LaunchSelfUpdater(prepared, release);
+                    Log("OK   CK3MPS update " + release.TagName + " downloaded. Restarting through the updater.");
+                    Application.Exit();
+                }
+                catch
+                {
+                    if (prepared != null && !String.IsNullOrEmpty(prepared.WorkRoot))
+                        TryDeleteDirectory(prepared.WorkRoot);
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -161,6 +184,230 @@ namespace CK3MPS
                 release.ReleasePageUrl = releaseDto.HtmlUrl ?? "";
                 PickReleaseAsset(releaseDto, release);
                 return release;
+            }
+        }
+
+        private async Task<PreparedUpdate> PrepareUpdatePackage(ReleaseInfo release)
+        {
+            updateDownloadProgress.Value = 0;
+
+            string workRoot = Path.Combine(Path.GetTempPath(), "CK3MPS-update-" + Guid.NewGuid().ToString("N"));
+            string stagingRoot = Path.Combine(workRoot, "staged");
+            Directory.CreateDirectory(workRoot);
+            Directory.CreateDirectory(stagingRoot);
+
+            string safeAssetName = MakeSafeFileName(String.IsNullOrWhiteSpace(release.AssetName) ? "CK3MPS-update.bin" : release.AssetName);
+            string downloadPath = Path.Combine(workRoot, safeAssetName);
+
+            Log("INFO Downloading CK3MPS update asset: " + safeAssetName + ".");
+            await DownloadFileWithProgress(release.DownloadUrl, downloadPath);
+
+            await VerifyDownloadedChecksumIfAvailable(release, downloadPath);
+
+            string lowerName = safeAssetName.ToLowerInvariant();
+            if (lowerName.EndsWith(".zip", StringComparison.Ordinal))
+            {
+                ZipFile.ExtractToDirectory(downloadPath, stagingRoot);
+            }
+            else if (lowerName.EndsWith(".exe", StringComparison.Ordinal))
+            {
+                File.Copy(downloadPath, Path.Combine(stagingRoot, "CK3MPS.exe"), true);
+            }
+            else
+            {
+                throw new InvalidOperationException("Unsupported update asset type: " + safeAssetName + ".");
+            }
+
+            string stagedAppRoot = FindStagedAppRoot(stagingRoot);
+            if (String.IsNullOrEmpty(stagedAppRoot))
+                throw new InvalidOperationException("Downloaded update package does not contain CK3MPS.exe.");
+
+            Log("OK   Update package is ready: " + release.TagName + ".");
+            return new PreparedUpdate
+            {
+                WorkRoot = workRoot,
+                StagedAppRoot = stagedAppRoot,
+                DownloadedAssetPath = downloadPath
+            };
+        }
+
+        private Task DownloadFileWithProgress(string url, string destinationPath)
+        {
+            string target = SanitizeOfficialDownloadUrl(url);
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
+
+            WebClient client = CreateGitHubWebClient();
+            client.DownloadProgressChanged += delegate(object sender, DownloadProgressChangedEventArgs args)
+            {
+                int percent = Math.Max(0, Math.Min(100, args.ProgressPercentage));
+                updateDownloadProgress.Value = percent;
+            };
+            client.DownloadFileCompleted += delegate(object sender, AsyncCompletedEventArgs args)
+            {
+                client.Dispose();
+                if (args.Cancelled)
+                    completion.TrySetCanceled();
+                else if (args.Error != null)
+                    completion.TrySetException(args.Error);
+                else
+                    completion.TrySetResult(true);
+            };
+
+            client.DownloadFileAsync(new Uri(target), destinationPath);
+            return completion.Task;
+        }
+
+        private async Task VerifyDownloadedChecksumIfAvailable(ReleaseInfo release, string downloadPath)
+        {
+            if (String.IsNullOrEmpty(release.ChecksumUrl))
+            {
+                Log("INFO Update checksum asset was not found; continuing without checksum verification.");
+                return;
+            }
+
+            string checksumText = await Task.Run(delegate
+            {
+                using (WebClient client = CreateGitHubWebClient())
+                {
+                    return client.DownloadString(SanitizeOfficialDownloadUrl(release.ChecksumUrl));
+                }
+            });
+
+            string expectedHash = ExtractSha256Hash(checksumText);
+            if (String.IsNullOrEmpty(expectedHash))
+            {
+                Log("WARN Update checksum asset exists but does not contain a SHA-256 hash; continuing without checksum verification.");
+                return;
+            }
+
+            string actualHash = ComputeSha256Hex(downloadPath);
+            if (!String.Equals(expectedHash, actualHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Downloaded update checksum mismatch.");
+
+            Log("OK   Update checksum verified.");
+        }
+
+        private void LaunchSelfUpdater(PreparedUpdate prepared, ReleaseInfo release)
+        {
+            string appDirectory = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string appExe = Application.ExecutablePath;
+            string updaterScript = Path.Combine(prepared.WorkRoot, "apply-update.cmd");
+
+            string script = BuildSelfUpdaterScript(
+                Process.GetCurrentProcess().Id,
+                prepared.StagedAppRoot,
+                appDirectory,
+                appExe,
+                prepared.WorkRoot,
+                release.TagName);
+
+            File.WriteAllText(updaterScript, script, Utf8NoBom);
+
+            ProcessStartInfo startInfo = new ProcessStartInfo();
+            startInfo.FileName = updaterScript;
+            startInfo.WorkingDirectory = prepared.WorkRoot;
+            startInfo.UseShellExecute = true;
+            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            Process.Start(startInfo);
+        }
+
+        private static string BuildSelfUpdaterScript(int processId, string stagedAppRoot, string appDirectory, string appExe, string workRoot, string releaseTag)
+        {
+            StringBuilder script = new StringBuilder();
+            script.AppendLine("@echo off");
+            script.AppendLine("setlocal enableextensions");
+            script.AppendLine("set \"CK3MPS_PID=" + processId + "\"");
+            script.AppendLine("set \"CK3MPS_SRC=" + stagedAppRoot + "\"");
+            script.AppendLine("set \"CK3MPS_DST=" + appDirectory + "\"");
+            script.AppendLine("set \"CK3MPS_EXE=" + appExe + "\"");
+            script.AppendLine("set \"CK3MPS_TMP=" + workRoot + "\"");
+            script.AppendLine("title CK3MPS updater " + releaseTag);
+            script.AppendLine(":wait_for_ck3mps");
+            script.AppendLine("tasklist /FI \"PID eq %CK3MPS_PID%\" /NH | findstr /I /C:\"CK3MPS.exe\" >nul");
+            script.AppendLine("if not errorlevel 1 (");
+            script.AppendLine("  timeout /t 1 /nobreak >nul");
+            script.AppendLine("  goto wait_for_ck3mps");
+            script.AppendLine(")");
+            script.AppendLine("robocopy \"%CK3MPS_SRC%\" \"%CK3MPS_DST%\" /E /R:12 /W:1 /NFL /NDL /NJH /NJS /NP >nul");
+            script.AppendLine("if errorlevel 8 (");
+            script.AppendLine("  start \"\" \"%CK3MPS_EXE%\"");
+            script.AppendLine("  exit /b 1");
+            script.AppendLine(")");
+            script.AppendLine("start \"\" \"%CK3MPS_EXE%\"");
+            script.AppendLine("timeout /t 2 /nobreak >nul");
+            script.AppendLine("rd /s /q \"%CK3MPS_TMP%\" >nul 2>nul");
+            script.AppendLine("del \"%~f0\" >nul 2>nul");
+            return script.ToString();
+        }
+
+        private static string FindStagedAppRoot(string stagingRoot)
+        {
+            string direct = Path.Combine(stagingRoot, "CK3MPS.exe");
+            if (File.Exists(direct))
+                return stagingRoot;
+
+            foreach (string file in Directory.GetFiles(stagingRoot, "CK3MPS.exe", SearchOption.AllDirectories))
+                return Path.GetDirectoryName(file);
+
+            return "";
+        }
+
+        private static string MakeSafeFileName(string fileName)
+        {
+            string safe = fileName ?? "";
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+                safe = safe.Replace(invalid, '_');
+            return String.IsNullOrWhiteSpace(safe) ? "CK3MPS-update.bin" : safe;
+        }
+
+        private static string ComputeSha256Hex(string path)
+        {
+            using (SHA256 sha256 = SHA256.Create())
+            using (FileStream stream = File.OpenRead(path))
+            {
+                byte[] hash = sha256.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+        }
+
+        private static string ExtractSha256Hash(string text)
+        {
+            string value = text ?? "";
+            for (int i = 0; i <= value.Length - 64; i++)
+            {
+                string candidate = value.Substring(i, 64);
+                if (IsHex(candidate))
+                    return candidate.ToLowerInvariant();
+            }
+            return "";
+        }
+
+        private static bool IsHex(string value)
+        {
+            if (String.IsNullOrEmpty(value))
+                return false;
+
+            foreach (char ch in value)
+            {
+                bool digit = ch >= '0' && ch <= '9';
+                bool lower = ch >= 'a' && ch <= 'f';
+                bool upper = ch >= 'A' && ch <= 'F';
+                if (!digit && !lower && !upper)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (!String.IsNullOrEmpty(path) && Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch
+            {
             }
         }
 
@@ -209,6 +456,19 @@ namespace CK3MPS
             if (!String.Equals(parsed.Host, "github.com", StringComparison.OrdinalIgnoreCase)
                 && !String.Equals(parsed.Host, "www.github.com", StringComparison.OrdinalIgnoreCase))
                 return ReleasesPageUrl;
+            return parsed.AbsoluteUri;
+        }
+
+        private static string SanitizeOfficialDownloadUrl(string url)
+        {
+            Uri parsed;
+            if (!Uri.TryCreate(url ?? "", UriKind.Absolute, out parsed))
+                throw new InvalidOperationException("Invalid update download URL.");
+            if (!String.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Update download URL must use HTTPS.");
+            if (!String.Equals(parsed.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+                && !String.Equals(parsed.Host, "www.github.com", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Update download URL is not an official CK3MPS GitHub release asset.");
             return parsed.AbsoluteUri;
         }
 
