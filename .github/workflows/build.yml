@@ -3,9 +3,8 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [main, agent/fix-hardening-gaps]
   workflow_dispatch:
 
 permissions:
@@ -13,9 +12,9 @@ permissions:
 
 jobs:
   build:
-    name: Windows build
+    name: Windows build and validation
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -28,26 +27,42 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1
 
-      - name: Integration tests
+      - name: Verify build output
         shell: pwsh
-        run: ./scripts/test-required.ps1
+        run: |
+          if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
+            throw 'Build completed without bin\CK3MPS.exe.'
+          }
+          Write-Host 'Verified build output: bin\CK3MPS.exe'
 
-      - name: Transactional recovery tests
+      - name: Run all tests
         shell: pwsh
-        run: ./scripts/test-transactional-hardening.ps1
+        run: ./scripts/test-all.ps1
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-script-diagnostics
+          path: bin/test-logs/*.log
+          if-no-files-found: warn
 
       - name: Strict mutation review
         shell: pwsh
         run: ./scripts/check-static-danger-strict.ps1
 
+      - name: Validate version consistency
+        shell: pwsh
+        run: ./scripts/check-version-consistency.ps1
+
       - name: Validate release metadata
         shell: pwsh
         run: ./scripts/validate-release.ps1
 
-      - name: Package release zip
+      - name: Package tested release artifacts
         shell: pwsh
         run: |
-          ./scripts/package-release.ps1
+          ./scripts/package-release.ps1 -SkipBuild
           New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
           Copy-Item ../CK3MPS_exports/*.zip .artifacts/
           Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
