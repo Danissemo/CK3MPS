@@ -9,9 +9,7 @@ $Targets = @(
 )
 
 $ExcludedRelativePaths = @(
-    "scripts/check-static-danger.ps1",
-    "scripts/apply-runtime-hardening.ps1",
-    "scripts/apply-runtime-hardening-fixes.ps1"
+    "scripts/check-static-danger.ps1"
 )
 
 $DangerRules = @(
