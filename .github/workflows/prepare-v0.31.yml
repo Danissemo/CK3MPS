@@ -115,6 +115,7 @@ jobs:
           ./scripts/check-static-danger-strict.ps1
           ./scripts/check-version-consistency.ps1
           ./scripts/validate-release.ps1
+          ./scripts/package-release.ps1 -SkipBuild
 
       - name: Create release tag
         if: steps.version.outputs.value == 'v0.31'
@@ -129,3 +130,18 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git tag -a v0.31 -m 'CK3MPS v0.31'
           git push origin v0.31
+
+      - name: Publish public GitHub release
+        if: steps.version.outputs.value == 'v0.31'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: v0.31
+          name: CK3MPS v0.31
+          body_path: docs/release-notes-v0.31.md
+          draft: false
+          prerelease: false
+          files: |
+            release/CK3MPS.exe
+            release/CK3MPS.exe.sha256
+            ../CK3MPS_exports/CK3MPS-v0.31.zip
+            ../CK3MPS_exports/CK3MPS-v0.31.zip.sha256
