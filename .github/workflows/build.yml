@@ -40,8 +40,22 @@ jobs:
         run: ./scripts/build.ps1
 
       - name: Run integration tests
+        id: integration
+        continue-on-error: true
         shell: pwsh
         run: ./scripts/test-required-ci.ps1
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runtime-hardening-integration-${{ github.run_id }}
+          path: .artifacts/integration-test-tail.txt
+
+      - name: Stop after integration failure
+        if: steps.integration.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Required integration test suite failed. See the uploaded diagnostics artifact.'
 
       - name: Run transactional tests
         shell: pwsh
