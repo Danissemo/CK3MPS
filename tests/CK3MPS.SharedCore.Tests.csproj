@@ -2,14 +2,14 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>CK3MPS.SharedCore.Tests</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\source\LiveLogEventModel.cs" Link="LiveLogEventModel.cs" />
-    <Compile Include="..\source\LoggingEventService.cs" Link="LoggingEventService.cs" />
     <Compile Include="LoggingEventServiceTests.cs" />
+    <ProjectReference Include="..\CK3MPS.SharedCore.csproj" />
   </ItemGroup>
 </Project>
