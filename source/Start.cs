@@ -17,11 +17,14 @@ namespace CK3MPS
             }
             catch (Exception ex)
             {
-                try
+                if (!SuppressUpdaterUi())
                 {
-                    MessageBox.Show("CK3MPS updater failed:\r\n" + ex.Message, "CK3MPS updater", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    try
+                    {
+                        MessageBox.Show("CK3MPS updater failed:\r\n" + ex.Message, "CK3MPS updater", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                    catch { }
                 }
-                catch { }
                 Environment.ExitCode = 1;
                 return;
             }
@@ -48,6 +51,13 @@ namespace CK3MPS
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+        }
+
+        private static bool SuppressUpdaterUi()
+        {
+            string value = Environment.GetEnvironmentVariable("CK3MPS_SUPPRESS_UPDATER_UI");
+            return String.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool SkipElevationForTestRun()
