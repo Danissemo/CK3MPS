@@ -125,20 +125,20 @@ namespace CK3MPS
         private string[] ReplaceScanFinalSummaryLines(string[] runLogLines, ScanConsistencyResult consistency)
         {
             List<string> output = new List<string>();
+            List<string> oldFinalLines = new List<string>();
             bool inFinal = false;
-            bool finalFound = false;
-            bool resultWritten = false;
+            bool sawFinal = false;
 
             foreach (string raw in runLogLines ?? new string[0])
             {
                 string line = raw ?? "";
                 string trimmed = line.Trim();
 
-                if (trimmed.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase) >= 0 && !inFinal)
+                if (!inFinal && trimmed.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     inFinal = true;
-                    finalFound = true;
-                    output.Add(line);
+                    sawFinal = true;
+                    oldFinalLines.Add(line);
                     continue;
                 }
 
@@ -148,62 +148,105 @@ namespace CK3MPS
                     continue;
                 }
 
+                oldFinalLines.Add(line);
                 if (trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
-                {
-                    string resultLine = consistency.FailureCount == 0
-                        ? "RESULT READY."
-                        : "RESULT NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount;
-                    output.Add(resultLine);
-                    consistency.CorrectedFinalLines.Add(resultLine);
-                    resultWritten = true;
                     inFinal = false;
-                    continue;
-                }
-
-                string corrected = CorrectFinalSummaryLine(line, consistency);
-                output.Add(corrected);
-                consistency.CorrectedFinalLines.Add(corrected);
             }
 
-            if (!finalFound)
-            {
-                output.Add("Final readiness summary");
-                output.Add("INFO Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
-                output.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
-                consistency.CorrectedFinalLines.Add("INFO Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
-                consistency.CorrectedFinalLines.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
-            }
-            else if (!resultWritten && consistency.FailureCount > 0)
-            {
-                output.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
-                consistency.CorrectedFinalLines.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
-            }
+            if (!sawFinal)
+                oldFinalLines.Clear();
 
+            consistency.CorrectedFinalLines.Clear();
+            consistency.CorrectedFinalLines.AddRange(BuildCorrectedFinalSummaryLines(oldFinalLines.ToArray(), consistency));
+            output.AddRange(RenderCorrectedFinalSummaryBlock(consistency.CorrectedFinalLines));
             return output.ToArray();
         }
 
-        private string CorrectFinalSummaryLine(string line, ScanConsistencyResult consistency)
+        private List<string> BuildCorrectedFinalSummaryLines(string[] oldFinalLines, ScanConsistencyResult consistency)
         {
-            string trimmed = (line ?? "").Trim();
+            List<string> lines = new List<string>();
+            bool wroteSummary = false;
+            bool wroteResult = false;
 
-            if (trimmed.IndexOf("all checklist checks passed", StringComparison.OrdinalIgnoreCase) >= 0
-                || trimmed.IndexOf("checklist failed checks", StringComparison.OrdinalIgnoreCase) >= 0
-                || trimmed.IndexOf("scan FAIL checks", StringComparison.OrdinalIgnoreCase) >= 0)
+            foreach (string raw in oldFinalLines ?? new string[0])
             {
-                return consistency.FailureCount == 0
-                    ? "OK   Final readiness summary | all checklist checks passed"
-                    : "INFO Final readiness summary | scan FAIL checks: " + consistency.FailureCount;
+                string line = raw ?? "";
+                string trimmed = line.Trim();
+
+                if (trimmed.Length == 0 || IsScanDividerLine(trimmed) || trimmed.Equals("Final readiness summary", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (trimmed.IndexOf("all checklist checks passed", StringComparison.OrdinalIgnoreCase) >= 0
+                    || trimmed.IndexOf("checklist failed checks", StringComparison.OrdinalIgnoreCase) >= 0
+                    || trimmed.IndexOf("scan FAIL checks", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (!wroteSummary)
+                    {
+                        lines.Add(consistency.FailureCount == 0
+                            ? "OK   | Final readiness summary | all checklist checks passed"
+                            : "INFO  | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
+                        wroteSummary = true;
+                    }
+                    continue;
+                }
+
+                if (trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!wroteResult)
+                    {
+                        lines.Add(consistency.FailureCount == 0
+                            ? "RESULT| READY."
+                            : "RESULT| NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
+                        wroteResult = true;
+                    }
+                    continue;
+                }
+
+                if (trimmed.StartsWith("OK", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase))
+                {
+                    string message = NormalizeScanStatusMessage(trimmed);
+                    if (consistency.FailedSections.Contains(message))
+                        lines.Add("FAIL  | " + message);
+                    else
+                        lines.Add(NormalizeDisplayStatusLine(trimmed));
+                    continue;
+                }
+
+                if (trimmed.StartsWith("INFO", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("CMD", StringComparison.OrdinalIgnoreCase))
+                {
+                    lines.Add(NormalizeDisplayStatusLine(trimmed));
+                }
+                else if (trimmed.Length > 0 && trimmed.IndexOf("Readiness check:", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    lines.Add("      | Readiness check: ordered by the checklist.");
+                }
             }
 
-            if (trimmed.StartsWith("OK", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase))
-            {
-                string message = NormalizeScanStatusMessage(trimmed);
-                if (consistency.FailedSections.Contains(message))
-                    return ReplaceScanLeadingStatus(line, "FAIL ");
-            }
+            if (!wroteSummary)
+                lines.Add(consistency.FailureCount == 0
+                    ? "OK   | Final readiness summary | all checklist checks passed"
+                    : "INFO  | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
+            if (!wroteResult)
+                lines.Add(consistency.FailureCount == 0
+                    ? "RESULT| READY."
+                    : "RESULT| NOT READY. Failed checks found in Scan Settings: " + consistency.FailureCount);
+            return lines;
+        }
 
-            return line;
+        private IEnumerable<string> RenderCorrectedFinalSummaryBlock(IEnumerable<string> correctedLines)
+        {
+            List<string> block = new List<string>();
+            block.Add("------------------------------------------------------------");
+            block.Add("Final readiness summary");
+            block.Add("------------------------------------------------------------");
+            foreach (string line in correctedLines ?? new string[0])
+                if (!String.IsNullOrWhiteSpace(line))
+                    block.Add(line);
+            return block;
         }
 
         private void ReplaceVisibleFinalReadinessSummary(ScanConsistencyResult consistency)
@@ -220,32 +263,28 @@ namespace CK3MPS
             try
             {
                 string text = logBox.Text ?? "";
-                int titleIndex = text.LastIndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase);
-                if (titleIndex >= 0)
-                {
-                    int removeStart = text.LastIndexOf("------------------------------------------------------------", titleIndex, StringComparison.OrdinalIgnoreCase);
-                    if (removeStart < 0)
-                        removeStart = titleIndex;
-                    int resultIndex = text.IndexOf("RESULT", titleIndex, StringComparison.OrdinalIgnoreCase);
-                    int removeEnd = resultIndex >= 0 ? text.IndexOf('\n', resultIndex) : -1;
-                    if (removeEnd < 0)
-                        removeEnd = text.Length;
-                    else
-                        removeEnd++;
+                int titleIndex = text.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase);
+                if (titleIndex < 0)
+                    return;
 
-                    logBox.Select(removeStart, Math.Max(0, removeEnd - removeStart));
-                    logBox.SelectedText = "";
-                    logBox.SelectionStart = logBox.TextLength;
-                }
+                int removeStart = text.LastIndexOf("------------------------------------------------------------", titleIndex, StringComparison.OrdinalIgnoreCase);
+                if (removeStart < 0)
+                    removeStart = titleIndex;
+                int resultIndex = text.IndexOf("RESULT", titleIndex, StringComparison.OrdinalIgnoreCase);
+                int removeEnd = resultIndex >= 0 ? text.IndexOf('\n', resultIndex) : -1;
+                if (removeEnd < 0)
+                    removeEnd = text.Length;
+                else
+                    removeEnd++;
 
-                LogSection("Final readiness summary");
-                foreach (string line in consistency.CorrectedFinalLines)
-                {
-                    string trimmed = (line ?? "").Trim();
-                    if (trimmed.Length == 0 || trimmed.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase) >= 0 && !trimmed.StartsWith("INFO", StringComparison.OrdinalIgnoreCase) && !trimmed.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    Log(line);
-                }
+                StringBuilder replacement = new StringBuilder();
+                foreach (string line in RenderCorrectedFinalSummaryBlock(consistency.CorrectedFinalLines))
+                    replacement.AppendLine(line);
+
+                logBox.Select(removeStart, Math.Max(0, removeEnd - removeStart));
+                logBox.SelectedText = replacement.ToString();
+                logBox.SelectionStart = Math.Min(logBox.TextLength, removeStart + replacement.Length);
+                ScrollLogToBottom(false);
             }
             catch
             {
@@ -282,16 +321,48 @@ namespace CK3MPS
             return CollapseScanExportWhitespace(value ?? "").Trim().TrimEnd('.');
         }
 
-        private string ReplaceScanLeadingStatus(string line, string replacementStatus)
+        private string NormalizeDisplayStatusLine(string line)
         {
-            string text = line ?? "";
-            int okIndex = text.IndexOf("OK", StringComparison.OrdinalIgnoreCase);
-            int failIndex = text.IndexOf("FAIL", StringComparison.OrdinalIgnoreCase);
-            int index = okIndex >= 0 ? okIndex : failIndex;
-            int length = okIndex >= 0 ? 2 : 4;
-            if (index < 0)
-                return text;
-            return text.Substring(0, index) + replacementStatus + text.Substring(index + length);
+            string trimmed = (line ?? "").Trim();
+            int pipe = trimmed.IndexOf('|');
+            if (pipe >= 0)
+            {
+                string status = trimmed.Substring(0, pipe).Trim();
+                string message = trimmed.Substring(pipe + 1).Trim();
+                return PadDisplayStatus(status) + "| " + message;
+            }
+            string[] statuses = new[] { "RESULT", "ERROR", "FAIL", "WARN", "INFO", "OK", "CMD" };
+            foreach (string status in statuses)
+            {
+                if (trimmed.StartsWith(status, StringComparison.OrdinalIgnoreCase))
+                {
+                    string message = trimmed.Length > status.Length ? trimmed.Substring(status.Length).Trim() : "";
+                    if (String.Equals(status, "RESULT", StringComparison.OrdinalIgnoreCase))
+                        return "RESULT| " + message;
+                    return PadDisplayStatus(status) + "| " + message;
+                }
+            }
+            return "      | " + trimmed;
+        }
+
+        private string PadDisplayStatus(string status)
+        {
+            string upper = (status ?? "").Trim().ToUpperInvariant();
+            if (upper == "OK")
+                return "OK    ";
+            if (upper == "FAIL")
+                return "FAIL  ";
+            if (upper == "WARN")
+                return "WARN  ";
+            if (upper == "INFO")
+                return "INFO  ";
+            if (upper == "CMD")
+                return "CMD   ";
+            if (upper == "ERROR")
+                return "ERROR ";
+            if (upper == "RESULT")
+                return "RESULT";
+            return upper.PadRight(6).Substring(0, 6);
         }
 
         private bool IsScanStatusLine(string line)
@@ -391,26 +462,18 @@ namespace CK3MPS
             if (line.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase) && readinessFailures > 0)
                 return "RESULT| NOT READY. Failed checks found in Scan Settings: " + readinessFailures;
 
-            if (line.IndexOf("Host suitability report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                if (readinessFailures == 0)
-                    return "WARN  | Host suitability report can be regenerated by Apply Settings; this is advisory and not a final readiness blocker.";
-                return line;
-            }
-
             if (line.IndexOf("Critical host-save rules are confirmed safe", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
                 return "FAIL  | Critical host-save rules are not confirmed safe for the current recommended save. Use Workflow > Fix save + host or choose a known clean manual local save before hosting.";
-            }
-
             if (line.IndexOf("Runtime verification report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "FAIL  | Runtime verification report is missing or outdated";
             if (line.IndexOf("OOS evidence pack outputs are up to date", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "FAIL  | OOS evidence pack outputs are missing or outdated";
             if (line.IndexOf("Host suitability report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "FAIL  | Host suitability report is missing or outdated";
+            if (line.IndexOf("OOS risk score report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "FAIL  | OOS risk score report is missing or outdated";
 
-            return line;
+            return NormalizeDisplayStatusLine(line);
         }
 
         private void ExportCapturedScanSettingsReport()
