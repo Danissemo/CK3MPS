@@ -187,6 +187,7 @@ namespace CK3MPS
             List<string> actions = new List<string>();
             List<string> warnings = new List<string>();
             List<string> remainingBlockers = new List<string>();
+            List<string> manualBlockers = new List<string>();
             string outcome = "Failed";
 
             DialogResult confirmation = MessageBox.Show(
@@ -221,33 +222,33 @@ namespace CK3MPS
                     CreateQuarantine();
                 SetWorkflowFixProgress(1, "snapshot captured");
 
+                bool saveRepairUnsupported = false;
+                string saveRepairFailure = "";
                 try
                 {
-                    bool repaired = EnsureSafeWorkflowHostSave();
-                    InvalidateHostSaveAnalysisCache();
-                    HostSaveCandidateResult afterBasicRepair = AnalyzeWorkflowHostSaveCandidate();
-                    if (!WorkflowSaveIsReady(afterBasicRepair))
+                    HostSaveCandidateResult saveBeforeRepair = AnalyzeWorkflowHostSaveCandidate();
+                    if (WorkflowSaveIsReady(saveBeforeRepair))
                     {
-                        string enhancedReason;
-                        bool enhanced = TryForceWorkflowHostSaveIntoSafeBaseline(out enhancedReason);
-                        repaired = repaired || enhanced;
-                        if (enhanced)
-                            actions.Add("save critical rules repaired into verified safe copy: " + enhancedReason);
-                        else if (!String.IsNullOrWhiteSpace(enhancedReason))
-                            warnings.Add("save repair: " + enhancedReason);
-                    }
-                    else if (repaired)
-                    {
-                        actions.Add("selected save is verified ready after repair/copy");
+                        actions.Add("selected save was already verified ready");
                     }
                     else
                     {
-                        actions.Add("selected save was already verified ready");
+                        string repairReason;
+                        if (TryForceWorkflowHostSaveIntoSafeBaseline(out repairReason))
+                            actions.Add("save critical rules repaired into verified safe copy: " + repairReason);
+                        else
+                        {
+                            saveRepairUnsupported = true;
+                            saveRepairFailure = String.IsNullOrWhiteSpace(repairReason) ? "selected save could not be repaired automatically" : repairReason;
+                            warnings.Add("save repair: " + saveRepairFailure);
+                        }
                     }
                     PrepareWorkflowSaveSurgeryBaseline();
                 }
                 catch (Exception ex)
                 {
+                    saveRepairUnsupported = true;
+                    saveRepairFailure = ex.Message;
                     warnings.Add("save repair: " + ex.Message);
                     Log("WARN Workflow Fix save + host SAVE_FIX run=" + runId + " | " + ex.Message);
                 }
@@ -277,21 +278,26 @@ namespace CK3MPS
                 WorkflowScenarioSnapshot afterSnapshot = BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None);
                 HostSuitabilityResult afterHost = AnalyzeHostSuitability();
                 HostSaveCandidateResult afterSave = AnalyzeWorkflowHostSaveCandidate();
+                if (saveRepairUnsupported)
+                {
+                    MarkSaveRelatedBlockersManual(afterSnapshot, saveRepairFailure);
+                    manualBlockers = CollectWorkflowManualRepairBlockers(afterSnapshot);
+                }
                 remainingBlockers = CollectRemainingWorkflowAutoBlockers(afterSnapshot);
-                bool ready = remainingBlockers.Count == 0;
-                if (ready && warnings.Count == 0)
+                bool ready = remainingBlockers.Count == 0 && manualBlockers.Count == 0 && warnings.Count == 0;
+                if (ready)
                     outcome = actions.Count == 0 ? "AlreadyReady" : "Ready";
                 else if (actions.Count > 0)
                     outcome = "PartiallyFixed";
                 else
-                    outcome = "Blocked";
+                    outcome = manualBlockers.Count > 0 ? "BlockedManual" : "Blocked";
 
-                string report = BuildWorkflowFixResultText(runId, outcome, beforeSnapshot, afterSnapshot, beforeHost, afterHost, beforeSave, afterSave, actions, remainingBlockers, warnings);
+                string report = BuildWorkflowFixResultText(runId, outcome, beforeSnapshot, afterSnapshot, beforeHost, afterHost, beforeSave, afterSave, actions, remainingBlockers, manualBlockers, warnings);
                 PublishWorkflowPostFixSnapshot(afterSnapshot, report + "\r\n" + afterSnapshot.Summary);
                 WriteWorkflowStatusReport();
                 SetWorkflowFixProgress(5, "post-check published");
 
-                Log("RESULT| Workflow Fix save + host | outcome=" + outcome + " | run=" + runId + " | host=" + ScoreText(beforeHost) + "->" + ScoreText(afterHost) + " | save=" + ScoreText(beforeSave) + "->" + ScoreText(afterSave) + " | fix=" + actions.Count + " | manual=" + remainingBlockers.Count + " | warnings=" + warnings.Count);
+                Log("RESULT| Workflow Fix save + host | outcome=" + outcome + " | run=" + runId + " | host=" + ScoreText(beforeHost) + "->" + ScoreText(afterHost) + " | save=" + ScoreText(beforeSave) + "->" + ScoreText(afterSave) + " | fix=" + actions.Count + " | manual=" + (remainingBlockers.Count + manualBlockers.Count) + " | warnings=" + warnings.Count);
                 SetStatusText("Fix save + host " + outcome + ". Host " + ScoreText(beforeHost) + " -> " + ScoreText(afterHost) + ", save " + ScoreText(beforeSave) + " -> " + ScoreText(afterSave) + ".");
 
                 if (!ready || warnings.Count > 0)
@@ -302,7 +308,7 @@ namespace CK3MPS
             catch (Exception ex)
             {
                 outcome = "Failed";
-                Log("RESULT| Workflow Fix save + host | outcome=Failed | run=" + runId + " | host=" + ScoreText(beforeHost) + "->n/a | save=" + ScoreText(beforeSave) + "->n/a | fix=" + actions.Count + " | manual=" + remainingBlockers.Count + " | warnings=" + (warnings.Count + 1));
+                Log("RESULT| Workflow Fix save + host | outcome=Failed | run=" + runId + " | host=" + ScoreText(beforeHost) + "->n/a | save=" + ScoreText(beforeSave) + "->n/a | fix=" + actions.Count + " | manual=" + (remainingBlockers.Count + manualBlockers.Count) + " | warnings=" + (warnings.Count + 1));
                 SetStatusText("Fix save + host failed: " + ex.Message);
                 MessageBox.Show("Fix save + host failed.\r\n\r\n" + ex.Message, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
@@ -351,6 +357,7 @@ namespace CK3MPS
                 updatingWorkflowUi = false;
             }
 
+            workflowProgressBar.Visible = false;
             workflowVerdictLabel.Text = String.IsNullOrEmpty(workflowRenderVerdict) ? "Status: waiting for automatic checks." : workflowRenderVerdict;
             ApplyWorkflowVerdictStyle(workflowVerdictLabel.Text);
             workflowSummaryBox.Text = workflowRenderSummary;
@@ -375,7 +382,7 @@ namespace CK3MPS
             return sb.ToString();
         }
 
-        private string BuildWorkflowFixResultText(string runId, string outcome, WorkflowScenarioSnapshot beforeSnapshot, WorkflowScenarioSnapshot afterSnapshot, HostSuitabilityResult beforeHost, HostSuitabilityResult afterHost, HostSaveCandidateResult beforeSave, HostSaveCandidateResult afterSave, List<string> actions, List<string> blockers, List<string> warnings)
+        private string BuildWorkflowFixResultText(string runId, string outcome, WorkflowScenarioSnapshot beforeSnapshot, WorkflowScenarioSnapshot afterSnapshot, HostSuitabilityResult beforeHost, HostSuitabilityResult afterHost, HostSaveCandidateResult beforeSave, HostSaveCandidateResult afterSave, List<string> actions, List<string> blockers, List<string> manualBlockers, List<string> warnings)
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("Fix save + host result");
@@ -394,6 +401,9 @@ namespace CK3MPS
             sb.AppendLine();
             sb.AppendLine("Remaining automatic blockers");
             AppendListOrNone(sb, blockers, "- none");
+            sb.AppendLine();
+            sb.AppendLine("Manual blockers");
+            AppendListOrNone(sb, manualBlockers, "- none");
             sb.AppendLine();
             sb.AppendLine("Warnings / manual attention");
             AppendListOrNone(sb, warnings, "- none");
@@ -461,12 +471,29 @@ namespace CK3MPS
             HostSaveCandidateResult current = AnalyzeWorkflowHostSaveCandidate();
             if (current == null || current.Save == null || String.IsNullOrWhiteSpace(current.Save.Path) || !File.Exists(current.Save.Path))
             {
-                reason = "selected save is missing.";
+                reason = "selected save is missing";
+                return false;
+            }
+            if (!current.Save.Readable)
+            {
+                reason = "selected save is not safely readable";
+                return false;
+            }
+            if (!current.Save.VersionMatchesInstalled)
+            {
+                reason = "selected save version does not match installed CK3 version";
                 return false;
             }
 
             string sourcePath = current.Save.Path;
-            string repairedPath = BuildRepairedHostSavePath(sourcePath);
+            string originalSelectedPath = workflowSelectedSavePath;
+            string repairedPath = BuildVerifiedWorkflowSafeSavePath(sourcePath);
+            if (String.Equals(sourcePath, repairedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "safe-copy destination equals source save; choose a clean manual save first";
+                return false;
+            }
+
             string dir = Path.GetDirectoryName(repairedPath) ?? Path.GetDirectoryName(sourcePath) ?? "";
             string tempPath = Path.Combine(dir, Path.GetFileName(repairedPath) + ".forced-" + Guid.NewGuid().ToString("N") + ".tmp");
             try
@@ -476,7 +503,7 @@ namespace CK3MPS
                 string failureReason;
                 if (!TryRewriteSaveWithBroadRuleRepair(sourcePath, tempPath, out appliedRules, out failureReason))
                 {
-                    reason = String.IsNullOrWhiteSpace(failureReason) ? "no repairable game-rule area was found." : failureReason;
+                    reason = String.IsNullOrWhiteSpace(failureReason) ? "no repairable game-rule area was found" : failureReason;
                     return false;
                 }
 
@@ -494,15 +521,23 @@ namespace CK3MPS
                 HostSaveCandidateResult repaired = AnalyzeWorkflowHostSaveCandidate();
                 if (!WorkflowSaveIsReady(repaired))
                 {
-                    reason = "repaired save was created but post-check still scores " + (repaired == null ? 0 : repaired.Score) + "/100.";
+                    workflowSelectedSavePath = originalSelectedPath;
+                    SaveAppConfig();
+                    InvalidateHostSaveAnalysisCache();
+                    RefreshWorkflowSaveSelectionList();
+                    reason = "repaired save was created but post-check still scores " + (repaired == null ? 0 : repaired.Score) + "/100";
                     return false;
                 }
 
-                reason = appliedRules == null || appliedRules.Count == 0 ? "safe game-rule profile injected." : "safe game-rule profile injected: " + String.Join(", ", appliedRules.ToArray()) + ".";
+                reason = appliedRules == null || appliedRules.Count == 0 ? "safe game-rule profile injected" : "safe game-rule profile injected: " + String.Join(", ", appliedRules.ToArray());
                 return true;
             }
             catch (Exception ex)
             {
+                workflowSelectedSavePath = originalSelectedPath;
+                SaveAppConfig();
+                InvalidateHostSaveAnalysisCache();
+                RefreshWorkflowSaveSelectionList();
                 reason = ex.Message;
                 return false;
             }
@@ -510,6 +545,22 @@ namespace CK3MPS
             {
                 SafeAtomicFile.TryDeleteTempFile(tempPath);
             }
+        }
+
+        private string BuildVerifiedWorkflowSafeSavePath(string sourcePath)
+        {
+            string dir = Path.GetDirectoryName(sourcePath) ?? "";
+            string name = Path.GetFileNameWithoutExtension(sourcePath) ?? "CK3MPS_host_save";
+            string ext = Path.GetExtension(sourcePath);
+            if (String.IsNullOrWhiteSpace(ext))
+                ext = ".ck3";
+
+            string safeName = Regex.Replace(name, "(?i)(patched|recovery|desync|autosave|cloud|backup|surgery|ck3mps_safe)", "");
+            safeName = Regex.Replace(safeName, "[_\\- ]{2,}", "_").Trim('_', '-', ' ');
+            if (String.IsNullOrWhiteSpace(safeName))
+                safeName = "CK3MPS_host_save";
+            safeName += "_ck3mps_safe";
+            return Path.Combine(dir, safeName + ext);
         }
 
         private bool TryRewriteSaveWithBroadRuleRepair(string sourcePath, string tempPath, out List<string> appliedRules, out string failureReason)
@@ -531,7 +582,7 @@ namespace CK3MPS
             string updatedText = ApplyBroadCriticalRuleRepairsToText(originalText, out appliedRules);
             if (appliedRules.Count == 0 || String.Equals(originalText, updatedText, StringComparison.Ordinal))
             {
-                failureReason = "save text does not expose a repairable game_rules block.";
+                failureReason = "save text does not expose a repairable game_rules block";
                 return false;
             }
 
@@ -543,33 +594,56 @@ namespace CK3MPS
         {
             appliedRules = new List<string>();
             failureReason = "";
-            using (FileStream input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (FileStream output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            if (String.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
             {
-                if (zipOffset < 0 || zipOffset >= input.Length)
-                {
-                    failureReason = "embedded zip offset is invalid.";
-                    return false;
-                }
+                failureReason = "source save is missing";
+                return false;
+            }
 
-                if (zipOffset > 0)
+            byte[] prefixBytes;
+            byte[] zipBytes;
+            try
+            {
+                using (FileStream input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    CopyExactBytes(input, output, zipOffset);
-                    input.Position = zipOffset;
-                }
-
-                bool changed = false;
-                HashSet<string> normalizedEntryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                long totalUncompressedBytes = 0;
-                using (ZipArchive sourceArchive = new ZipArchive(input, ZipArchiveMode.Read, true))
-                {
-                    if (sourceArchive.Entries.Count > MaxSaveRepairZipEntryCount)
+                    if (zipOffset < 0 || zipOffset >= input.Length)
                     {
-                        failureReason = "save zip contains too many entries.";
+                        failureReason = "embedded zip offset is invalid";
+                        return false;
+                    }
+                    if (input.Length > MaxSaveRepairFileBytes)
+                    {
+                        failureReason = "save exceeds the safe repair size limit";
                         return false;
                     }
 
-                    using (ZipArchive destinationArchive = new ZipArchive(output, ZipArchiveMode.Create, true))
+                    prefixBytes = zipOffset > 0 ? ReadExactWorkflowBytes(input, zipOffset) : new byte[0];
+                    zipBytes = ReadStreamBytesBounded(input, MaxSaveRepairFileBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+                failureReason = "could not read selected save zip payload: " + ex.Message;
+                return false;
+            }
+
+            bool changed = false;
+            HashSet<string> normalizedEntryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long totalUncompressedBytes = 0;
+            byte[] repairedZipBytes;
+            try
+            {
+                using (MemoryStream sourceZipStream = new MemoryStream(zipBytes, false))
+                using (ZipArchive sourceArchive = new ZipArchive(sourceZipStream, ZipArchiveMode.Read, false))
+                using (MemoryStream repairedZipStream = new MemoryStream())
+                {
+                    if (sourceArchive.Entries.Count > MaxSaveRepairZipEntryCount)
+                    {
+                        failureReason = "save zip contains too many entries";
+                        return false;
+                    }
+
+                    using (ZipArchive destinationArchive = new ZipArchive(repairedZipStream, ZipArchiveMode.Create, true))
                     {
                         foreach (ZipArchiveEntry sourceEntry in sourceArchive.Entries)
                         {
@@ -601,17 +675,53 @@ namespace CK3MPS
                             }
                         }
                     }
-                }
 
-                if (!changed)
+                    if (!changed)
+                    {
+                        failureReason = "save zip meta/gamestate entries did not expose a repairable game_rules block";
+                        return false;
+                    }
+                    repairedZipBytes = repairedZipStream.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                failureReason = "save zip could not be rewritten safely: " + ex.Message;
+                return false;
+            }
+
+            try
+            {
+                using (FileStream output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    failureReason = "save zip meta/gamestate entries did not expose a repairable game_rules block.";
-                    return false;
+                    if (prefixBytes.Length > 0)
+                        output.Write(prefixBytes, 0, prefixBytes.Length);
+                    output.Write(repairedZipBytes, 0, repairedZipBytes.Length);
+                    output.Flush(true);
                 }
-
-                output.Flush(true);
                 return true;
             }
+            catch (Exception ex)
+            {
+                failureReason = "could not write repaired save copy: " + ex.Message;
+                return false;
+            }
+        }
+
+        private byte[] ReadExactWorkflowBytes(Stream input, long byteCount)
+        {
+            if (byteCount < 0 || byteCount > MaxSaveRepairFileBytes)
+                throw new InvalidOperationException("prefix exceeds the safe repair size limit");
+            byte[] bytes = new byte[(int)byteCount];
+            int offset = 0;
+            while (offset < bytes.Length)
+            {
+                int read = input.Read(bytes, offset, bytes.Length - offset);
+                if (read <= 0)
+                    throw new EndOfStreamException("Unexpected end of file while reading save prefix.");
+                offset += read;
+            }
+            return bytes;
         }
 
         private string ApplyBroadCriticalRuleRepairsToText(string text, out List<string> appliedRules)
@@ -698,6 +808,51 @@ namespace CK3MPS
                 if (String.Equals(existing, displayName, StringComparison.OrdinalIgnoreCase))
                     return;
             appliedRules.Add(displayName);
+        }
+
+        private void MarkSaveRelatedBlockersManual(WorkflowScenarioSnapshot snapshot, string reason)
+        {
+            if (snapshot == null || snapshot.States == null)
+                return;
+            bool changed = false;
+            foreach (WorkflowStepState state in snapshot.States)
+            {
+                if (state == null || !IsSaveRepairWorkflowState(state))
+                    continue;
+                if (state.Passed)
+                    continue;
+                state.Manual = true;
+                state.AutoManaged = false;
+                state.Blocked = false;
+                state.UserDone = false;
+                state.Detail = state.Detail + " Automatic repair could not verify this item: " + NullText(reason);
+                changed = true;
+            }
+            if (changed)
+                snapshot.Verdict = "Status: Manual save action needed";
+        }
+
+        private bool IsSaveRepairWorkflowState(WorkflowStepState state)
+        {
+            string id = NullText(state.Id).ToLowerInvariant();
+            string label = NullText(state.Label).ToLowerInvariant();
+            return id.Contains("save")
+                || id.Contains("rules")
+                || label.Contains("selected save")
+                || label.Contains("critical save rules");
+        }
+
+        private List<string> CollectWorkflowManualRepairBlockers(WorkflowScenarioSnapshot snapshot)
+        {
+            List<string> blockers = new List<string>();
+            if (snapshot == null || snapshot.States == null)
+                return blockers;
+            foreach (WorkflowStepState state in snapshot.States)
+            {
+                if (state.Required && state.Manual && !state.Passed && IsSaveRepairWorkflowState(state))
+                    blockers.Add(MakeWorkflowStepLabelReadable(state));
+            }
+            return blockers;
         }
 
         private List<string> CollectRemainingWorkflowAutoBlockers(WorkflowScenarioSnapshot snapshot)
