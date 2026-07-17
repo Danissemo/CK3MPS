@@ -46,7 +46,19 @@ jobs:
 
       - name: Build modern Windows client
         shell: pwsh
-        run: dotnet build ./CK3MPS.Modern.csproj --configuration Release
+        run: |
+          New-Item -ItemType Directory -Force -Path ./bin/modern-build-diagnostics | Out-Null
+          dotnet build ./CK3MPS.Modern.csproj --configuration Release 2>&1 |
+            Tee-Object -FilePath ./bin/modern-build-diagnostics/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload modern build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: modern-build-diagnostics
+          path: bin/modern-build-diagnostics/build.log
+          if-no-files-found: warn
 
       - name: Run modern shared-core characterization tests
         shell: pwsh
