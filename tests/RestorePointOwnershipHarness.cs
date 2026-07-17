@@ -39,6 +39,7 @@ internal static class RestorePointOwnershipHarness
                 object validItem = CreateItem(itemType, "101", "7/17/2026 5:00:00 AM", validDescription);
                 Invoke(mainFormType, form, "AppendRestorePointOwnershipRecord", flags, validItem, validOperationId);
                 Assert(Validate(mainFormType, form, flags, validItem), "manifest-backed CK3MPS restore point should validate");
+                itemType.GetField("IsCk3Mps").SetValue(validItem, true);
 
                 object prefixOnly = CreateItem(itemType, "102", "7/17/2026 5:01:00 AM", "CK3MPS before changes 2026-07-17 05:01:00");
                 Assert(!Validate(mainFormType, form, flags, prefixOnly), "prefix-only legacy restore point must not validate");
@@ -64,7 +65,7 @@ internal static class RestorePointOwnershipHarness
 
                 bool canCheckOwned = Convert.ToBoolean(Invoke(mainFormType, form, "ShouldAllowRestorePointItemCheck", flags, validItem, CheckState.Checked));
                 bool canCheckOther = Convert.ToBoolean(Invoke(mainFormType, form, "ShouldAllowRestorePointItemCheck", flags, prefixOnly, CheckState.Checked));
-                Assert(canCheckOwned, "owned restore point should remain checkable");
+                Assert(canCheckOwned, "owned restore point should remain checkable after the UI marks it app-owned");
                 Assert(!canCheckOther, "unowned restore point should be read-only in the delete UI");
 
                 string manifest = Convert.ToString(Invoke(mainFormType, form, "RestorePointOwnershipManifestFile", flags));
