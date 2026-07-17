@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace CK3MPS
 {
-    internal enum LiveLogEventType
+    public enum LiveLogEventType
     {
         UserAction,
         Progress,
@@ -13,14 +13,14 @@ namespace CK3MPS
         Diagnostic
     }
 
-    internal enum LiveLogSeverity
+    public enum LiveLogSeverity
     {
         Info,
         Warning,
         Error
     }
 
-    internal sealed class LiveLogEvent
+    public sealed class LiveLogEvent
     {
         public string EventId;
         public LiveLogEventType Type;
@@ -78,7 +78,7 @@ namespace CK3MPS
         }
     }
 
-    internal sealed class LiveLogRenderedLine
+    public sealed class LiveLogRenderedLine
     {
         public string OperationId;
         public string EventId;
@@ -99,7 +99,7 @@ namespace CK3MPS
         }
     }
 
-    internal sealed class LiveLogEventModel
+    public sealed class LiveLogEventModel
     {
         public const int DefaultMaxUiLines = 500;
         public static readonly TimeSpan DefaultRateLimitWindow = TimeSpan.FromSeconds(2);

@@ -3,12 +3,12 @@ using System.Collections.Generic;
 
 namespace CK3MPS
 {
-    internal interface IClock
+    public interface IClock
     {
         DateTime UtcNow { get; }
     }
 
-    internal sealed class SystemClock : IClock
+    public sealed class SystemClock : IClock
     {
         public DateTime UtcNow
         {
@@ -16,7 +16,7 @@ namespace CK3MPS
         }
     }
 
-    internal sealed class LogEventRequest
+    public sealed class LogEventRequest
     {
         public LogEventRequest(string operationId, string legacyLine)
         {
@@ -28,7 +28,7 @@ namespace CK3MPS
         public string LegacyLine { get; private set; }
     }
 
-    internal sealed class LogEventResult
+    public sealed class LogEventResult
     {
         public LogEventResult(LiveLogEvent evt, LiveLogRenderedLine renderedLine)
         {
@@ -44,7 +44,7 @@ namespace CK3MPS
         }
     }
 
-    internal interface ILoggingEventService
+    public interface ILoggingEventService
     {
         LogEventResult Publish(LogEventRequest request);
         IList<LiveLogRenderedLine> SnapshotVisibleLines();
@@ -55,7 +55,7 @@ namespace CK3MPS
     /// UI-independent boundary for legacy log classification, aggregation and visibility policy.
     /// The service never touches WinForms controls, files or MessageBox.
     /// </summary>
-    internal sealed class LoggingEventService : ILoggingEventService
+    public sealed class LoggingEventService : ILoggingEventService
     {
         private readonly object sync = new object();
         private readonly LiveLogEventModel model;

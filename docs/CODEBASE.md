@@ -9,11 +9,25 @@ CK3MPS is a Windows desktop utility that prepares a cleaner, more predictable Cr
 ## Platform And Runtime Boundaries
 
 - Windows-only desktop application.
-- .NET Framework 4.8 project.
+- The production baseline remains the .NET Framework 4.8 `CK3MPS.csproj` project.
+- `CK3MPS.Modern.csproj` is a parallel `net8.0-windows` WinForms compile candidate. It is not yet the primary release package.
+- `CK3MPS.SharedCore.csproj` targets `netstandard2.0` so extracted business logic can be consumed by both runtime lines.
+- The initial shared-core slice contains the logging/event model and service extracted in task 08. Further contexts move one at a time with characterization coverage.
 - Most feature code is still one large `partial MainForm`. This is practical for shared UI/runtime state, but it remains a real maintenance cost.
 - Some behaviors depend on Windows state and rights. Registry rollback can fail if permissions, hives, or values changed outside CK3MPS.
 - Directory replacement uses same-parent rename operations where possible; CK3MPS does not claim cross-volume atomicity.
 - Automated parity and UI-race tests cannot reproduce every real router, firewall, VPN, multi-NIC, slow UI, or two-machine LAN condition. Manual LAN validation is still required before relying on LAN parity-room behavior for release confidence.
+- The staged runtime migration, compatibility contract, test matrix, risks, and rollback procedure are documented in `docs/MIGRATION_PLAN.md`.
+
+## Project Layout During Migration
+
+- `CK3MPS.csproj` — authoritative legacy .NET Framework 4.8 release build.
+- `CK3MPS.Modern.csproj` — modern Windows/WinForms compile target used to expose runtime incompatibilities without replacing the legacy package.
+- `CK3MPS.SharedCore.csproj` — UI-independent `netstandard2.0` business logic shared by both lines.
+- `tests/CK3MPS.SharedCore.Tests.csproj` — modern runtime characterization harness for the shared source.
+- `.github/workflows/build.yml` — builds both clients, runs legacy tests and modern shared-core tests, and packages only the legacy release baseline during the transition.
+
+Persisted formats are compatibility boundaries. `settings.ini`, portable/non-portable state roots, migration journals, restore manifests/transactions, and readiness/workflow/parity semantics must not drift as a side effect of changing runtime.
 
 ## Main Runtime Flow
 
@@ -60,6 +74,8 @@ Mutation work is distributed across `Launchers.cs`, `GameSettings.cs`, `Cleanup.
 - `Helpers.cs` — shared operational helpers, preset application, log buffering, file writes, path selection, and scan/apply snapshot reuse.
 - `Utilities.cs` — path normalization, version comparison, preset constants, restore manifest serialization, ownership rules, and checksum helpers.
 - `RuntimeModeUtilities.cs` — portable/non-portable root helpers and log filtering behavior.
+- `LiveLogEventModel.cs` — runtime-neutral event classification, aggregation, visibility, and rendered-line model; currently compiled into legacy, modern, and shared-core targets.
+- `LoggingEventService.cs` — runtime-neutral service boundary and injected clock; currently the first shared-core bounded context.
 
 ## Portable Mode And Transactional State Migration
 
@@ -140,7 +156,9 @@ User CK3 saves, launcher files, Steam configs, and registry values are not app-o
 
 `Updates.cs` checks GitHub releases and opens the official release page after explicit user action. The current code does not run an automatic updater, does not download and execute replacement binaries, and should not be documented as a built-in automatic update installer.
 
-Release governance is implemented in scripts and workflows rather than application runtime code. `check-version-consistency.ps1 -RequireReleaseTag` enforces exact release tag equality with `AppVersion` during release publishing. `package-release.ps1 -SkipBuild` packages the already-tested build output instead of rebuilding after the validation pipeline.
+Release governance is implemented in scripts and workflows rather than application runtime code. `check-version-consistency.ps1 -RequireReleaseTag` enforces exact release tag equality with `AppVersion` during release publishing. `package-release.ps1 -SkipBuild` packages the already-tested legacy build output instead of rebuilding after the validation pipeline.
+
+During runtime migration, artifact names identify the runtime line. The modern output is a compile candidate only; release promotion requires the compatibility and Windows smoke matrix in `docs/MIGRATION_PLAN.md`.
 
 ## Operational Recovery Guidance
 
@@ -162,15 +180,16 @@ After an interrupted restore batch:
 
 For architecture orientation, read:
 
-1. `Start.cs`
-2. `AppState.cs`
-3. `MainWindow.cs`
-4. `Scan.cs`
-5. `Review.cs`
-6. `TransactionalOperations.cs`
-7. `Restore.cs`
-8. `RestoreTransactions.cs`
-9. `WorkflowAnalysisCoordinator.cs`
-10. `Workflow.cs`
-11. `WorkflowUnifiedFix.cs`
-12. `Readiness.cs`
+1. `docs/MIGRATION_PLAN.md`
+2. `Start.cs`
+3. `AppState.cs`
+4. `MainWindow.cs`
+5. `Scan.cs`
+6. `Review.cs`
+7. `TransactionalOperations.cs`
+8. `Restore.cs`
+9. `RestoreTransactions.cs`
+10. `WorkflowAnalysisCoordinator.cs`
+11. `Workflow.cs`
+12. `WorkflowUnifiedFix.cs`
+13. `Readiness.cs`
