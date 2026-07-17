@@ -43,6 +43,7 @@
     <Compile Include="source\Start.cs" />
     <Compile Include="source\AppState.cs" />
     <Compile Include="source\AppConfig.cs" />
+    <Compile Include="source\FixResultContract.cs" />
     <Compile Include="source\MainWindow.cs" />
     <Compile Include="source\StepChecklist.cs" />
     <Compile Include="source\Scan.cs" />
