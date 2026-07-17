@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$ExportRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,7 +31,13 @@ if (-not $VersionLine) { throw 'Could not detect AppVersion.' }
 $Version = [regex]::Match($VersionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
 if ([string]::IsNullOrWhiteSpace($Version)) { throw 'AppVersion is empty.' }
 
-$ReleaseRoot = Join-Path (Split-Path -Parent $Root) 'CK3MPS_exports'
+if ([string]::IsNullOrWhiteSpace($ExportRoot)) {
+    $ReleaseRoot = Join-Path (Split-Path -Parent $Root) 'CK3MPS_exports'
+} else {
+    $ReleaseRoot = if ([System.IO.Path]::IsPathRooted($ExportRoot)) { $ExportRoot } else { Join-Path $Root $ExportRoot }
+}
+
+New-Item -ItemType Directory -Force -Path $ReleaseRoot | Out-Null
 $PackageDir = Join-Path $ReleaseRoot "CK3MPS-$Version"
 $ZipPath = Join-Path $ReleaseRoot "CK3MPS-$Version.zip"
 $ZipChecksumPath = Join-Path $ReleaseRoot "CK3MPS-$Version.zip.sha256"
