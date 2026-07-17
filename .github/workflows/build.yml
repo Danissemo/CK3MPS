@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, agent/fix-hardening-gaps]
   workflow_dispatch:
 
 permissions:
@@ -66,6 +66,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
           Copy-Item ../CK3MPS_exports/*.zip .artifacts/
           Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
+          Copy-Item ../CK3MPS_exports/*.manifest.json .artifacts/
           Copy-Item release/CK3MPS.exe.sha256 .artifacts/
 
       - name: Upload executable
@@ -80,8 +81,10 @@ jobs:
           name: CK3MPS-release-zip
           path: .artifacts/*.zip
 
-      - name: Upload release checksums
+      - name: Upload release checksums-and-manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: CK3MPS-release-checksums
-          path: .artifacts/*.sha256
+          name: CK3MPS-release-metadata
+          path: |
+            .artifacts/*.sha256
+            .artifacts/*.manifest.json
