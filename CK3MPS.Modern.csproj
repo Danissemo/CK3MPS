@@ -9,6 +9,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <BaseIntermediateOutputPath>obj\Modern\</BaseIntermediateOutputPath>
     <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <ApplicationManifest>assets\app.manifest</ApplicationManifest>
   </PropertyGroup>
