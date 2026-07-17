@@ -59,6 +59,15 @@ jobs:
         run: ./scripts/test-fix-result-contract.ps1
       - shell: pwsh
         run: ./scripts/test-release-smoke-report.ps1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deterministic-test-diagnostics
+          path: |
+            bin/test-logs/**
+            bin/tests/**
+            **/*.trx
+          if-no-files-found: ignore
 
   restore_ownership_security_tests:
     name: Restore ownership/security tests
