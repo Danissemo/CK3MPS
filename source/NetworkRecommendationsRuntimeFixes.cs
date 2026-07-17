@@ -11,9 +11,9 @@ namespace CK3MPS
     {
         private static readonly bool NetworkRecommendationsRuntimeHooksInstalled = InstallNetworkRecommendationsRuntimeHooks();
         private Button networkRecommendationsButton;
-        private bool networkRecommendationsUiApplied;
         private string lastLiveLogWarnDedupeKey = "";
         private DateTime lastLiveLogWarnDedupeUtc = DateTime.MinValue;
+        private bool readinessParentConsistencyApplied;
 
         private static bool InstallNetworkRecommendationsRuntimeHooks()
         {
@@ -25,6 +25,8 @@ namespace CK3MPS
                     if (main == null)
                         continue;
                     main.ConfigureNetworkRecommendationsRuntimeFix();
+                    main.ApplyParentReadinessConsistencyWhenIdle();
+                    main.DedupeVisibleLiveLogWarningsWhenIdle();
                     main.DedupeLiveLogWarningsWhenIdle();
                 }
             };
@@ -33,20 +35,21 @@ namespace CK3MPS
 
         private void ConfigureNetworkRecommendationsRuntimeFix()
         {
-            if (networkRecommendationsUiApplied)
-                return;
-            if (mainPage == null || openReportsButton == null)
+            if (mainPage == null || stabilizeButton == null)
                 return;
 
-            networkRecommendationsUiApplied = true;
-            networkRecommendationsButton = new Button();
-            networkRecommendationsButton.Text = "Network Recommendations";
-            networkRecommendationsButton.Size = new System.Drawing.Size(184, openReportsButton.Height);
-            networkRecommendationsButton.Location = new System.Drawing.Point(openReportsButton.Right + 8, openReportsButton.Top);
-            networkRecommendationsButton.Anchor = openReportsButton.Anchor;
-            networkRecommendationsButton.Enabled = !busyUi;
-            networkRecommendationsButton.Click += delegate { ShowNetworkRecommendations(); };
-            mainPage.Controls.Add(networkRecommendationsButton);
+            if (networkRecommendationsButton == null)
+            {
+                networkRecommendationsButton = new Button();
+                networkRecommendationsButton.Text = "Network Recommendations";
+                networkRecommendationsButton.Click += delegate { ShowNetworkRecommendations(); };
+                mainPage.Controls.Add(networkRecommendationsButton);
+            }
+
+            networkRecommendationsButton.Size = new System.Drawing.Size(190, stabilizeButton.Height);
+            networkRecommendationsButton.Location = new System.Drawing.Point(stabilizeButton.Right + 8, stabilizeButton.Top);
+            networkRecommendationsButton.Anchor = stabilizeButton.Anchor;
+            networkRecommendationsButton.Enabled = !busyUi && HasReusableFreshCheckOnlyScan();
             networkRecommendationsButton.BringToFront();
         }
 
@@ -54,12 +57,23 @@ namespace CK3MPS
         {
             try
             {
+                if (!HasReusableFreshCheckOnlyScan())
+                {
+                    MessageBox.Show("Run Scan Settings first. Network Recommendations are based on the latest Scan Settings result.", "CK3MPS Network Recommendations", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
                 string text = BuildNetworkRecommendationsText();
                 string path = StabilizerFile("ck3_stabilizer_network_recommendations.txt");
                 if (!readOnlyScanMode)
                     SafeAtomicFile.WriteAllText(path, text, Utf8NoBom);
-                Log("INFO Network Recommendations opened" + (readOnlyScanMode ? " (scan mode: report not written)." : ": " + path));
-                MessageBox.Show(text, "CK3MPS Network Recommendations", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("INFO Network Recommendations opened: " + path);
+                DialogResult result = MessageBox.Show(text + "\r\n\r\nOpen the Main tab so you can adjust the Network/Windows checklist or switch to the Network only preset?", "CK3MPS Network Recommendations", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (result == DialogResult.Yes)
+                {
+                    mainTabs.SelectedTab = mainPage;
+                    presetBox.Focus();
+                }
             }
             catch (Exception ex)
             {
@@ -71,11 +85,19 @@ namespace CK3MPS
         private string BuildNetworkRecommendationsText()
         {
             NetworkRecommendationProfile profile = AnalyzeNetworkRecommendationsStrict();
+            List<string> scanSignals = ExtractNetworkSignalsFromLatestScan();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("CK3MPS Network Recommendations");
+            sb.AppendLine("Based on latest Scan Settings result");
             sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             sb.AppendLine();
-            sb.AppendLine("Detected active routes");
+            sb.AppendLine("Scan Settings network signals");
+            if (scanSignals.Count == 0)
+                sb.AppendLine("- No network WARN lines were found in the latest Scan Settings report.");
+            foreach (string line in scanSignals)
+                sb.AppendLine("- " + StripStatusPrefix(line));
+            sb.AppendLine();
+            sb.AppendLine("Detected active routes now");
             sb.AppendLine("- Gateway routes: " + profile.GatewayRoutes);
             sb.AppendLine("- Ethernet/physical routes: " + profile.PhysicalRoutes);
             sb.AppendLine("- Wi-Fi routes: " + profile.WifiRoutes);
@@ -84,13 +106,13 @@ namespace CK3MPS
             sb.AppendLine("- Possible mobile false-positive routes: " + profile.PossibleMobileFalsePositiveRoutes);
             sb.AppendLine("- Low-speed routes: " + profile.LowSpeedRoutes);
             sb.AppendLine();
-            sb.AppendLine("Adapters");
+            sb.AppendLine("Adapters with active IPv4 gateway");
             if (profile.AdapterLines.Count == 0)
                 sb.AppendLine("- No active gateway adapters were detected.");
             foreach (string line in profile.AdapterLines)
                 sb.AppendLine("- " + line);
             sb.AppendLine();
-            sb.AppendLine("Recommended actions");
+            sb.AppendLine("Concrete actions");
             if (profile.GatewayRoutes == 0)
             {
                 sb.AppendLine("- Connect to the internet before hosting or joining CK3 MP.");
@@ -104,7 +126,7 @@ namespace CK3MPS
                 if (profile.StrictMobileRoutes > 0)
                     sb.AppendLine("- Do not host from phone tethering/4G/5G/WWAN/RNDIS if avoidable. Use a normal home router or Ethernet instead.");
                 if (profile.PossibleMobileFalsePositiveRoutes > 0 && profile.StrictMobileRoutes == 0)
-                    sb.AppendLine("- Mobile/tethering warning may be a false positive. A generic USB Ethernet adapter was found, but no strict phone/WWAN/RNDIS/LTE/5G marker was detected.");
+                    sb.AppendLine("- The old mobile/tethering warning is probably a false positive: only generic USB Ethernet was found, without phone/WWAN/RNDIS/LTE/5G markers.");
                 if (profile.WifiRoutes > 0 && profile.PhysicalRoutes == 0)
                     sb.AppendLine("- Wi-Fi can work, but Ethernet is preferred for the host. Keep signal strong and avoid downloads/streams.");
                 if (profile.LowSpeedRoutes > 0)
@@ -113,10 +135,36 @@ namespace CK3MPS
                     sb.AppendLine("- Network route looks good for CK3 hosting: one physical Ethernet route and no VPN/mobile route.");
             }
             sb.AppendLine();
-            sb.AppendLine("What CK3MPS should treat as mobile/tethering");
-            sb.AppendLine("- Strong markers: WWAN, LTE, 4G, 5G, Cellular, Mobile, Tether, Android, iPhone, RNDIS.");
-            sb.AppendLine("- Generic USB Ethernet alone is not enough to classify a route as mobile/tethering.");
+            sb.AppendLine("Where to change things");
+            sb.AppendLine("- In CK3MPS: Main tab -> Windows and Network Settings, or preset: Network only.");
+            sb.AppendLine("- In Windows: Settings -> Network & internet -> Advanced network settings -> disable unused Wi-Fi/VPN/mobile adapters.");
+            sb.AppendLine("- For Discord: Discord Settings -> Game Overlay -> disable overlay for CK3 if OOS persists.");
             return sb.ToString();
+        }
+
+        private List<string> ExtractNetworkSignalsFromLatestScan()
+        {
+            List<string> lines = new List<string>();
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in (lastCheckOnlyReportText ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+            {
+                string line = (raw ?? "").Trim();
+                if (line.Length == 0)
+                    continue;
+                if (line.IndexOf("route", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("VPN", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("Wi-Fi", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("Mobile", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("tether", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("proxy", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("jitter", StringComparison.OrdinalIgnoreCase) < 0
+                    && line.IndexOf("Discord", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+                string key = CollapseWhitespace(line);
+                if (seen.Add(key))
+                    lines.Add(line);
+            }
+            return lines;
         }
 
         private NetworkRecommendationProfile AnalyzeNetworkRecommendationsStrict()
@@ -176,6 +224,100 @@ namespace CK3MPS
                 || lower.Contains("rndis");
         }
 
+        private void ApplyParentReadinessConsistencyWhenIdle()
+        {
+            try
+            {
+                if (busyUi || readinessParentConsistencyApplied)
+                    return;
+                string[] snapshot = SnapshotRunLogLines();
+                if (snapshot == null || snapshot.Length == 0)
+                    return;
+
+                HashSet<string> failedSections = DetectSectionsWithSubFails(snapshot);
+                if (failedSections.Count == 0)
+                    return;
+
+                int corrections = 0;
+                lock (runLogSync)
+                {
+                    for (int i = 0; i < runLogLines.Count; i++)
+                    {
+                        string line = runLogLines[i] ?? "";
+                        if (!StartsWithStatus(line, "OK"))
+                            continue;
+                        string message = NormalizeStatusMessage(line);
+                        if (failedSections.Contains(message))
+                        {
+                            runLogLines[i] = ReplaceLeadingStatus(line, "FAIL ");
+                            corrections++;
+                        }
+                    }
+                }
+
+                if (corrections <= 0)
+                    return;
+
+                readinessParentConsistencyApplied = true;
+                lastReadinessFailures = Math.Max(lastReadinessFailures, corrections);
+                ReplaceVisibleLogText(delegate(string text)
+                {
+                    string updated = text;
+                    foreach (string section in failedSections)
+                        updated = ReplaceVisibleOkStatusForSection(updated, section);
+                    updated = updated.Replace("OK   | Final readiness summary | all checklist checks passed", "FAIL | Final readiness summary | parent checklist failed checks: " + corrections);
+                    updated = updated.Replace("RESULT| READY.", "RESULT| NOT READY. Failed parent checklist checks: " + corrections);
+                    updated = updated.Replace("RESULT READY.", "RESULT NOT READY. Failed parent checklist checks: " + corrections);
+                    return updated;
+                });
+                string[] correctedSnapshot = SnapshotRunLogLines();
+                scanSettingsExportReportText = BuildCheckOnlyReportText(lastReadinessFailures, correctedSnapshot);
+                lastCheckOnlyReportText = scanSettingsExportReportText;
+            }
+            catch
+            {
+            }
+        }
+
+        private HashSet<string> DetectSectionsWithSubFails(string[] lines)
+        {
+            HashSet<string> failed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string currentSection = "";
+            bool previousDivider = false;
+            foreach (string raw in lines ?? new string[0])
+            {
+                string line = StripUiPrefix(raw ?? "").Trim();
+                if (IsDividerLine(line))
+                {
+                    previousDivider = true;
+                    continue;
+                }
+                if (previousDivider && line.Length > 0 && !IsStatusLine(line))
+                {
+                    currentSection = NormalizeSectionName(line);
+                    previousDivider = false;
+                    continue;
+                }
+                previousDivider = false;
+                if (StartsWithStatus(line, "FAIL") && currentSection.Length > 0)
+                    failed.Add(currentSection);
+            }
+            return failed;
+        }
+
+        private void DedupeVisibleLiveLogWarningsWhenIdle()
+        {
+            try
+            {
+                if (logBox == null || busyUi || readOnlyScanMode)
+                    return;
+                ReplaceVisibleLogText(DedupeAndFilterWarnText);
+            }
+            catch
+            {
+            }
+        }
+
         private void DedupeLiveLogWarningsWhenIdle()
         {
             try
@@ -190,7 +332,7 @@ namespace CK3MPS
                 if (String.IsNullOrEmpty(original))
                     return;
 
-                string deduped = DedupeRepeatedWarnLines(original);
+                string deduped = DedupeAndFilterWarnText(original);
                 lastLiveLogWarnDedupeKey = liveLogFilePath + "|" + writeUtc.Ticks;
                 lastLiveLogWarnDedupeUtc = DateTime.UtcNow;
                 if (String.Equals(original, deduped, StringComparison.Ordinal))
@@ -204,8 +346,9 @@ namespace CK3MPS
             }
         }
 
-        private string DedupeRepeatedWarnLines(string text)
+        private string DedupeAndFilterWarnText(string text)
         {
+            NetworkRecommendationProfile profile = AnalyzeNetworkRecommendationsStrict();
             string normalized = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
             string[] lines = normalized.Split(new[] { '\n' }, StringSplitOptions.None);
             HashSet<string> seenWarns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -216,7 +359,13 @@ namespace CK3MPS
                 string trimmed = line.Trim();
                 if (trimmed.StartsWith("WARN", StringComparison.OrdinalIgnoreCase))
                 {
-                    string key = RegexCollapseWhitespace(trimmed);
+                    if (trimmed.IndexOf("Mobile/tethering route detected", StringComparison.OrdinalIgnoreCase) >= 0 && profile.StrictMobileRoutes == 0)
+                    {
+                        changed = true;
+                        continue;
+                    }
+
+                    string key = CollapseWhitespace(trimmed);
                     if (seenWarns.Contains(key))
                     {
                         changed = true;
@@ -229,7 +378,111 @@ namespace CK3MPS
             return changed ? sb.ToString() : text;
         }
 
-        private string RegexCollapseWhitespace(string value)
+        private void ReplaceVisibleLogText(Func<string, string> transform)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke((MethodInvoker)delegate { ReplaceVisibleLogText(transform); });
+                return;
+            }
+            string original = logBox.Text;
+            string updated = transform(original);
+            if (String.Equals(original, updated, StringComparison.Ordinal))
+                return;
+            int selectionStart = logBox.SelectionStart;
+            logBox.Text = updated;
+            logBox.SelectionStart = Math.Min(selectionStart, logBox.TextLength);
+            ScrollLogToBottom(false);
+        }
+
+        private string ReplaceVisibleOkStatusForSection(string text, string section)
+        {
+            string[] lines = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split(new[] { '\n' }, StringSplitOptions.None);
+            StringBuilder sb = new StringBuilder();
+            foreach (string line in lines)
+            {
+                if (StartsWithStatus(line, "OK") && String.Equals(NormalizeStatusMessage(line), section, StringComparison.OrdinalIgnoreCase))
+                    sb.AppendLine(ReplaceLeadingStatus(line, "FAIL "));
+                else
+                    sb.AppendLine(line);
+            }
+            return sb.ToString();
+        }
+
+        private string StripStatusPrefix(string line)
+        {
+            string trimmed = (line ?? "").Trim();
+            int pipe = trimmed.IndexOf('|');
+            if (pipe >= 0)
+                return trimmed.Substring(pipe + 1).Trim();
+            if (trimmed.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("INFO", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
+                return trimmed.Length > 5 ? trimmed.Substring(5).Trim() : trimmed;
+            return trimmed;
+        }
+
+        private bool IsStatusLine(string line)
+        {
+            return StartsWithStatus(line, "OK") || StartsWithStatus(line, "FAIL") || StartsWithStatus(line, "WARN") || StartsWithStatus(line, "INFO") || StartsWithStatus(line, "RESULT");
+        }
+
+        private bool StartsWithStatus(string line, string status)
+        {
+            string stripped = StripUiPrefix(line ?? "").TrimStart();
+            return stripped.StartsWith(status, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string NormalizeStatusMessage(string line)
+        {
+            return NormalizeSectionName(StripStatusPrefix(StripUiPrefix(line ?? "")));
+        }
+
+        private string NormalizeSectionName(string value)
+        {
+            string text = CollapseWhitespace(value ?? "").Trim().TrimEnd('.');
+            return text;
+        }
+
+        private string StripUiPrefix(string line)
+        {
+            string text = line ?? "";
+            int pipe = text.IndexOf('|');
+            if (pipe > 0)
+            {
+                string before = text.Substring(0, pipe).Trim();
+                if (before.StartsWith("OK", StringComparison.OrdinalIgnoreCase)
+                    || before.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase)
+                    || before.StartsWith("WARN", StringComparison.OrdinalIgnoreCase)
+                    || before.StartsWith("INFO", StringComparison.OrdinalIgnoreCase)
+                    || before.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
+                    return text;
+            }
+            return text;
+        }
+
+        private string ReplaceLeadingStatus(string line, string replacementStatus)
+        {
+            string text = line ?? "";
+            int index = text.IndexOf("OK", StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+                return text;
+            return text.Substring(0, index) + replacementStatus + text.Substring(index + 2);
+        }
+
+        private bool IsDividerLine(string line)
+        {
+            string text = (line ?? "").Trim();
+            if (text.Length < 8)
+                return false;
+            foreach (char c in text)
+                if (c != '-')
+                    return false;
+            return true;
+        }
+
+        private string CollapseWhitespace(string value)
         {
             StringBuilder sb = new StringBuilder();
             bool wasSpace = false;
