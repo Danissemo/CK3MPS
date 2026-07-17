@@ -8,13 +8,10 @@ namespace CK3MPS
     {
         private string scanSettingsExportReportText = "";
 
-        protected override void OnLoad(EventArgs e)
+        protected override void OnShown(EventArgs e)
         {
-            base.OnLoad(e);
-            Shown += delegate
-            {
-                BeginInvoke((MethodInvoker)delegate { ConfigureScanExportRuntimeFix(); });
-            };
+            base.OnShown(e);
+            BeginInvoke((MethodInvoker)delegate { ConfigureScanExportRuntimeFix(); });
         }
 
         private void ConfigureScanExportRuntimeFix()
