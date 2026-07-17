@@ -46,9 +46,62 @@ namespace CK3MPS
             if (runLogLines == null || runLogLines.Length == 0)
                 runLogLines = new[] { "ERROR Scan did not produce a log snapshot." };
 
-            int failures = Math.Max(0, lastReadinessFailures);
+            int failLineFailures = CountImportantScanFailLines(runLogLines);
+            int failures = Math.Max(Math.Max(0, lastReadinessFailures), failLineFailures);
+            if (failures > lastReadinessFailures)
+            {
+                lastReadinessFailures = failures;
+                SetStatusText("Not ready. Scan found FAIL lines: " + failures);
+                Log("INFO Final readiness summary corrected from scan FAIL lines: " + failures);
+                Log("RESULT NOT READY. Failed checks found in Scan Settings: " + failures);
+                runLogLines = SnapshotRunLogLines();
+            }
+
             scanSettingsExportReportText = BuildScanSettingsExportReportText(failures, runLogLines);
             lastCheckOnlyReportText = scanSettingsExportReportText;
+        }
+
+        private int CountImportantScanFailLines(string[] runLogLines)
+        {
+            HashSet<string> failures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in runLogLines ?? new string[0])
+            {
+                string trimmed = (line ?? "").Trim();
+                if (!trimmed.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                failures.Add(NormalizeScanFailureKey(trimmed));
+            }
+            return failures.Count;
+        }
+
+        private string NormalizeScanFailureKey(string line)
+        {
+            string text = line ?? "";
+            int pipe = text.IndexOf('|');
+            if (pipe >= 0 && pipe + 1 < text.Length)
+                text = text.Substring(pipe + 1);
+            return CollapseScanExportWhitespace(text).Trim().TrimEnd('.');
+        }
+
+        private string CollapseScanExportWhitespace(string value)
+        {
+            StringBuilder sb = new StringBuilder();
+            bool wasSpace = false;
+            foreach (char c in value ?? "")
+            {
+                if (Char.IsWhiteSpace(c))
+                {
+                    if (!wasSpace)
+                        sb.Append(' ');
+                    wasSpace = true;
+                }
+                else
+                {
+                    sb.Append(c);
+                    wasSpace = false;
+                }
+            }
+            return sb.ToString().Trim();
         }
 
         private string BuildScanSettingsExportReportText(int readinessFailures, string[] runLogLines)
@@ -73,10 +126,18 @@ namespace CK3MPS
                 if (String.IsNullOrWhiteSpace(normalized))
                     continue;
 
-                if (!emitted.Add(normalized))
+                string key = CollapseScanExportWhitespace(normalized);
+                if (!emitted.Add(key))
                     continue;
 
                 sb.AppendLine(normalized);
+            }
+
+            if (readinessFailures > 0)
+            {
+                string correctedResult = "RESULT| NOT READY. Failed checks found in Scan Settings: " + readinessFailures;
+                if (emitted.Add(correctedResult))
+                    sb.AppendLine(correctedResult);
             }
 
             return sb.ToString();
@@ -93,6 +154,9 @@ namespace CK3MPS
 
         private string NormalizeScanExportLine(string line, int readinessFailures)
         {
+            if (line.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase) && readinessFailures > 0)
+                return "RESULT| NOT READY. Failed checks found in Scan Settings: " + readinessFailures;
+
             if (line.IndexOf("Host suitability report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 if (readinessFailures == 0)
