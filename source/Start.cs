@@ -12,6 +12,7 @@ namespace CK3MPS
         {
             try
             {
+                UpdaterRecovery.RecoverBeforeApply(args);
                 if (SafeUpdater.TryHandleCommandLine(args))
                     return;
             }
