@@ -75,6 +75,7 @@ $Allowlist = @(
     @{ Path = "source/SaveAnalysis.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", exportDir\);$'; Reason = "Explorer shell open for local export folder." },
     @{ Path = "source/Start.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "UAC relaunch entrypoint." },
     @{ Path = "source/SystemRestore.cs"; Rule = "Process.Start"; LinePattern = '^using \(Process process = Process\.Start\(psi\)\)$'; Reason = "Starts tightly-scoped PowerShell subprocess for system restore operations." },
+    @{ Path = "source/SystemRestore.cs"; Rule = "File.ReadAllText"; LinePattern = '^string existing = File\.ReadAllText\(path, Encoding\.UTF8\)\.Trim\(\);$'; Reason = "Reads the single app-owned restore-point ownership secret before validating its minimum length." },
     @{ Path = "source/Updates.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "Starts only the staged updater executable after exact release endpoint and metadata validation." },
     @{ Path = "source/Updates.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\(Application\.ExecutablePath, updaterCopy, false\);$'; Reason = "Copies the currently running signed application into app-owned staging as the separate updater process." },
     @{ Path = "source/Updates.cs"; Rule = "File.ReadAllText"; Reason = "Reads the downloaded checksum from canonical app-owned staging." },
