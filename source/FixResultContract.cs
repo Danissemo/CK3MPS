@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace CK3MPS
 {
@@ -176,6 +177,121 @@ namespace CK3MPS
                 return;
             foreach (T value in values)
                 target.Add(value);
+        }
+    }
+
+    internal sealed partial class MainForm
+    {
+        private List<int> BuildSelectedFixTargetCheckIds()
+        {
+            List<int> targetCheckIds = new List<int>();
+            for (int i = 0; i < StepCatalog.Count; i++)
+            {
+                if (IsStepChecked(i))
+                    targetCheckIds.Add(i);
+            }
+            return targetCheckIds;
+        }
+
+        private List<int> CollectFailedFixTargetCheckIds(IEnumerable<int> targetCheckIds, bool includeRestorePointCheck)
+        {
+            List<int> failed = new List<int>();
+            foreach (int targetCheckId in targetCheckIds ?? new int[0])
+            {
+                if (!EvaluateFixTargetCheck(targetCheckId, includeRestorePointCheck))
+                    failed.Add(targetCheckId);
+            }
+            return failed;
+        }
+
+        private List<string> BuildFailedPostconditionMessages(IEnumerable<int> failedTargetCheckIds)
+        {
+            List<string> messages = new List<string>();
+            foreach (int failedTargetCheckId in failedTargetCheckIds ?? new int[0])
+                messages.Add(StepTitle(failedTargetCheckId));
+            return messages;
+        }
+
+        private void LogFixResultDetails(FixOperationResult result)
+        {
+            if (result == null)
+                return;
+
+            Log(result.ResultLogLine());
+            Log("INFO Fix contract | operation: " + result.OperationId + " | status: " + result.Status + " | before failed: " + result.ReadinessBefore.FailedChecks + " | after failed: " + result.ReadinessAfter.FailedChecks);
+            if (result.RemainingTargetFailedCheckIds.Count > 0)
+            {
+                foreach (int failedTargetCheckId in result.RemainingTargetFailedCheckIds)
+                    Log("FAIL Target postcondition still failed: " + StepTitle(failedTargetCheckId));
+                Log("INFO Safe next action: run Scan, review the failed target checks, then apply only the affected fix steps again.");
+            }
+        }
+
+        private bool EvaluateFixTargetCheck(int index, bool includeRestorePointCheck)
+        {
+            switch (index)
+            {
+                case StepCatalog.CreateRestorePoint:
+                    return !includeRestorePointCheck || WindowsRestorePointInfrastructureOk();
+                case StepCatalog.CheckPathsAndProcesses:
+                    return Directory.Exists(ck3Docs) && !IsGameRunning() && VersionParityBaselineOk() && SteamUpdateComplete();
+                case StepCatalog.CreateQuarantine:
+                    return !String.IsNullOrEmpty(GetKnownQuarantine()) && Directory.Exists(GetKnownQuarantine());
+                case StepCatalog.FlushDns:
+                    return NetworkBaselineOk();
+                case StepCatalog.DiagnoseNetwork:
+                    return HasAnyActiveNetworkRoute() && NetworkBaselineOk();
+                case StepCatalog.AddFirewallRules:
+                    return FirewallRulesPresent();
+                case StepCatalog.ApplyWindowsProfile:
+                    return WindowsGameNetworkProfileOk();
+                case StepCatalog.TunePowerAdapters:
+                    return PowerAdapterProfileOk();
+                case StepCatalog.CheckOverlaysVpn:
+                    return WindowsAppsAndServicesOk();
+                case StepCatalog.CheckOnlineServices:
+                    return OnlineServicesOk();
+                case StepCatalog.BackupLauncherSettings:
+                    return SteamAndLauncherBackupSourcesOk();
+                case StepCatalog.StabilizeSteamSettings:
+                    return HasNoAsync() && !HasRiskyLaunchOptions() && SteamCloudDisabledOrUnknownQuiet();
+                case StepCatalog.RebuildLauncherDatabase:
+                    return !File.Exists(Path.Combine(ck3Docs, "launcher-v2.sqlite")) || DlcLoadProfileClean();
+                case StepCatalog.CheckRuntimeHygiene:
+                    return !ProcessRunningContains("dowser") && !ProcessRunningContains("paradox launcher") && !ProcessRunningExact("ck3");
+                case StepCatalog.ForceNoMods:
+                    return DlcLoadProfileClean() && !HasUtf8Bom(Path.Combine(ck3Docs, "dlc_load.json"));
+                case StepCatalog.StabilizePdxSettings:
+                    return StableCriticalSettingsOk() && !HasUtf8Bom(Path.Combine(ck3Docs, "pdx_settings.txt"));
+                case StepCatalog.ConfirmLaunchedProfile:
+                    return File.Exists(StabilizerFile("ck3_stabilizer_runtime_verification.txt")) && File.Exists(StabilizerFile("ck3_stabilizer_settings_guard.txt")) && !RuntimeProfileLooksBadAfterSettings();
+                case StepCatalog.WriteCampaignProfile:
+                    return File.Exists(StabilizerFile("ck3_stabilizer_in_game_mp_settings.txt"));
+                case StepCatalog.ClearPlayerState:
+                    return PlayerStateNonCritical();
+                case StepCatalog.ArchiveReports:
+                    return ReportsClean();
+                case StepCatalog.ClearCaches:
+                    return CacheFoldersClean();
+                case StepCatalog.QuarantineModDescriptors:
+                    return CountFiles(Path.Combine(ck3Docs, "mod"), "*.mod") == 0;
+                case StepCatalog.InspectLoaderFiles:
+                    return !String.IsNullOrEmpty(ck3Bin) && Directory.Exists(ck3Bin) && CountSuspectBinaries() == 0;
+                case StepCatalog.CheckSaveHygiene:
+                    return ActiveSaveVersionOk() && SaveLaunchHygieneOk() && BestCleanSaveReadable() && BestCleanSaveVersionOk();
+                case StepCatalog.CleanDocumentsFolder:
+                    return Ck3DocumentsCleanupOk();
+                case StepCatalog.AnalyzeOos:
+                    return File.Exists(StabilizerFile("ck3_stabilizer_latest_oos_summary.txt")) || String.IsNullOrEmpty(FindLatestOosMetadataFile());
+                case StepCatalog.WriteSupportPackage:
+                    return File.Exists(StabilizerFile("ck3_stabilizer_evidence_pack_index.txt"));
+                case StepCatalog.WritePreventionRules:
+                    return File.Exists(StabilizerFile("ck3_stabilizer_oos_protocol.txt"));
+                case StepCatalog.WriteParityManifest:
+                    return ParityManifestComplete() && File.Exists(StabilizerFile("ck3_stabilizer_oos_risk_score.txt"));
+                default:
+                    return false;
+            }
         }
     }
 }
