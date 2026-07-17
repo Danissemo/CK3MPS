@@ -13,6 +13,8 @@ namespace CK3MPS
         {
             base.OnLoad(e);
             InstallApplySettingsReadinessGate();
+            ConfigureScanExportRuntimeFix();
+            RecoverSteamSharedConfigPath();
         }
 
         private void InstallApplySettingsReadinessGate()
