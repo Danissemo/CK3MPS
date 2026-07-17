@@ -18,37 +18,36 @@ internal static class UpdatesHarness
                 "{" +
                 "\"tag_name\":\"v0.4\"," +
                 "\"html_url\":\"https://github.com/Danissemo/CK3MPS/releases/tag/v0.4\"," +
+                "\"draft\":false," +
+                "\"prerelease\":false," +
                 "\"assets\":[" +
-                    "{\"name\":\"CK3MPS-v0.4.zip\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-v0.4.zip\"}," +
-                    "{\"name\":\"CK3MPS-v0.4.zip.sha256\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-v0.4.zip.sha256\"}," +
-                    "{\"name\":\"CK3MPS.exe\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS.exe\"}" +
+                    "{\"name\":\"CK3MPS-0.4.zip\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-0.4.zip\"}," +
+                    "{\"name\":\"CK3MPS-0.4.zip.sha256\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-0.4.zip.sha256\"}," +
+                    "{\"name\":\"CK3MPS-0.4.zip.manifest.json\",\"browser_download_url\":\"https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-0.4.zip.manifest.json\"}" +
                 "]" +
                 "}" +
             "]";
 
-            object releaseDto = InvokeStatic(mainFormType, "ParseLatestReleaseJson", staticFlags, json);
-            Assert(releaseDto != null, "update JSON parser should deserialize latest release");
-
+            Array releases = InvokeStatic(mainFormType, "ParseReleaseJson", staticFlags, json) as Array;
+            Assert(releases != null && releases.Length == 1, "update JSON parser should deserialize release list");
+            object releaseDto = releases.GetValue(0);
             Type releaseDtoType = releaseDto.GetType();
             Assert(GetFieldValue<string>(releaseDtoType, releaseDto, "TagName") == "v0.4", "update JSON parser should keep tag_name");
-            Assert(GetFieldValue<string>(releaseDtoType, releaseDto, "HtmlUrl") == "https://github.com/Danissemo/CK3MPS/releases/tag/v0.4", "update JSON parser should keep html_url");
+            Assert(!GetFieldValue<bool>(releaseDtoType, releaseDto, "Draft"), "stable release should not be draft");
+            Assert(!GetFieldValue<bool>(releaseDtoType, releaseDto, "Prerelease"), "stable release should not be prerelease");
 
             Type releaseInfoType = mainFormType.GetNestedType("ReleaseInfo", BindingFlags.NonPublic);
             object releaseInfo = Activator.CreateInstance(releaseInfoType, true);
-            InvokeStatic(mainFormType, "PickReleaseAsset", staticFlags, releaseDto, releaseInfo);
+            SetFieldValue(releaseInfoType, releaseInfo, "TagName", "v0.4");
+            InvokeStatic(mainFormType, "PickReleaseAssets", staticFlags, releaseDto, releaseInfo);
 
-            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "AssetName") == "CK3MPS-v0.4.zip", "update asset picker should choose the release zip first");
-            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "DownloadUrl").IndexOf("CK3MPS-v0.4.zip", StringComparison.OrdinalIgnoreCase) >= 0, "update asset picker should keep the zip download URL");
-            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "ChecksumUrl").IndexOf(".sha256", StringComparison.OrdinalIgnoreCase) >= 0, "update asset picker should keep the checksum URL");
+            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "AssetName") == "CK3MPS-0.4.zip", "update asset picker should require exact versioned zip");
+            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "ChecksumUrl").EndsWith(".sha256", StringComparison.Ordinal), "update asset picker should keep checksum URL");
+            Assert(GetFieldValue<string>(releaseInfoType, releaseInfo, "ManifestUrl").EndsWith(".manifest.json", StringComparison.Ordinal), "update asset picker should keep manifest URL");
 
-            string safeUrl = Convert.ToString(InvokeStatic(mainFormType, "SanitizeOfficialReleasePageUrl", staticFlags, "https://github.com/Danissemo/CK3MPS/releases/tag/v0.4")) ?? "";
-            string downgradedScheme = Convert.ToString(InvokeStatic(mainFormType, "SanitizeOfficialReleasePageUrl", staticFlags, "http://github.com/Danissemo/CK3MPS/releases/tag/v0.4")) ?? "";
-            string downgradedHost = Convert.ToString(InvokeStatic(mainFormType, "SanitizeOfficialReleasePageUrl", staticFlags, "https://evil.example.com/releases")) ?? "";
-            string fallback = "https://github.com/Danissemo/CK3MPS/releases";
-
-            Assert(safeUrl == "https://github.com/Danissemo/CK3MPS/releases/tag/v0.4", "release page sanitizer should keep allowed GitHub HTTPS URLs");
-            Assert(downgradedScheme == fallback, "release page sanitizer should reject non-HTTPS URLs");
-            Assert(downgradedHost == fallback, "release page sanitizer should reject non-GitHub hosts");
+            InvokeStatic(mainFormType, "ValidateReleaseDownloadUrl", staticFlags, "https://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-0.4.zip");
+            AssertInvocationFails(mainFormType, "ValidateReleaseDownloadUrl", staticFlags, "http://github.com/Danissemo/CK3MPS/releases/download/v0.4/CK3MPS-0.4.zip", "non-HTTPS release URL should be rejected");
+            AssertInvocationFails(mainFormType, "ValidateReleaseDownloadUrl", staticFlags, "https://evil.example.com/CK3MPS-0.4.zip", "foreign release host should be rejected");
             return 0;
         }
         catch (TargetInvocationException ex)
@@ -71,12 +70,33 @@ internal static class UpdatesHarness
         return method.Invoke(null, parameters);
     }
 
+    private static void AssertInvocationFails(Type type, string methodName, BindingFlags flags, object parameter, string message)
+    {
+        try
+        {
+            InvokeStatic(type, methodName, flags, parameter);
+        }
+        catch (TargetInvocationException)
+        {
+            return;
+        }
+        throw new InvalidOperationException(message);
+    }
+
     private static T GetFieldValue<T>(Type type, object instance, string fieldName)
     {
         FieldInfo field = type.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         if (field == null)
             throw new InvalidOperationException("Field not found: " + fieldName);
         return (T)field.GetValue(instance);
+    }
+
+    private static void SetFieldValue(Type type, object instance, string fieldName, object value)
+    {
+        FieldInfo field = type.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (field == null)
+            throw new InvalidOperationException("Field not found: " + fieldName);
+        field.SetValue(instance, value);
     }
 
     private static void Assert(bool condition, string message)
