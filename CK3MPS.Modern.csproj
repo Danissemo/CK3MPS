@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>CK3MPS</RootNamespace>
+    <AssemblyName>CK3MPS.Modern</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>assets\app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="source\**\*.cs" />
+    <Content Include="assets\app.ico" />
+    <Content Include="assets\app_icon.png" />
+    <None Include="assets\app.manifest" />
+  </ItemGroup>
+</Project>
