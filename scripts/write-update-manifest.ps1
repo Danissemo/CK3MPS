@@ -17,7 +17,7 @@ if ([System.IO.Path]::GetFileName($PackagePath) -cne $ExpectedPackageName) {
     throw "Unexpected update package name. Expected '$ExpectedPackageName'."
 }
 
-$files = New-Object System.Collections.Generic.List[object]
+$files = @()
 Get-ChildItem -LiteralPath $PackageDirectory -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relative = $_.FullName.Substring($PackageDirectory.Length).TrimStart('\') -replace '\\', '/'
     if ($relative -match '(^|/)(\.\.?)(/|$)') { throw "Unsafe manifest path: $relative" }
@@ -33,7 +33,7 @@ Get-ChildItem -LiteralPath $PackageDirectory -File -Recurse | Sort-Object FullNa
             }
         }
     }
-    $files.Add([ordered]@{ path = $relative; sha256 = $hash; signed = [bool]$signed })
+    $files += [ordered]@{ path = $relative; sha256 = $hash; signed = [bool]$signed }
 }
 
 if (-not ($files | Where-Object { $_.path -ceq 'CK3MPS.exe' })) {
@@ -48,7 +48,7 @@ $manifest = [ordered]@{
     packageSha256 = (Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
     publisherSubject = $ExpectedPublisher
     healthTimeoutSeconds = 30
-    files = @($files)
+    files = $files
 }
 
 $directory = Split-Path -Parent $OutputPath
