@@ -12,4 +12,10 @@
     <Compile Include="source\LiveLogEventModel.cs" Link="LiveLogEventModel.cs" />
     <Compile Include="source\LoggingEventService.cs" Link="LoggingEventService.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>CK3MPS.SharedCore.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
