@@ -2,26 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Windows.Forms;
 
 namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
         private bool runtimeStartupFixesApplied;
-
-        static MainForm()
-        {
-            Application.Idle += delegate
-            {
-                foreach (Form form in Application.OpenForms)
-                {
-                    MainForm main = form as MainForm;
-                    if (main != null)
-                        main.ApplyRuntimeStartupFixesOnce();
-                }
-            };
-        }
 
         private void ApplyRuntimeStartupFixesOnce()
         {
