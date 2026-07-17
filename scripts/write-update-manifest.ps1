@@ -19,7 +19,7 @@ if ([System.IO.Path]::GetFileName($PackagePath) -cne $ExpectedPackageName) {
 
 $files = New-Object System.Collections.Generic.List[object]
 Get-ChildItem -LiteralPath $PackageDirectory -File -Recurse | Sort-Object FullName | ForEach-Object {
-    $relative = $_.FullName.Substring($PackageDirectory.Length).TrimStart('\') -replace '\', '/'
+    $relative = $_.FullName.Substring($PackageDirectory.Length).TrimStart('\') -replace '\\', '/'
     if ($relative -match '(^|/)(\.\.?)(/|$)') { throw "Unsafe manifest path: $relative" }
     $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     $signed = $false
