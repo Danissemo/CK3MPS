@@ -33,7 +33,8 @@ The orchestrator prioritizes:
 4. workflow/parity scripts, including `test-workflow-parity.ps1`
 5. StepCatalog/catalog-named scripts if present
 6. `test-transactional-hardening.ps1`
-7. any remaining `test-*.ps1` scripts in stable name order
+7. restore point ownership scripts, including `test-restore-point-ownership.ps1`
+8. any remaining `test-*.ps1` scripts in stable name order
 
 Use the orchestrator for release confidence. Run individual scripts only when narrowing a failure.
 
@@ -83,6 +84,14 @@ Builds CK3MPS, verifies `bin\CK3MPS.exe`, compiles `tests\RestoreTransactionHarn
 
 ```powershell
 .\scripts\test-restore-transactions.ps1
+```
+
+### `scripts\test-restore-point-ownership.ps1`
+
+Builds CK3MPS, verifies `bin\CK3MPS.exe`, compiles `tests\RestorePointOwnershipHarness.cs`, and runs the Delete Data / Windows restore-point ownership harness against the built executable.
+
+```powershell
+.\scripts\test-restore-point-ownership.ps1
 ```
 
 ### `scripts\test-workflow-parity.ps1`
@@ -155,6 +164,18 @@ Covered behavior includes:
 - user-data protection for moved paths;
 - temporary transaction cleanup on success and preservation when rollback also fails.
 
+### Windows restore point ownership
+
+Covered behavior includes:
+
+- app-owned restore points with marker, operation id, manifest row, schema version, identity fields, and digest;
+- prefix-only legacy restore points staying read-only;
+- manually created restore points with plausible CK3MPS text or marker staying read-only without a manifest row;
+- missing, corrupt, tampered, and duplicated ownership manifest rows blocking deletion;
+- description, creation time, and sequence changes after UI load blocking deletion;
+- bulk deletion skipping unowned, missing, or changed restore points while keeping only currently verified app-owned items;
+- Delete Data checkbox blocking for unowned restore points.
+
 ### Workflow and Parity
 
 Covered behavior includes:
@@ -194,8 +215,10 @@ Run this on a real Windows machine before a release candidate is considered read
 7. Inspect one `pdx_settings.txt` or `dlc_load.json` restore entry and verify `Before`, `Current now`, and `Diff`.
 8. Use `Restore selected` on one reversible CK3 file entry and confirm the file returns to the recorded previous value.
 9. Use `Restore default` on one CK3/launcher-owned file or registry entry and confirm the override is removed rather than restored to an old value.
-10. Re-run `Scan` and confirm reports/readiness reflect the current state.
-11. Launch CK3, wait for the main menu, exit, then run `Scan` again and confirm whether launcher/game recreated expected defaults or rewrote stability files.
+10. Create a Windows restore point through CK3MPS, open Delete Data / restore points, and confirm only manifest-verified CK3MPS restore points are checkable/deletable.
+11. Confirm a system/manual restore point, including one with a similar description, remains read-only and is skipped by bulk deletion.
+12. Re-run `Scan` and confirm reports/readiness reflect the current state.
+13. Launch CK3, wait for the main menu, exit, then run `Scan` again and confirm whether launcher/game recreated expected defaults or rewrote stability files.
 
 ## Manual LAN Parity Test
 
@@ -225,6 +248,12 @@ Before release confidence, verify on two physical Windows machines on the same p
 2. Inspect the Restore tab, app logs, and the relevant transaction folder.
 3. Compare target files/directories/registry values with restore entries before retrying.
 4. Remember that registry rollback depends on current Windows permissions and registry state.
+
+### Restore point ownership interruption
+
+1. Treat restore points without a valid `restore_point_ownership.tsv` row as read-only legacy/system points.
+2. Do not manually edit `restore_point_ownership.tsv` or `restore_point_ownership.secret`; digest mismatches intentionally block deletion.
+3. If ownership data is lost, use Windows System Restore UI/tools for manual operator decisions instead of CK3MPS Delete Data.
 
 ## Diagnosing Red CI
 

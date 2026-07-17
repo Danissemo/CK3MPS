@@ -74,6 +74,7 @@ $Allowlist = @(
     @{ Path = "source/SaveAnalysis.cs"; Rule = "File.WriteAllText"; Reason = "Writes app-owned rehost/export index files." },
     @{ Path = "source/SaveAnalysis.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\("explorer\.exe", exportDir\);$'; Reason = "Explorer shell open for local export folder." },
     @{ Path = "source/Start.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "UAC relaunch entrypoint." },
+    @{ Path = "source/SystemRestore.cs"; Rule = "File.ReadAllText"; LinePattern = '^string existing = File\.ReadAllText\(path, Encoding\.UTF8\)\.Trim\(\);$'; Reason = "Reads app-owned restore-point ownership secret after stabilizer-root resolution." },
     @{ Path = "source/SystemRestore.cs"; Rule = "Process.Start"; LinePattern = '^using \(Process process = Process\.Start\(psi\)\)$'; Reason = "Starts tightly-scoped PowerShell subprocess for system restore operations." },
     @{ Path = "source/Updates.cs"; Rule = "Process.Start"; LinePattern = '^Process\.Start\(info\);$'; Reason = "Opens only the vetted official GitHub release page; automatic installation is disabled." },
     @{ Path = "source/TransactionalOperations.cs"; Rule = "File.Copy"; LinePattern = '^File\.Copy\((source, staged|staged, target), false\);$'; Reason = "Copies validated state into staging or commits a verified staged file to a prepared migration target." },
