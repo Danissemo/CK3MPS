@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
 
 namespace CK3MPS
 {
     internal static class RuntimeModeUtilities
     {
+        private static readonly object LogDedupeSync = new object();
+        private static readonly HashSet<string> SeenImportantWarnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         public static string ResolveStabilizerRoot(string nonPortableRoot, string portableRoot, bool portableMode)
         {
             return portableMode ? portableRoot : nonPortableRoot;
@@ -14,6 +18,9 @@ namespace CK3MPS
             string text = (formatted ?? "").TrimStart();
             if (text.Length == 0)
                 return String.Equals(verbosity, "Quiet", StringComparison.OrdinalIgnoreCase);
+
+            if (IsFalsePositiveOrDuplicateWarning(text))
+                return true;
 
             if (String.Equals(verbosity, "Quiet", StringComparison.OrdinalIgnoreCase))
                 return !IsQuietVisible(text);
@@ -29,10 +36,33 @@ namespace CK3MPS
             return StartsWithAny(text, "OK", "FAIL", "WARN", "ERROR", "RESULT", "RISK", "GUARD");
         }
 
+        private static bool IsFalsePositiveOrDuplicateWarning(string text)
+        {
+            if (!text.StartsWith("WARN", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (text.IndexOf("Mobile/tethering route detected", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            string key = CollapseWhitespace(text);
+            lock (LogDedupeSync)
+            {
+                if (SeenImportantWarnings.Contains(key))
+                    return true;
+                SeenImportantWarnings.Add(key);
+                if (SeenImportantWarnings.Count > 256)
+                    SeenImportantWarnings.Clear();
+            }
+            return false;
+        }
+
         private static bool IsNormalModeInfoSpam(string text)
         {
             if (!text.StartsWith("INFO", StringComparison.OrdinalIgnoreCase))
                 return false;
+
+            if (text.IndexOf("already up to date", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
 
             return StartsWithAny(
                 text,
@@ -42,7 +72,12 @@ namespace CK3MPS
                 "INFO Workflow status report already up to date",
                 "INFO Scan mode:",
                 "INFO Migrated legacy",
-                "INFO Live log restarted");
+                "INFO Live log restarted",
+                "INFO No OOS metadata summary change needed",
+                "INFO OOS history timeline",
+                "INFO Deep OOS report",
+                "INFO Recovery runbook",
+                "INFO Incident state");
         }
 
         private static bool StartsWithAny(string text, params string[] prefixes)
@@ -51,6 +86,27 @@ namespace CK3MPS
                 if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     return true;
             return false;
+        }
+
+        private static string CollapseWhitespace(string value)
+        {
+            bool wasSpace = false;
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            foreach (char c in value ?? "")
+            {
+                if (Char.IsWhiteSpace(c))
+                {
+                    if (!wasSpace)
+                        sb.Append(' ');
+                    wasSpace = true;
+                }
+                else
+                {
+                    sb.Append(c);
+                    wasSpace = false;
+                }
+            }
+            return sb.ToString().Trim();
         }
     }
 }
