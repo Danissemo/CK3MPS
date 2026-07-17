@@ -1,0 +1,75 @@
+name: Release Smoke Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example v1.2'
+        required: true
+      release_commit_sha:
+        description: 'Exact commit SHA intended for release. Defaults to this workflow SHA.'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-smoke-matrix:
+    name: Windows release smoke report seed
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Run required smoke tests
+        shell: pwsh
+        run: ./scripts/test-all.ps1
+
+      - name: Validate release metadata
+        shell: pwsh
+        run: ./scripts/validate-release.ps1
+
+      - name: Test release smoke report schema
+        shell: pwsh
+        run: ./scripts/test-release-smoke-report.ps1
+
+      - name: Generate release smoke report seed
+        shell: pwsh
+        run: |
+          $releaseCommit = '${{ inputs.release_commit_sha }}'
+          if ([string]::IsNullOrWhiteSpace($releaseCommit)) { $releaseCommit = '${{ github.sha }}' }
+          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
+          ./scripts/new-release-smoke-report.ps1 `
+            -Version '${{ inputs.version }}' `
+            -CommitSha '${{ github.sha }}' `
+            -ReleaseCommitSha $releaseCommit `
+            -EnvironmentName 'GitHub Actions windows-latest automated seed' `
+            -Tester '${{ github.actor }}' `
+            -EvidenceRoot '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' `
+            -OutputPath .artifacts/release-smoke-report.md
+          ./scripts/validate-release-smoke-report.ps1 -ReportPath .artifacts/release-smoke-report.md -ExpectedVersion '${{ inputs.version }}' -ExpectedCommitSha $releaseCommit -AllowDraft
+
+      - name: Upload release smoke report seed
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-smoke-report-seed
+          path: .artifacts/release-smoke-report.md
+          if-no-files-found: error
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-smoke-test-diagnostics
+          path: bin/test-logs/*.log
+          if-no-files-found: warn
