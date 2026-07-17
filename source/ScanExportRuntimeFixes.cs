@@ -8,12 +8,6 @@ namespace CK3MPS
     {
         private string scanSettingsExportReportText = "";
 
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            BeginInvoke((MethodInvoker)delegate { ConfigureScanExportRuntimeFix(); });
-        }
-
         private void ConfigureScanExportRuntimeFix()
         {
             checkButton.Text = "Scan Settings";
@@ -48,10 +42,6 @@ namespace CK3MPS
 
             int failures = Math.Max(0, lastReadinessFailures);
             scanSettingsExportReportText = BuildCheckOnlyReportText(failures, runLogLines);
-
-            // Keep the original field aligned immediately after Scan Settings so legacy code paths
-            // still see the scan report. Scan Export itself uses scanSettingsExportReportText, so a
-            // later Apply Settings run cannot overwrite the export payload with apply results.
             lastCheckOnlyReportText = scanSettingsExportReportText;
         }
 
