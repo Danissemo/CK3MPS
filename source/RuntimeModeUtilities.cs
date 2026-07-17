@@ -19,42 +19,36 @@ namespace CK3MPS
                 return !IsQuietVisible(text);
 
             if (String.Equals(verbosity, "Normal", StringComparison.OrdinalIgnoreCase))
-                return IsDiagnosticLine(text);
+                return StartsWithAny(text, "VERBOSE", "DEBUG", "TRACE") || IsNormalModeInfoSpam(text);
 
             return false;
         }
 
-        public static bool IsDiagnosticLine(string formatted)
-        {
-            string text = (formatted ?? "").TrimStart();
-            return StartsWithAny(text, "VERBOSE", "DEBUG", "TRACE", "DIAGNOSTIC");
-        }
-
-        public static bool ShouldShowDiagnosticEvents(string verbosity)
-        {
-            return String.Equals(verbosity, "Verbose", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(verbosity, "Debug", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(verbosity, "Diagnostic", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static bool IsQuietVisible(string text)
         {
-            return StartsWithAny(text, "OK", "FAIL", "WARN", "ERROR", "RESULT", "RISK", "GUARD")
-                || ContainsAny(text, "NOT READY", "ROLLBACK FAILURE", "SECURITY REFUSAL", "FAILED POSTCONDITION", "FAILED CHECK");
+            return StartsWithAny(text, "OK", "FAIL", "WARN", "ERROR", "RESULT", "RISK", "GUARD");
+        }
+
+        private static bool IsNormalModeInfoSpam(string text)
+        {
+            if (!text.StartsWith("INFO", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return StartsWithAny(
+                text,
+                "INFO Snapshot updated",
+                "INFO Snapshot summary",
+                "INFO UI log compacted",
+                "INFO Workflow status report already up to date",
+                "INFO Scan mode:",
+                "INFO Migrated legacy",
+                "INFO Live log restarted");
         }
 
         private static bool StartsWithAny(string text, params string[] prefixes)
         {
             foreach (string prefix in prefixes)
                 if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            return false;
-        }
-
-        private static bool ContainsAny(string text, params string[] needles)
-        {
-            foreach (string needle in needles)
-                if (text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
                     return true;
             return false;
         }
