@@ -31,7 +31,7 @@ CK3MPS is a Windows desktop utility that prepares a cleaner, more predictable Cr
 
 ### Apply and finalization
 
-Mutation work is distributed across `Launchers.cs`, `GameSettings.cs`, `Cleanup.cs`, `Network.cs`, `Reports.cs`, `Readiness.cs`, `Restore.cs`, `SystemRestore.cs`, `Workflow.cs`, `TransactionalOperations.cs`, and `RestoreTransactions.cs`. Reports, live logs, restore manifests, and parity/support outputs are product artifacts, not incidental debug files.
+Mutation work is distributed across `Launchers.cs`, `GameSettings.cs`, `Cleanup.cs`, `Network.cs`, `Reports.cs`, `Readiness.cs`, `Restore.cs`, `SystemRestore.cs`, `Workflow.cs`, `WorkflowUnifiedFix.cs`, `TransactionalOperations.cs`, and `RestoreTransactions.cs`. Reports, live logs, restore manifests, and parity/support outputs are product artifacts, not incidental debug files.
 
 ## Source File Responsibilities
 
@@ -54,6 +54,7 @@ Mutation work is distributed across `Launchers.cs`, `GameSettings.cs`, `Cleanup.
 - `SystemRestore.cs` — Windows restore-point integration.
 - `Updates.cs` — GitHub release lookup and user-initiated navigation to the official release page. It does not perform automatic unsigned in-place updating.
 - `Workflow.cs` — scenario UI, host/save/OOS workflow, parity comparison, and parity-room transport surface.
+- `WorkflowUnifiedFix.cs` — single `Fix save + host` UI surface and coordinator: immutable preflight snapshot, supported save fix, exact host mutation, repeated postcondition checks, unified status, and `RESULT|` log line.
 - `WorkflowAnalysisCoordinator.cs` — cancelable workflow refreshes, generation/scenario checks, immutable per-refresh analysis snapshots, and LAN-bound parity listener implementation.
 - `TransactionalOperations.cs` — `TransactionalStateMigration`, portable-mode migration journaling, staging, commit, rollback, and startup recovery.
 - `Helpers.cs` — shared operational helpers, preset application, log buffering, file writes, path selection, and scan/apply snapshot reuse.
@@ -102,7 +103,7 @@ Important behavior:
 - post-commit user changes are protected by confirmation snapshots where implemented;
 - registry rollback is best-effort and depends on current Windows registry state and rights.
 
-## Workflow Refresh And Parity Room
+## Workflow Refresh, Unified Fix, And Parity Room
 
 Workflow refreshes are coordinated by `WorkflowAnalysisCoordinator.cs`:
 
@@ -111,6 +112,8 @@ Workflow refreshes are coordinated by `WorkflowAnalysisCoordinator.cs`:
 - `WorkflowRefreshStillCurrent` requires the same cancellation token, generation, and scenario before rendering or applying results;
 - `CaptureWorkflowAnalysisSnapshot` creates one immutable host/save/OOS/incident snapshot for the refresh;
 - `CurrentWorkflowAnalysis` reuses the per-refresh snapshot while nested workflow code builds steps, verdict, summary, and recommendation text.
+
+`WorkflowUnifiedFix.cs` replaces the visible separate `Fix host` and `Fix save` controls with one `Fix save + host` control after the workflow UI is built. The unified workflow captures a fresh preflight snapshot, shows found host/save findings, planned fixes, unsupported cases, and backup/restore data before mutation. It only mutates a save when the selected save is readable, version-compatible, existing, and has an exact supported finding; it only mutates host settings when host suitability has an exact finding. Save verification failure stops the workflow before host mutation. The final report uses `Succeeded`, `PartiallySucceeded`, `Failed`, or `Unsupported`, lists fixed and remaining problems, and writes one `RESULT| Fix save + host ...` live-log line.
 
 The parity room keeps its security checks when LAN support is enabled. The transport deliberately binds loopback plus one selected private LAN IPv4 endpoint instead of `IPAddress.Any`, rejects routed clients outside the selected subnet before payload processing, and preserves room-code/session-secret authentication, encryption, signature/HMAC validation, replay/nonce checks, payload limits, peer/client limits, rate limiting, slow-client handling, and listener shutdown/port release behavior.
 
@@ -169,4 +172,5 @@ For architecture orientation, read:
 8. `RestoreTransactions.cs`
 9. `WorkflowAnalysisCoordinator.cs`
 10. `Workflow.cs`
-11. `Readiness.cs`
+11. `WorkflowUnifiedFix.cs`
+12. `Readiness.cs`
