@@ -60,6 +60,7 @@
     <Compile Include="source\Utilities.cs" />
     <Compile Include="source\RuntimeModeUtilities.cs" />
     <Compile Include="source\LiveLogEventModel.cs" />
+    <Compile Include="source\LoggingEventService.cs" />
     <Compile Include="source\StepCatalog.cs" />
     <Compile Include="source\TransactionalOperations.cs" />
     <Compile Include="source\RestoreTransactions.cs" />
