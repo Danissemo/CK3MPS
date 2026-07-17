@@ -9,79 +9,149 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
-    name: Windows build and validation
+  windows_build:
+    name: Windows build
     runs-on: windows-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
-
-      - name: Build
-        shell: pwsh
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+      - shell: pwsh
         run: ./scripts/build.ps1
-
-      - name: Verify build output
-        shell: pwsh
+      - shell: pwsh
         run: |
-          if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
-            throw 'Build completed without bin\CK3MPS.exe.'
-          }
-          Write-Host 'Verified build output: bin\CK3MPS.exe'
-
-      - name: Run all tests
-        shell: pwsh
-        run: ./scripts/test-all.ps1
-
-      - name: Upload test diagnostics
-        if: always()
+          if (-not (Test-Path ./bin/CK3MPS.exe)) { throw 'Legacy build output missing.' }
+      - if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: test-script-diagnostics
-          path: bin/test-logs/*.log
-          if-no-files-found: warn
+          name: CK3MPS-tested-bin
+          path: bin/CK3MPS.exe
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: legacy-build-diagnostics
+          path: |
+            bin/msbuild.log
+            bin/**/*.log
+            obj/**/*.log
+          if-no-files-found: ignore
 
-      - name: Strict mutation review
-        shell: pwsh
+  full_deterministic_test_suite:
+    name: Full deterministic test suite
+    needs: windows_build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+      - shell: pwsh
+        run: ./scripts/test-all.ps1
+      - shell: pwsh
+        run: ./scripts/test-safe-updater.ps1
+      - shell: pwsh
+        run: ./scripts/test-fix-result-contract.ps1
+      - shell: pwsh
+        run: ./scripts/test-release-smoke-report.ps1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deterministic-test-diagnostics
+          path: |
+            bin/test-logs/**
+            bin/tests/**
+            **/*.trx
+          if-no-files-found: ignore
+
+  restore_ownership_security_tests:
+    name: Restore ownership/security tests
+    needs: windows_build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - shell: pwsh
+        run: ./scripts/test-restore-point-ownership.ps1
+
+  mutation_integrity:
+    name: Mutation allowlist/repository integrity checks
+    needs: windows_build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - shell: pwsh
         run: ./scripts/check-static-danger-strict.ps1
-
-      - name: Validate version consistency
-        shell: pwsh
+      - shell: pwsh
         run: ./scripts/check-version-consistency.ps1
-
-      - name: Validate release metadata
-        shell: pwsh
+      - shell: pwsh
         run: ./scripts/validate-release.ps1
 
-      - name: Package tested release artifacts
-        shell: pwsh
+  modern_compile_candidate:
+    name: Modern compile candidate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - shell: pwsh
         run: |
-          ./scripts/package-release.ps1 -SkipBuild
-          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
-          Copy-Item ../CK3MPS_exports/*.zip .artifacts/
-          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
-          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
-
-      - name: Upload executable
+          dotnet build CK3MPS.SharedCore.csproj -c Release
+          dotnet build CK3MPS.Modern.csproj -c Release
+          dotnet test tests/CK3MPS.SharedCore.Tests.csproj -c Release
+      - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: CK3MPS-exe
-          path: release/CK3MPS.exe
+          name: modern-build-diagnostics
+          path: |
+            artifacts/**
+            **/bin/Release/**
+            **/obj/Release/**
+          if-no-files-found: ignore
 
-      - name: Upload release zip
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+  approved_pr_builds:
+    name: Approved PR builds
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          name: CK3MPS-release-zip
-          path: .artifacts/*.zip
+          fetch-depth: 0
+      - shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $prs = gh pr list --state open --json number,reviewDecision,headRefName --jq '.[] | select(.reviewDecision == "APPROVED") | [.number,.headRefName] | @tsv'
+          foreach ($line in $prs) {
+            $parts = $line -split "`t"
+            gh pr checkout $parts[0] --force
+            ./scripts/build.ps1
+            if (-not (Test-Path ./bin/CK3MPS.exe)) { throw "PR #$($parts[0]) build output missing." }
+          }
 
-      - name: Upload release checksums
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: CK3MPS-release-checksums
-          path: .artifacts/*.sha256
+  ci_required_checks_complete:
+    name: CI required checks complete
+    if: always()
+    needs: [windows_build, full_deterministic_test_suite, restore_ownership_security_tests, mutation_integrity, modern_compile_candidate]
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          test '${{ needs.windows_build.result }}' = success
+          test '${{ needs.full_deterministic_test_suite.result }}' = success
+          test '${{ needs.restore_ownership_security_tests.result }}' = success
+          test '${{ needs.mutation_integrity.result }}' = success
+          test '${{ needs.modern_compile_candidate.result }}' = success
