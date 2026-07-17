@@ -79,7 +79,7 @@ namespace CK3MPS
                     fallback = candidate;
                 try
                 {
-                    string text = File.ReadAllText(candidate, Encoding.UTF8);
+                    string text = ReadTextShared(candidate);
                     if (text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase) >= 0)
                         return candidate;
                 }
