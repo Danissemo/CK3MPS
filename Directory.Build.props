@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'CK3MPS.SharedCore'">
+    <BaseIntermediateOutputPath>obj\SharedCore\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj\SharedCore\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'CK3MPS.Modern'">
+    <BaseIntermediateOutputPath>obj\Modern\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj\Modern\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>
