@@ -1,24 +1,31 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.IO;
-using Microsoft.Win32;
-using System.Net.Sockets;
-using System.Net.NetworkInformation;
-using System.Security.Cryptography;
-using System.Security.Principal;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using System.Security.Principal;
 
 namespace CK3MPS
 {
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            try
+            {
+                if (SafeUpdater.TryHandleCommandLine(args))
+                    return;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    MessageBox.Show("CK3MPS updater failed:\r\n" + ex.Message, "CK3MPS updater", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                catch { }
+                Environment.ExitCode = 1;
+                return;
+            }
+
             // The stabilizer edits firewall, registry, adapter, launcher, and game settings.
             // Request elevation at startup so every selected action has a predictable privilege level.
             if (!SkipElevationForTestRun() && !IsAdministrator())
@@ -66,6 +73,3 @@ namespace CK3MPS
         }
     }
 }
-
-
-
