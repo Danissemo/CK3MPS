@@ -10,11 +10,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build:
-    name: Windows build and validation
+  windows_build:
+    name: Windows build
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -35,7 +39,42 @@ jobs:
           }
           Write-Host 'Verified build output: bin\CK3MPS.exe'
 
-      - name: Run all tests
+      - name: Upload tested executable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CK3MPS-tested-bin
+          path: bin/CK3MPS.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-diagnostics
+          path: |
+            bin/**/*.log
+            obj/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  full_deterministic_test_suite:
+    name: Full deterministic test suite
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run full deterministic suite
         shell: pwsh
         run: ./scripts/test-all.ps1
 
@@ -43,45 +82,311 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: test-script-diagnostics
-          path: bin/test-logs/*.log
+          name: full-test-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
           if-no-files-found: warn
+          retention-days: 14
 
-      - name: Strict mutation review
+  read_only_scan_harness:
+    name: Read-only scan harness
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run read-only scan harness
         shell: pwsh
-        run: ./scripts/check-static-danger-strict.ps1
+        run: ./scripts/test-required.ps1
+
+      - name: Upload read-only diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: read-only-scan-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  restore_transaction_tests:
+    name: Restore transaction tests
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run restore transaction tests
+        shell: pwsh
+        run: ./scripts/test-restore-transactions.ps1
+
+      - name: Upload restore transaction diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: restore-transaction-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  restore_ownership_security_tests:
+    name: Restore ownership/security tests
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run restore ownership/security coverage
+        shell: pwsh
+        run: ./scripts/test-restore-transactions.ps1
+
+      - name: Upload restore security diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: restore-security-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  workflow_readiness_tests:
+    name: Workflow/readiness tests
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run workflow/readiness tests
+        shell: pwsh
+        run: ./scripts/test-workflow-parity.ps1
+
+      - name: Upload workflow diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: workflow-readiness-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  parity_security_tests:
+    name: Parity security tests
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Run parity security coverage
+        shell: pwsh
+        run: ./scripts/test-workflow-parity.ps1
+
+      - name: Upload parity diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: parity-security-diagnostics
+          path: |
+            bin/test-logs/*.log
+            bin/tests/**/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  version_consistency:
+    name: Version consistency
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Validate version consistency
         shell: pwsh
         run: ./scripts/check-version-consistency.ps1
 
-      - name: Validate release metadata
-        shell: pwsh
-        run: ./scripts/validate-release.ps1
+  release_package_verification:
+    name: Release/package verification
+    runs-on: windows-latest
+    needs: windows_build
+    timeout-minutes: 30
 
-      - name: Package tested release artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download tested executable
+        uses: actions/download-artifact@v4
+        with:
+          name: CK3MPS-tested-bin
+          path: bin
+
+      - name: Validate and package tested artifacts
         shell: pwsh
         run: |
-          ./scripts/package-release.ps1 -SkipBuild
-          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
-          Copy-Item ../CK3MPS_exports/*.zip .artifacts/
-          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
-          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
+          $ErrorActionPreference = 'Stop'
+          ./scripts/validate-release.ps1
+          ./scripts/package-release.ps1 -SkipBuild -ExportRoot release-assets
+          Copy-Item release/CK3MPS.exe release-assets/
+          Copy-Item release/CK3MPS.exe.sha256 release-assets/
+
+          $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          if (-not $versionLine) { throw 'Could not parse AppVersion.' }
+          $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          $requiredFiles = @(
+            'CK3MPS.exe',
+            'CK3MPS.exe.sha256',
+            "CK3MPS-$version.zip",
+            "CK3MPS-$version.zip.sha256"
+          )
+          foreach ($name in $requiredFiles) {
+            $path = Join-Path release-assets $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required release asset missing after packaging: $path"
+            }
+          }
+
+          foreach ($checksum in Get-ChildItem -LiteralPath release-assets -Filter '*.sha256' -File) {
+            $line = Get-Content -LiteralPath $checksum.FullName -Raw
+            if ($line -notmatch '^(?<hash>[0-9a-fA-F]{64})\s+\*?(?<name>.+)$') {
+              throw "Malformed checksum file: $($checksum.FullName)"
+            }
+
+            $artifactPath = Join-Path $checksum.DirectoryName $Matches.name.Trim()
+            if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+              throw "Checksum target is missing: $artifactPath"
+            }
+
+            $actual = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = $Matches.hash.ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "Checksum mismatch for $artifactPath. Expected $expected but got $actual."
+            }
+
+            Write-Host "Verified checksum for $artifactPath"
+          }
 
       - name: Upload executable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-exe
-          path: release/CK3MPS.exe
+          path: release-assets/CK3MPS.exe
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload release zip
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-release-zip
-          path: .artifacts/*.zip
+          path: release-assets/*.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload release checksums
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-release-checksums
-          path: .artifacts/*.sha256
+          path: release-assets/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-package-diagnostics
+          path: |
+            release-assets/**
+            release/*.sha256
+          if-no-files-found: warn
+          retention-days: 14
+
+  repository_integrity:
+    name: Mutation allowlist/repository integrity checks
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Strict mutation allowlist review
+        shell: pwsh
+        run: ./scripts/check-static-danger-strict.ps1
+
+      - name: Repository integrity check
+        shell: pwsh
+        run: ./scripts/check-repo-clean.ps1
+
+  ci_required_green:
+    name: CI required checks complete
+    runs-on: windows-latest
+    needs:
+      - windows_build
+      - full_deterministic_test_suite
+      - read_only_scan_harness
+      - restore_transaction_tests
+      - restore_ownership_security_tests
+      - workflow_readiness_tests
+      - parity_security_tests
+      - version_consistency
+      - release_package_verification
+      - repository_integrity
+    timeout-minutes: 10
+
+    steps:
+      - name: Confirm all required checks passed
+        shell: pwsh
+        run: Write-Host 'All required CI checks completed successfully.'
