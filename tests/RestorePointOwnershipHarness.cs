@@ -22,16 +22,21 @@ internal static class RestorePointOwnershipHarness
             {
                 Type restorePointType = mainFormType.GetNestedType("RestorePointListItem", BindingFlags.NonPublic);
                 MethodInfo validate = mainFormType.GetMethod("ValidateOwnedRestorePointDeletionSnapshot", instanceFlags);
-                if (restorePointType == null || validate == null)
+                MethodInfo recordOwned = mainFormType.GetMethod("RecordOwnedRestorePoint", instanceFlags);
+                if (restorePointType == null || validate == null || recordOwned == null)
                     throw new InvalidOperationException("Restore point validation members were not found.");
 
-                object owned = CreateRestorePointItem(restorePointType, "101", "CK3MPS before changes 2026-07-16 09:46:00", false);
-                object staleForeign = CreateRestorePointItem(restorePointType, "102", "Windows Update checkpoint", true);
+                object owned = CreateRestorePointItem(restorePointType, "101", "CK3MPS before changes 2026-07-16 09:46:00", true);
+                object spoofedPrefix = CreateRestorePointItem(restorePointType, "102", "CK3MPS before changes 2026-07-16 09:47:00", false);
+                object staleForeign = CreateRestorePointItem(restorePointType, "103", "Windows Update checkpoint", true);
+
+                recordOwned.Invoke(form, new[] { owned });
 
                 IList validIds = (IList)validate.Invoke(form, new object[] { new[] { "101" }, CreateTypedItemArray(restorePointType, owned) });
-                Assert(validIds.Count == 1 && Convert.ToInt32(validIds[0]) == 101, "restore-point validation accepts current CK3MPS-owned points");
+                Assert(validIds.Count == 1 && Convert.ToInt32(validIds[0]) == 101, "restore-point validation accepts points recorded as created by this CK3MPS installation");
 
-                AssertThrowsInvalidOperation(validate, form, new object[] { new[] { "102" }, CreateTypedItemArray(restorePointType, staleForeign) }, "not owned by CK3MPS", "restore-point validation rejects stale IsCk3Mps flag when description ownership changed");
+                AssertThrowsInvalidOperation(validate, form, new object[] { new[] { "102" }, CreateTypedItemArray(restorePointType, spoofedPrefix) }, "not recorded as created", "restore-point validation rejects CK3MPS-prefixed points without local ownership registry entry");
+                AssertThrowsInvalidOperation(validate, form, new object[] { new[] { "103" }, CreateTypedItemArray(restorePointType, staleForeign) }, "not recorded as created", "restore-point validation rejects stale IsCk3Mps flag when description ownership changed");
                 AssertThrowsInvalidOperation(validate, form, new object[] { new[] { "999" }, CreateTypedItemArray(restorePointType, owned) }, "no longer present", "restore-point validation rejects deleted/missing current sequence ids");
                 return 0;
             }
