@@ -28,11 +28,21 @@ jobs:
       - shell: pwsh
         run: |
           if (-not (Test-Path ./bin/CK3MPS.exe)) { throw 'Legacy build output missing.' }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-tested-bin
           path: bin/CK3MPS.exe
           if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: legacy-build-diagnostics
+          path: |
+            bin/msbuild.log
+            bin/**/*.log
+            obj/**/*.log
+          if-no-files-found: ignore
 
   full_deterministic_test_suite:
     name: Full deterministic test suite
