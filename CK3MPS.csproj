@@ -68,6 +68,7 @@
     <Compile Include="source\Workflow.cs" />
     <Compile Include="source\WorkflowRuntimeFixes.cs" />
     <Compile Include="source\WorkflowRuntimeLinqCompat.cs" />
+    <Compile Include="source\ScanExportRuntimeFixes.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />
