@@ -5,13 +5,19 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 $ContractPath = Join-Path $Root 'source\FixResultContract.cs'
 $ProjectPath = Join-Path $Root 'CK3MPS.csproj'
+$BuildPath = Join-Path $Root 'scripts\build.ps1'
+$PatchPath = Join-Path $Root 'scripts\apply-fix-result-contract-source-patch.ps1'
 
-if (-not (Test-Path -LiteralPath $ContractPath -PathType Leaf)) {
-    throw "Missing fix result contract source file: $ContractPath"
+foreach ($path in @($ContractPath, $ProjectPath, $BuildPath, $PatchPath)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Missing required fix-result-contract file: $path"
+    }
 }
 
 $contract = Get-Content -LiteralPath $ContractPath -Raw
 $project = Get-Content -LiteralPath $ProjectPath -Raw
+$build = Get-Content -LiteralPath $BuildPath -Raw
+$patch = Get-Content -LiteralPath $PatchPath -Raw
 
 function Assert-Contains {
     param(
@@ -46,6 +52,12 @@ foreach ($field in @(
 }
 
 Assert-Contains $project 'source\FixResultContract.cs' 'CK3MPS.csproj does not compile the strict fix result contract.'
+Assert-Contains $build 'apply-fix-result-contract-source-patch.ps1' 'Build does not apply strict fix contract wiring before compilation.'
+Assert-Contains $patch 'FixOperationResultEvaluator.Evaluate(' 'Build patch does not wire stabilize through the fix result evaluator.'
+Assert-Contains $patch 'Completed with blockers' 'Build patch must replace the old false-success wording.'
+Assert-Contains $patch 'failed_target_postconditions' 'Build patch must store an explicit failed target-postcondition history result.'
+Assert-Contains $contract 'CollectFailedFixTargetCheckIds' 'Contract helpers must re-evaluate target checks after the rescan.'
+Assert-Contains $contract 'EvaluateFixTargetCheck' 'Contract helpers must use current-state postcondition checks, not stale snapshots.'
 
 # Regression: apply without exception but target check remains failed must never be final success.
 Assert-Contains $contract 'RemainingTargetFailedCheckIds.Count > 0' 'Target failed checks must force a failed result.'
