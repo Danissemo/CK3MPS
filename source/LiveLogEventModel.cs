@@ -166,6 +166,9 @@ namespace CK3MPS
             LiveLogRenderedLine line;
             if (lastByAggregateKey.TryGetValue(aggregateKey, out line))
             {
+                line.Text = evt.Text;
+                line.Severity = evt.Severity;
+                line.Type = evt.Type;
                 line.RepeatCount++;
                 return line;
             }
@@ -178,6 +181,9 @@ namespace CK3MPS
             LiveLogRenderedLine existing;
             if (lastByAggregateKey.TryGetValue(aggregateKey, out existing) && evt.Type != LiveLogEventType.Result && evt.Type != LiveLogEventType.Error)
             {
+                existing.Text = evt.Text;
+                existing.Severity = evt.Severity;
+                existing.Type = evt.Type;
                 existing.RepeatCount++;
                 return existing;
             }
