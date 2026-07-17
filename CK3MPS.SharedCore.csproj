@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>CK3MPS</RootNamespace>
+    <AssemblyName>CK3MPS.SharedCore</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="source\LiveLogEventModel.cs" Link="LiveLogEventModel.cs" />
+    <Compile Include="source\LoggingEventService.cs" Link="LoggingEventService.cs" />
+  </ItemGroup>
+</Project>
