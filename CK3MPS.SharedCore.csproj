@@ -6,7 +6,6 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <BaseIntermediateOutputPath>obj\SharedCore\</BaseIntermediateOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
