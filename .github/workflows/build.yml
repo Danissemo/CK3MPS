@@ -62,12 +62,28 @@ jobs:
       - name: Package tested release artifacts
         shell: pwsh
         run: |
-          ./scripts/package-release.ps1 -SkipBuild
-          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
-          Copy-Item ../CK3MPS_exports/*.zip .artifacts/
-          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
-          Copy-Item ../CK3MPS_exports/*.manifest.json .artifacts/
-          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
+          New-Item -ItemType Directory -Force -Path bin/test-logs | Out-Null
+          try {
+            ./scripts/package-release.ps1 -SkipBuild *>&1 | Tee-Object -FilePath bin/test-logs/package-release.log
+            if ($LASTEXITCODE -ne 0) { throw "package-release.ps1 exited with code $LASTEXITCODE" }
+            New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
+            Copy-Item ../CK3MPS_exports/*.zip .artifacts/
+            Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
+            Copy-Item ../CK3MPS_exports/*.manifest.json .artifacts/
+            Copy-Item release/CK3MPS.exe.sha256 .artifacts/
+          }
+          catch {
+            $_ | Out-String | Add-Content -LiteralPath bin/test-logs/package-release.log
+            throw
+          }
+
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-release-diagnostics
+          path: bin/test-logs/package-release.log
+          if-no-files-found: warn
 
       - name: Upload executable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
