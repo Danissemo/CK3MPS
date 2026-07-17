@@ -276,15 +276,29 @@ jobs:
       - name: Validate and package tested artifacts
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           ./scripts/validate-release.ps1
-          ./scripts/package-release.ps1 -SkipBuild
-          New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
-          Copy-Item release/CK3MPS.exe .artifacts/
-          Copy-Item release/CK3MPS.exe.sha256 .artifacts/
-          Copy-Item ../CK3MPS_exports/*.zip .artifacts/
-          Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
+          ./scripts/package-release.ps1 -SkipBuild -ExportRoot release-assets
+          Copy-Item release/CK3MPS.exe release-assets/
+          Copy-Item release/CK3MPS.exe.sha256 release-assets/
 
-          foreach ($checksum in Get-ChildItem -LiteralPath .artifacts -Filter '*.sha256' -File) {
+          $versionLine = Select-String -Path source/AppState.cs -Pattern 'AppVersion = "([^"]+)"' | Select-Object -First 1
+          if (-not $versionLine) { throw 'Could not parse AppVersion.' }
+          $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
+          $requiredFiles = @(
+            'CK3MPS.exe',
+            'CK3MPS.exe.sha256',
+            "CK3MPS-$version.zip",
+            "CK3MPS-$version.zip.sha256"
+          )
+          foreach ($name in $requiredFiles) {
+            $path = Join-Path release-assets $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required release asset missing after packaging: $path"
+            }
+          }
+
+          foreach ($checksum in Get-ChildItem -LiteralPath release-assets -Filter '*.sha256' -File) {
             $line = Get-Content -LiteralPath $checksum.FullName -Raw
             if ($line -notmatch '^(?<hash>[0-9a-fA-F]{64})\s+\*?(?<name>.+)$') {
               throw "Malformed checksum file: $($checksum.FullName)"
@@ -308,7 +322,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-exe
-          path: .artifacts/CK3MPS.exe
+          path: release-assets/CK3MPS.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -316,7 +330,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-release-zip
-          path: .artifacts/*.zip
+          path: release-assets/*.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -324,7 +338,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CK3MPS-release-checksums
-          path: .artifacts/*.sha256
+          path: release-assets/*.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -334,7 +348,7 @@ jobs:
         with:
           name: release-package-diagnostics
           path: |
-            .artifacts/**
+            release-assets/**
             release/*.sha256
           if-no-files-found: warn
           retention-days: 14
