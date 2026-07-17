@@ -12,11 +12,18 @@ if (-not (Test-Path $csc)) {
     throw 'The .NET Framework C# compiler was not found.'
 }
 
-& $csc /nologo /target:exe /out:(Join-Path $outDir 'LoggingEventServiceTests.exe') `
-    (Join-Path $root 'source\LiveLogEventModel.cs') `
-    (Join-Path $root 'source\LoggingEventService.cs') `
+$testExe = Join-Path $outDir 'LoggingEventServiceTests.exe'
+$compilerArguments = @(
+    '/nologo'
+    '/target:exe'
+    "/out:$testExe"
+    (Join-Path $root 'source\LiveLogEventModel.cs')
+    (Join-Path $root 'source\LoggingEventService.cs')
     (Join-Path $root 'tests\LoggingEventServiceTests.cs')
+)
+
+& $csc $compilerArguments
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& (Join-Path $outDir 'LoggingEventServiceTests.exe')
+& $testExe
 exit $LASTEXITCODE
