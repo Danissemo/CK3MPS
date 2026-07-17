@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 
@@ -64,7 +65,7 @@ namespace CK3MPS
                 SetStatusText("Not ready. Scan found FAIL lines: " + failures);
                 runLogLines = ReplaceScanFinalSummaryLines(runLogLines, consistency);
                 ReplaceRunLogLines(runLogLines);
-                ReplaceVisibleFinalReadinessSummary(consistency);
+                RepaintVisibleLiveLogFromSnapshot(runLogLines);
             }
 
             scanSettingsExportReportText = BuildScanSettingsExportReportText(failures, runLogLines);
@@ -184,7 +185,7 @@ namespace CK3MPS
                     {
                         lines.Add(consistency.FailureCount == 0
                             ? "OK   | Final readiness summary | all checklist checks passed"
-                            : "INFO  | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
+                            : "INFO | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
                         wroteSummary = true;
                     }
                     continue;
@@ -207,7 +208,7 @@ namespace CK3MPS
                 {
                     string message = NormalizeScanStatusMessage(trimmed);
                     if (consistency.FailedSections.Contains(message))
-                        lines.Add("FAIL  | " + message);
+                        lines.Add("FAIL | " + message);
                     else
                         lines.Add(NormalizeDisplayStatusLine(trimmed));
                     continue;
@@ -229,7 +230,7 @@ namespace CK3MPS
             if (!wroteSummary)
                 lines.Add(consistency.FailureCount == 0
                     ? "OK   | Final readiness summary | all checklist checks passed"
-                    : "INFO  | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
+                    : "INFO | Final readiness summary | scan FAIL checks: " + consistency.FailureCount);
             if (!wroteResult)
                 lines.Add(consistency.FailureCount == 0
                     ? "RESULT| READY."
@@ -249,46 +250,38 @@ namespace CK3MPS
             return block;
         }
 
-        private void ReplaceVisibleFinalReadinessSummary(ScanConsistencyResult consistency)
+        private void RepaintVisibleLiveLogFromSnapshot(string[] lines)
         {
-            if (logBox == null || consistency == null || consistency.FailureCount <= 0)
+            if (logBox == null)
                 return;
 
             if (InvokeRequired)
             {
-                BeginInvoke((MethodInvoker)delegate { ReplaceVisibleFinalReadinessSummary(consistency); });
+                BeginInvoke((MethodInvoker)delegate { RepaintVisibleLiveLogFromSnapshot(lines); });
                 return;
             }
 
             try
             {
-                string text = logBox.Text ?? "";
-                int titleIndex = text.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase);
-                if (titleIndex < 0)
-                    return;
-
-                int removeStart = text.LastIndexOf("------------------------------------------------------------", titleIndex, StringComparison.OrdinalIgnoreCase);
-                if (removeStart < 0)
-                    removeStart = titleIndex;
-                int resultIndex = text.IndexOf("RESULT", titleIndex, StringComparison.OrdinalIgnoreCase);
-                int removeEnd = resultIndex >= 0 ? text.IndexOf('\n', resultIndex) : -1;
-                if (removeEnd < 0)
-                    removeEnd = text.Length;
-                else
-                    removeEnd++;
-
-                StringBuilder replacement = new StringBuilder();
-                foreach (string line in RenderCorrectedFinalSummaryBlock(consistency.CorrectedFinalLines))
-                    replacement.AppendLine(line);
-
-                logBox.Select(removeStart, Math.Max(0, removeEnd - removeStart));
-                logBox.SelectedText = replacement.ToString();
-                logBox.SelectionStart = Math.Min(logBox.TextLength, removeStart + replacement.Length);
+                logBox.Clear();
+                uiLogLinesSinceLastScroll = 0;
+                foreach (string line in lines ?? new string[0])
+                    AppendLogLineTo(logBox, line ?? "", ColorForExistingFormattedLogLine(line ?? ""), false);
                 ScrollLogToBottom(false);
             }
             catch
             {
             }
+        }
+
+        private Color ColorForExistingFormattedLogLine(string line)
+        {
+            string trimmed = (line ?? "").Trim();
+            if (IsScanDividerLine(trimmed))
+                return Color.FromArgb(120, 120, 120);
+            if (trimmed.Equals("Final readiness summary", StringComparison.OrdinalIgnoreCase) || !IsScanStatusLine(trimmed))
+                return Color.FromArgb(50, 50, 50);
+            return LogColorForLine(line ?? "", line ?? "");
         }
 
         private int CountImportantScanFailLines(string[] runLogLines)
@@ -349,17 +342,17 @@ namespace CK3MPS
         {
             string upper = (status ?? "").Trim().ToUpperInvariant();
             if (upper == "OK")
-                return "OK    ";
+                return "OK   ";
             if (upper == "FAIL")
-                return "FAIL  ";
+                return "FAIL ";
             if (upper == "WARN")
-                return "WARN  ";
+                return "WARN ";
             if (upper == "INFO")
-                return "INFO  ";
+                return "INFO ";
             if (upper == "CMD")
-                return "CMD   ";
+                return "CMD  ";
             if (upper == "ERROR")
-                return "ERROR ";
+                return "ERROR";
             if (upper == "RESULT")
                 return "RESULT";
             return upper.PadRight(6).Substring(0, 6);
@@ -463,15 +456,15 @@ namespace CK3MPS
                 return "RESULT| NOT READY. Failed checks found in Scan Settings: " + readinessFailures;
 
             if (line.IndexOf("Critical host-save rules are confirmed safe", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "FAIL  | Critical host-save rules are not confirmed safe for the current recommended save. Use Workflow > Fix save + host or choose a known clean manual local save before hosting.";
+                return "FAIL | Critical host-save rules are not confirmed safe for the current recommended save. Use Workflow > Fix save + host or choose a known clean manual local save before hosting.";
             if (line.IndexOf("Runtime verification report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "FAIL  | Runtime verification report is missing or outdated";
+                return "FAIL | Runtime verification report is missing or outdated";
             if (line.IndexOf("OOS evidence pack outputs are up to date", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "FAIL  | OOS evidence pack outputs are missing or outdated";
+                return "FAIL | OOS evidence pack outputs are missing or outdated";
             if (line.IndexOf("Host suitability report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "FAIL  | Host suitability report is missing or outdated";
+                return "FAIL | Host suitability report is missing or outdated";
             if (line.IndexOf("OOS risk score report is up to date", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "FAIL  | OOS risk score report is missing or outdated";
+                return "FAIL | OOS risk score report is missing or outdated";
 
             return NormalizeDisplayStatusLine(line);
         }
