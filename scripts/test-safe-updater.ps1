@@ -77,7 +77,7 @@ try {
     Invoke-UpdaterExpectFailure $downgradeRequest 'downgrade blocked'
 
     $badRepositoryManifest = Join-Path $Staging 'manifest-repository.json'
-    $bad = $baseManifest.Clone()
+    $bad = $baseManifest | ConvertTo-Json -Depth 5 | ConvertFrom-Json
     $bad.repository = 'attacker/CK3MPS'
     $bad | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $badRepositoryManifest -Encoding utf8
     $repositoryRequest = Join-Path $Staging 'request-repository.json'
