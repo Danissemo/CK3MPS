@@ -42,7 +42,7 @@ jobs:
 
       - name: Build shared core
         shell: pwsh
-        run: dotnet build ./CK3MPS.SharedCore.csproj --configuration Release --no-restore
+        run: dotnet build ./CK3MPS.SharedCore.csproj --configuration Release
 
       - name: Build modern Windows client
         shell: pwsh
