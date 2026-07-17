@@ -11,13 +11,15 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
+        private bool workflowRuntimeFixesConfigured;
+        private bool workflowSaveHostFixInProgress;
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
@@ -26,6 +28,10 @@ namespace CK3MPS
 
         private void ConfigureWorkflowRuntimeFixes()
         {
+            if (workflowRuntimeFixesConfigured)
+                return;
+
+            workflowRuntimeFixesConfigured = true;
             ConfigureMainButtonLabels();
             ConfigureChecklistLabels();
             ConfigureCombinedWorkflowFixButton();
@@ -78,10 +84,17 @@ namespace CK3MPS
 
         private void ConfigureCombinedWorkflowFixButton()
         {
+            if (workflowApplySafeStartButton == null)
+                return;
+
             workflowApplySafeStartButton.Text = "Fix save + host";
             workflowApplySafeStartButton.Size = new Size(132, workflowApplySafeStartButton.Height);
-            workflowRepairSaveButton.Visible = false;
-            workflowRepairSaveButton.Enabled = false;
+            workflowApplySafeStartButton.Enabled = !workflowSaveHostFixInProgress && !IsGameRunning();
+            if (workflowRepairSaveButton != null)
+            {
+                workflowRepairSaveButton.Visible = false;
+                workflowRepairSaveButton.Enabled = false;
+            }
             ReplaceClickHandlers(workflowApplySafeStartButton, delegate { RunWorkflowSaveAndHostFix(); });
             stepToolTip.SetToolTip(workflowApplySafeStartButton, BuildWorkflowFixSaveAndHostHintText());
         }
@@ -147,39 +160,71 @@ namespace CK3MPS
 
         private string BuildWorkflowFixSaveAndHostHintText()
         {
-            return "Runs both repair paths in the correct between-session order: save baseline/safe copy first, then host profile, reports and parity manifest. Close CK3 before using it.";
+            return "Runs one verified workflow: selected save repair/copy first, then host profile fixes, reports, parity manifest and a fresh post-check snapshot. Close CK3 before using it.";
         }
 
         private void RunWorkflowSaveAndHostFix()
         {
+            if (workflowSaveHostFixInProgress)
+            {
+                MessageBox.Show("Fix save + host is already running.", "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             if (IsGameRunning())
             {
                 MessageBox.Show("Close CK3 and Paradox Launcher before running Fix save + host.", "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            UseWaitCursor = true;
-            workflowApplySafeStartButton.Enabled = false;
-            int beforeHostScore = -1;
-            int afterHostScore = -1;
-            int beforeSaveScore = -1;
-            int afterSaveScore = -1;
+            if (!ValidateBeforeRun())
+                return;
+
+            string runId = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            WorkflowScenarioSnapshot beforeSnapshot = BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None);
+            HostSuitabilityResult beforeHost = AnalyzeHostSuitability();
+            HostSaveCandidateResult beforeSave = AnalyzeWorkflowHostSaveCandidate();
+            List<string> actions = new List<string>();
             List<string> warnings = new List<string>();
+            List<string> remainingBlockers = new List<string>();
+            string outcome = "Failed";
+
+            DialogResult confirmation = MessageBox.Show(
+                BuildWorkflowFixPreflightText(runId, beforeSnapshot, beforeHost, beforeSave),
+                "Fix save + host",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Information);
+            if (confirmation != DialogResult.OK)
+            {
+                Log("RESULT| Workflow Fix save + host | outcome=Cancelled | run=" + runId + " | host=" + ScoreText(beforeHost) + "->" + ScoreText(beforeHost) + " | save=" + ScoreText(beforeSave) + "->" + ScoreText(beforeSave) + " | fix=0 | manual=0 | warnings=0");
+                PublishWorkflowPostFixSnapshot(beforeSnapshot, "Fix save + host cancelled before mutation.\r\n\r\n" + beforeSnapshot.Summary);
+                return;
+            }
 
             try
             {
+                workflowSaveHostFixInProgress = true;
+                CancelWorkflowScenarioRefresh();
+                ClearWorkflowScenarioSnapshots();
+                workflowApplySafeStartButton.Enabled = false;
+                workflowApplySafeStartButton.Text = "Running...";
+                workflowProgressBar.Style = ProgressBarStyle.Blocks;
+                workflowProgressBar.Minimum = 0;
+                workflowProgressBar.Maximum = 5;
+                workflowProgressBar.Value = 0;
+                workflowProgressBar.Visible = true;
+                UseWaitCursor = true;
+                Log("INFO Workflow Fix save + host PREFLIGHT run=" + runId);
+
                 EnsureStabilizerRoot();
                 if (String.IsNullOrEmpty(GetKnownQuarantine()))
                     CreateQuarantine();
-
-                HostSuitabilityResult beforeHost = AnalyzeHostSuitability();
-                HostSaveCandidateResult beforeSave = AnalyzeWorkflowHostSaveCandidate();
-                beforeHostScore = beforeHost.Score;
-                beforeSaveScore = beforeSave.Score;
+                SetWorkflowFixProgress(1, "snapshot captured");
 
                 try
                 {
                     bool repaired = EnsureSafeWorkflowHostSave();
+                    InvalidateHostSaveAnalysisCache();
                     HostSaveCandidateResult afterBasicRepair = AnalyzeWorkflowHostSaveCandidate();
                     if (!WorkflowSaveIsReady(afterBasicRepair))
                     {
@@ -187,32 +232,38 @@ namespace CK3MPS
                         bool enhanced = TryForceWorkflowHostSaveIntoSafeBaseline(out enhancedReason);
                         repaired = repaired || enhanced;
                         if (enhanced)
-                            Log("OK   Workflow enhanced save repair applied: " + enhancedReason);
+                            actions.Add("save critical rules repaired into verified safe copy: " + enhancedReason);
                         else if (!String.IsNullOrWhiteSpace(enhancedReason))
-                            warnings.Add("Enhanced save repair: " + enhancedReason);
+                            warnings.Add("save repair: " + enhancedReason);
+                    }
+                    else if (repaired)
+                    {
+                        actions.Add("selected save is verified ready after repair/copy");
+                    }
+                    else
+                    {
+                        actions.Add("selected save was already verified ready");
                     }
                     PrepareWorkflowSaveSurgeryBaseline();
-                    HostSaveCandidateResult afterSaveRepair = AnalyzeWorkflowHostSaveCandidate();
-                    Log(WorkflowSaveIsReady(afterSaveRepair)
-                        ? "OK   Workflow save repair produced a usable safe baseline."
-                        : (repaired ? "WARN Workflow save was changed but still does not satisfy readiness." : "WARN Workflow save could not be auto-repaired; baseline report prepared."));
                 }
                 catch (Exception ex)
                 {
-                    warnings.Add("Save repair: " + ex.Message);
-                    Log("WARN Workflow save repair failed: " + ex.Message);
+                    warnings.Add("save repair: " + ex.Message);
+                    Log("WARN Workflow Fix save + host SAVE_FIX run=" + runId + " | " + ex.Message);
                 }
+                SetWorkflowFixProgress(2, "save phase completed");
 
                 try
                 {
                     ApplyWorkflowHostReadinessFixes();
-                    Log("OK   Workflow host profile repair applied.");
+                    actions.Add("host profile/system readiness fixes applied and will be verified by fresh analysis");
                 }
                 catch (Exception ex)
                 {
-                    warnings.Add("Host repair: " + ex.Message);
-                    Log("WARN Workflow host repair failed: " + ex.Message);
+                    warnings.Add("host repair: " + ex.Message);
+                    Log("WARN Workflow Fix save + host HOST_FIX run=" + runId + " | " + ex.Message);
                 }
+                SetWorkflowFixProgress(3, "host phase completed");
 
                 WriteHostSavePreparationReport();
                 WriteMultiplayerParityManifest();
@@ -221,62 +272,159 @@ namespace CK3MPS
                 InvalidateHostSuitabilityCache();
                 InvalidateHostSaveAnalysisCache();
                 ClearWorkflowScenarioSnapshots();
+                SetWorkflowFixProgress(4, "reports refreshed");
 
+                WorkflowScenarioSnapshot afterSnapshot = BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None);
                 HostSuitabilityResult afterHost = AnalyzeHostSuitability();
                 HostSaveCandidateResult afterSave = AnalyzeWorkflowHostSaveCandidate();
-                afterHostScore = afterHost.Score;
-                afterSaveScore = afterSave.Score;
+                remainingBlockers = CollectRemainingWorkflowAutoBlockers(afterSnapshot);
+                bool ready = remainingBlockers.Count == 0;
+                if (ready && warnings.Count == 0)
+                    outcome = actions.Count == 0 ? "AlreadyReady" : "Ready";
+                else if (actions.Count > 0)
+                    outcome = "PartiallyFixed";
+                else
+                    outcome = "Blocked";
 
-                List<string> blockers = CollectRemainingWorkflowAutoBlockers();
-                bool ready = blockers.Count == 0;
-                string status = "Fix save + host finished. Host " + beforeHostScore + " -> " + afterHostScore + ", save " + beforeSaveScore + " -> " + afterSaveScore + ".";
-                if (!ready)
-                    status += " Remaining blockers: " + blockers.Count + ".";
-                if (warnings.Count > 0)
-                    status += " Warnings: " + warnings.Count + ".";
+                string report = BuildWorkflowFixResultText(runId, outcome, beforeSnapshot, afterSnapshot, beforeHost, afterHost, beforeSave, afterSave, actions, remainingBlockers, warnings);
+                PublishWorkflowPostFixSnapshot(afterSnapshot, report + "\r\n" + afterSnapshot.Summary);
+                WriteWorkflowStatusReport();
+                SetWorkflowFixProgress(5, "post-check published");
 
-                BeginWorkflowScenarioRefresh();
-                SetStatusText(status);
-                Log((ready ? "OK   " : "WARN ") + status);
+                Log("RESULT| Workflow Fix save + host | outcome=" + outcome + " | run=" + runId + " | host=" + ScoreText(beforeHost) + "->" + ScoreText(afterHost) + " | save=" + ScoreText(beforeSave) + "->" + ScoreText(afterSave) + " | fix=" + actions.Count + " | manual=" + remainingBlockers.Count + " | warnings=" + warnings.Count);
+                SetStatusText("Fix save + host " + outcome + ". Host " + ScoreText(beforeHost) + " -> " + ScoreText(afterHost) + ", save " + ScoreText(beforeSave) + " -> " + ScoreText(afterSave) + ".");
 
                 if (!ready || warnings.Count > 0)
-                {
-                    List<string> lines = new List<string>();
-                    lines.Add(status);
-                    if (blockers.Count > 0)
-                    {
-                        lines.Add("");
-                        lines.Add("Still not OK:");
-                        foreach (string blocker in blockers)
-                            lines.Add("- " + blocker);
-                    }
-                    if (warnings.Count > 0)
-                    {
-                        lines.Add("");
-                        lines.Add("Warnings:");
-                        foreach (string warning in warnings)
-                            lines.Add("- " + warning);
-                    }
-                    MessageBox.Show(String.Join("\r\n", lines.ToArray()), "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                    MessageBox.Show(report, "CK3MPS workflow", MessageBoxButtons.OK, ready ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
                 else
-                {
-                    MessageBox.Show(status, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
+                    MessageBox.Show("Fix save + host verified. Workflow is ready.", "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
+                outcome = "Failed";
+                Log("RESULT| Workflow Fix save + host | outcome=Failed | run=" + runId + " | host=" + ScoreText(beforeHost) + "->n/a | save=" + ScoreText(beforeSave) + "->n/a | fix=" + actions.Count + " | manual=" + remainingBlockers.Count + " | warnings=" + (warnings.Count + 1));
                 SetStatusText("Fix save + host failed: " + ex.Message);
-                Log("WARN Fix save + host failed: " + ex.Message);
                 MessageBox.Show("Fix save + host failed.\r\n\r\n" + ex.Message, "CK3MPS workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally
             {
                 UseWaitCursor = false;
-                workflowApplySafeStartButton.Enabled = true;
-                UpdateWorkflowActionAvailability();
+                workflowProgressBar.Visible = false;
+                workflowSaveHostFixInProgress = false;
+                workflowApplySafeStartButton.Text = "Fix save + host";
                 ConfigureCombinedWorkflowFixButton();
+                UpdateWorkflowActionAvailability();
             }
+        }
+
+        private void SetWorkflowFixProgress(int value, string message)
+        {
+            workflowProgressBar.Value = Math.Min(workflowProgressBar.Maximum, Math.Max(workflowProgressBar.Minimum, value));
+            workflowVerdictLabel.Text = "Status: Fix save + host: " + message;
+            ApplyWorkflowVerdictStyle(workflowVerdictLabel.Text);
+            Application.DoEvents();
+        }
+
+        private void PublishWorkflowPostFixSnapshot(WorkflowScenarioSnapshot snapshot, string detailsText)
+        {
+            if (snapshot == null)
+                return;
+
+            workflowRenderTimer.Stop();
+            StoreWorkflowScenarioSnapshot(snapshot);
+            workflowRenderStates = snapshot.States ?? new List<WorkflowStepState>();
+            workflowRenderVerdict = snapshot.Verdict ?? "";
+            workflowRenderSummary = detailsText ?? snapshot.Summary ?? "";
+            workflowRenderIndex = workflowRenderStates.Count;
+            workflowStepStates.Clear();
+            workflowStepStates.AddRange(workflowRenderStates);
+
+            updatingWorkflowUi = true;
+            try
+            {
+                workflowStepsListBox.Items.Clear();
+                foreach (WorkflowStepState state in workflowStepStates)
+                    workflowStepsListBox.Items.Add(FormatWorkflowStepText(state));
+            }
+            finally
+            {
+                updatingWorkflowUi = false;
+            }
+
+            workflowVerdictLabel.Text = String.IsNullOrEmpty(workflowRenderVerdict) ? "Status: waiting for automatic checks." : workflowRenderVerdict;
+            ApplyWorkflowVerdictStyle(workflowVerdictLabel.Text);
+            workflowSummaryBox.Text = workflowRenderSummary;
+            ApplyWorkflowSummaryStyling();
+            UpdateWorkflowActionAvailability();
+        }
+
+        private string BuildWorkflowFixPreflightText(string runId, WorkflowScenarioSnapshot snapshot, HostSuitabilityResult host, HostSaveCandidateResult save)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Fix save + host preflight");
+            sb.AppendLine("Run: " + runId);
+            sb.AppendLine();
+            sb.AppendLine("Current state");
+            sb.AppendLine("- Host: " + ScoreText(host));
+            sb.AppendLine("- Save: " + ScoreText(save));
+            sb.AppendLine("- Status: " + (snapshot == null ? "n/a" : snapshot.Verdict));
+            sb.AppendLine();
+            sb.AppendLine("The operation will work on the selected save, create/refresh a safe copy when possible, apply host profile fixes, then publish a fresh post-check snapshot to What to do.");
+            sb.AppendLine();
+            sb.AppendLine("Press OK to start. Cancel is safe because no mutation has started yet.");
+            return sb.ToString();
+        }
+
+        private string BuildWorkflowFixResultText(string runId, string outcome, WorkflowScenarioSnapshot beforeSnapshot, WorkflowScenarioSnapshot afterSnapshot, HostSuitabilityResult beforeHost, HostSuitabilityResult afterHost, HostSaveCandidateResult beforeSave, HostSaveCandidateResult afterSave, List<string> actions, List<string> blockers, List<string> warnings)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Fix save + host result");
+            sb.AppendLine("Run: " + runId);
+            sb.AppendLine("Outcome: " + outcome);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine();
+            sb.AppendLine("Readiness before/after");
+            sb.AppendLine("- Host: " + ScoreText(beforeHost) + " -> " + ScoreText(afterHost));
+            sb.AppendLine("- Save: " + ScoreText(beforeSave) + " -> " + ScoreText(afterSave));
+            sb.AppendLine("- Before status: " + (beforeSnapshot == null ? "n/a" : NullText(beforeSnapshot.Verdict)));
+            sb.AppendLine("- After status: " + (afterSnapshot == null ? "n/a" : NullText(afterSnapshot.Verdict)));
+            sb.AppendLine();
+            sb.AppendLine("Verified actions");
+            AppendListOrNone(sb, actions, "- none");
+            sb.AppendLine();
+            sb.AppendLine("Remaining automatic blockers");
+            AppendListOrNone(sb, blockers, "- none");
+            sb.AppendLine();
+            sb.AppendLine("Warnings / manual attention");
+            AppendListOrNone(sb, warnings, "- none");
+            sb.AppendLine();
+            sb.AppendLine("Post-check evidence");
+            sb.AppendLine("- Selected save: " + (afterSave == null || afterSave.Save == null ? "n/a" : NullText(afterSave.Save.Path)));
+            sb.AppendLine("- Selected save hash: " + (afterSave == null || afterSave.Save == null ? "n/a" : FileHashOrMissing(afterSave.Save.Path)));
+            sb.AppendLine("- Host profile was re-read from current settings; no synthetic readiness cache is used.");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+
+        private void AppendListOrNone(StringBuilder sb, List<string> items, string noneLine)
+        {
+            if (items == null || items.Count == 0)
+            {
+                sb.AppendLine(noneLine);
+                return;
+            }
+            foreach (string item in items)
+                sb.AppendLine("- " + item);
+        }
+
+        private string ScoreText(HostSuitabilityResult result)
+        {
+            return result == null ? "n/a" : result.Score + "/100";
+        }
+
+        private string ScoreText(HostSaveCandidateResult result)
+        {
+            return result == null ? "n/a" : result.Score + "/100";
         }
 
         private void ApplyWorkflowHostReadinessFixes()
@@ -302,6 +450,7 @@ namespace CK3MPS
                 && save.Score >= 70
                 && save.Save != null
                 && save.Save.Readable
+                && save.Save.VersionMatchesInstalled
                 && !save.Save.SuspiciousName
                 && AllCriticalRulesSafe(save.Save.Rules);
         }
@@ -332,9 +481,9 @@ namespace CK3MPS
                 }
 
                 if (File.Exists(repairedPath))
-                    BackupForRestore(repairedPath, "Before CK3MPS refreshes force-repaired host save copy: " + repairedPath);
+                    BackupForRestore(repairedPath, "Before CK3MPS refreshes verified repaired host save copy: " + repairedPath);
                 else
-                    RecordCreatedFileForRestore(repairedPath, "CK3MPS force-repaired host save copy: " + repairedPath);
+                    RecordCreatedFileForRestore(repairedPath, "CK3MPS verified repaired host save copy: " + repairedPath);
 
                 SafeAtomicFile.ReplaceFile(tempPath, repairedPath);
                 workflowSelectedSavePath = repairedPath;
@@ -345,7 +494,7 @@ namespace CK3MPS
                 HostSaveCandidateResult repaired = AnalyzeWorkflowHostSaveCandidate();
                 if (!WorkflowSaveIsReady(repaired))
                 {
-                    reason = "force-repaired save was created but still scores " + (repaired == null ? 0 : repaired.Score) + "/100.";
+                    reason = "repaired save was created but post-check still scores " + (repaired == null ? 0 : repaired.Score) + "/100.";
                     return false;
                 }
 
@@ -551,10 +700,11 @@ namespace CK3MPS
             appliedRules.Add(displayName);
         }
 
-        private List<string> CollectRemainingWorkflowAutoBlockers()
+        private List<string> CollectRemainingWorkflowAutoBlockers(WorkflowScenarioSnapshot snapshot)
         {
             List<string> blockers = new List<string>();
-            WorkflowScenarioSnapshot snapshot = BuildWorkflowScenarioSnapshotCore(currentWorkflowScenario, CancellationToken.None);
+            if (snapshot == null || snapshot.States == null)
+                return blockers;
             foreach (WorkflowStepState state in snapshot.States)
             {
                 if (state.Required && state.AutoManaged && !state.Passed)
