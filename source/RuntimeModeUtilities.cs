@@ -34,6 +34,9 @@ namespace CK3MPS
             if (!text.StartsWith("INFO", StringComparison.OrdinalIgnoreCase))
                 return false;
 
+            if (text.IndexOf("already up to date", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
             return StartsWithAny(
                 text,
                 "INFO Snapshot updated",
@@ -42,7 +45,12 @@ namespace CK3MPS
                 "INFO Workflow status report already up to date",
                 "INFO Scan mode:",
                 "INFO Migrated legacy",
-                "INFO Live log restarted");
+                "INFO Live log restarted",
+                "INFO No OOS metadata summary change needed",
+                "INFO OOS history timeline",
+                "INFO Deep OOS report",
+                "INFO Recovery runbook",
+                "INFO Incident state");
         }
 
         private static bool StartsWithAny(string text, params string[] prefixes)
