@@ -29,6 +29,79 @@ namespace CK3MPS
             }
         }
 
+        private string RestorePointOwnershipFile()
+        {
+            RefreshStabilizerRoot();
+            return Path.Combine(stabilizerRoot, "restore_points.tsv");
+        }
+
+        private HashSet<string> ReadOwnedRestorePointSequenceNumbers()
+        {
+            HashSet<string> owned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string path = RestorePointOwnershipFile();
+            if (!File.Exists(path))
+                return owned;
+
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+            {
+                string[] parts = line.Split('\t');
+                if (parts.Length >= 1 && !String.IsNullOrWhiteSpace(parts[0]) && !String.Equals(parts[0], "sequence", StringComparison.OrdinalIgnoreCase))
+                    owned.Add(parts[0].Trim());
+            }
+
+            return owned;
+        }
+
+        private void RecordOwnedRestorePoint(RestorePointListItem item)
+        {
+            if (item == null || String.IsNullOrWhiteSpace(item.SequenceNumber) || !IsOwnedCk3MpsRestorePointDescription(item.Description))
+                return;
+
+            EnsureStabilizerRoot();
+            string path = RestorePointOwnershipFile();
+            HashSet<string> existing = ReadOwnedRestorePointSequenceNumbers();
+            if (existing.Contains(item.SequenceNumber.Trim()))
+                return;
+
+            List<string> lines = new List<string>();
+            if (File.Exists(path))
+                lines.AddRange(File.ReadAllLines(path, Encoding.UTF8));
+            if (lines.Count == 0)
+                lines.Add("sequence\tcreated\tdescription");
+            lines.Add(RestoreManifestUtilities.EscapeTsv(item.SequenceNumber.Trim())
+                + "\t" + RestoreManifestUtilities.EscapeTsv(item.CreationTime)
+                + "\t" + RestoreManifestUtilities.EscapeTsv(item.Description));
+            SafeAtomicFile.WriteAllLines(path, lines.ToArray(), Encoding.UTF8);
+        }
+
+        private void PruneOwnedRestorePointRegistry(IEnumerable<RestorePointListItem> currentItems)
+        {
+            string path = RestorePointOwnershipFile();
+            if (!File.Exists(path))
+                return;
+
+            HashSet<string> currentOwned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (RestorePointListItem item in currentItems ?? new RestorePointListItem[0])
+                if (item != null
+                    && !String.IsNullOrWhiteSpace(item.SequenceNumber)
+                    && IsOwnedCk3MpsRestorePointDescription(item.Description))
+                    currentOwned.Add(item.SequenceNumber.Trim());
+
+            List<string> kept = new List<string>();
+            kept.Add("sequence\tcreated\tdescription");
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+            {
+                string[] parts = line.Split('\t');
+                if (parts.Length < 1 || String.Equals(parts[0], "sequence", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string sequence = parts[0].Trim();
+                if (!String.IsNullOrWhiteSpace(sequence) && currentOwned.Contains(sequence))
+                    kept.Add(line);
+            }
+
+            SafeAtomicFile.WriteAllLines(path, kept.ToArray(), Encoding.UTF8);
+        }
+
         private bool IsOwnedCk3MpsRestorePointDescription(string description)
         {
             return !String.IsNullOrWhiteSpace(description)
@@ -39,6 +112,7 @@ namespace CK3MPS
         {
             return item != null
                 && !String.IsNullOrWhiteSpace(item.SequenceNumber)
+                && item.IsCk3Mps
                 && IsOwnedCk3MpsRestorePointDescription(item.Description);
         }
 
@@ -46,7 +120,7 @@ namespace CK3MPS
         {
             if (newValue != CheckState.Checked)
                 return true;
-            return item == null || item.IsCk3Mps;
+            return IsOwnedCk3MpsRestorePointItem(item);
         }
 
         private void UpdateRestorePointDeleteButtonState()
@@ -97,7 +171,32 @@ namespace CK3MPS
                 "Write-Output 'Restore point created: " + EscapePowerShellSingleQuoted(description) + "'\r\n";
 
             RunPowerShellScriptLogged(script, 180000);
+            RegisterCreatedRestorePoint(description);
             Log("OK   Windows restore point created: " + description);
+        }
+
+        private void RegisterCreatedRestorePoint(string description)
+        {
+            try
+            {
+                RestorePointListItem created = FindRestorePointByDescription(description);
+                if (created == null)
+                    throw new InvalidOperationException("Created restore point was not returned by Windows.");
+                RecordOwnedRestorePoint(created);
+                Log("INFO Registered CK3MPS restore point ownership: " + created.SequenceNumber);
+            }
+            catch (Exception ex)
+            {
+                Log("WARN CK3MPS could not register restore point ownership. It will stay protected from Delete Data: " + ex.Message);
+            }
+        }
+
+        private RestorePointListItem FindRestorePointByDescription(string description)
+        {
+            foreach (RestorePointListItem item in ListRestorePointItemsRaw())
+                if (String.Equals(item.Description, description, StringComparison.OrdinalIgnoreCase))
+                    return item;
+            return null;
         }
 
         private void CheckWindowsRestorePointReadOnly()
@@ -201,7 +300,7 @@ namespace CK3MPS
             if (sequenceNumbers.Count == 0)
             {
                 string message = otherCount > 0
-                    ? "Only CK3MPS-created restore points can be deleted. Other restore points are informational and stay read-only."
+                    ? "Only restore points recorded as created by this CK3MPS installation can be deleted. Other restore points are informational and stay read-only."
                     : "Select one or more CK3MPS restore points first.";
                 MessageBox.Show(message, "Restore points", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -221,6 +320,18 @@ namespace CK3MPS
 
         private List<RestorePointListItem> ListRestorePointItems()
         {
+            List<RestorePointListItem> items = ListRestorePointItemsRaw();
+            HashSet<string> ownedSequences = ReadOwnedRestorePointSequenceNumbers();
+            foreach (RestorePointListItem item in items)
+                item.IsCk3Mps = IsOwnedCk3MpsRestorePointDescription(item.Description)
+                    && !String.IsNullOrWhiteSpace(item.SequenceNumber)
+                    && ownedSequences.Contains(item.SequenceNumber.Trim());
+            PruneOwnedRestorePointRegistry(items);
+            return items;
+        }
+
+        private List<RestorePointListItem> ListRestorePointItemsRaw()
+        {
             List<RestorePointListItem> items = new List<RestorePointListItem>();
             foreach (string line in ListRestorePoints())
             {
@@ -233,7 +344,7 @@ namespace CK3MPS
                     SequenceNumber = parts[0].Trim(),
                     CreationTime = parts[1].Trim(),
                     Description = description,
-                    IsCk3Mps = IsOwnedCk3MpsRestorePointDescription(description)
+                    IsCk3Mps = false
                 });
             }
             return items;
@@ -253,7 +364,8 @@ namespace CK3MPS
 
         private void DeleteRestorePointsBySequenceNumbers(string[] sequenceNumbers, string successMessage)
         {
-            List<int> validatedSequenceNumbers = ValidateOwnedRestorePointDeletionSnapshot(sequenceNumbers, ListRestorePointItems());
+            List<RestorePointListItem> currentItems = ListRestorePointItems();
+            List<int> validatedSequenceNumbers = ValidateOwnedRestorePointDeletionSnapshot(sequenceNumbers, currentItems);
             if (validatedSequenceNumbers.Count == 0)
                 return;
 
@@ -266,6 +378,7 @@ namespace CK3MPS
                 removed++;
             }
 
+            PruneOwnedRestorePointRegistry(ListRestorePointItemsRaw());
             SetStatusText(successMessage);
             Log("OK   " + successMessage + " Removed=" + removed + ".");
         }
@@ -300,7 +413,7 @@ namespace CK3MPS
                 if (!currentBySequence.TryGetValue(idText, out currentItem))
                     throw new InvalidOperationException("Restore point " + idText + " is no longer present. Refresh the list and try again.");
                 if (!IsOwnedCk3MpsRestorePointItem(currentItem))
-                    throw new InvalidOperationException("Restore point " + idText + " is not owned by CK3MPS and cannot be deleted.");
+                    throw new InvalidOperationException("Restore point " + idText + " is not recorded as created by this CK3MPS installation and cannot be deleted.");
 
                 validated.Add(id);
             }
