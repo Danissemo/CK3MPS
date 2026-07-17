@@ -13,7 +13,7 @@
     <LangVersion>latest</LangVersion>
     <RepositoryUrl>https://github.com/Danissemo/CK3MPS</RepositoryUrl>
     <PackageId>CK3MPS</PackageId>
-    <Version>0.3.0</Version>
+    <Version>0.31.0</Version>
     <Authors>Danissemo</Authors>
     <Company>Danissemo</Company>
     <Description>CK3 multiplayer stabilization utility for Windows.</Description>
@@ -59,8 +59,12 @@
     <Compile Include="source\Updates.cs" />
     <Compile Include="source\SafeUpdater.cs" />
     <Compile Include="source\UpdaterRecovery.cs" />
+    <Compile Include="source\FixResultContract.cs" />
+    <Compile Include="source\ApplyReadinessGate.cs" />
     <Compile Include="source\Utilities.cs" />
     <Compile Include="source\RuntimeModeUtilities.cs" />
+    <Compile Include="source\LiveLogEventModel.cs" />
+    <Compile Include="source\LoggingEventService.cs" />
     <Compile Include="source\StepCatalog.cs" />
     <Compile Include="source\TransactionalOperations.cs" />
     <Compile Include="source\RestoreTransactions.cs" />
@@ -68,6 +72,7 @@
     <Compile Include="source\SaveAnalysis.cs" />
     <Compile Include="source\OosDeepAnalysis.cs" />
     <Compile Include="source\Workflow.cs" />
+    <Compile Include="source\WorkflowUnifiedFix.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\app.manifest" />
