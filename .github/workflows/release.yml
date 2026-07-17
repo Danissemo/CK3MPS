@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    name: Build, validate, and publish release
+    name: Build, validate, sign, and publish release
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -48,9 +48,29 @@ jobs:
           ./scripts/check-version-consistency.ps1 -RequireReleaseTag
           ./scripts/validate-release.ps1
 
-      - name: Package tested release artifacts
+      - name: Authenticode sign tested executable
         shell: pwsh
-        run: ./scripts/package-release.ps1 -SkipBuild
+        env:
+          CK3MPS_SIGNING_CERT_BASE64: ${{ secrets.CK3MPS_SIGNING_CERT_BASE64 }}
+          CK3MPS_SIGNING_CERT_PASSWORD: ${{ secrets.CK3MPS_SIGNING_CERT_PASSWORD }}
+        run: |
+          ./scripts/sign-release.ps1 `
+            -CertificateBase64 $env:CK3MPS_SIGNING_CERT_BASE64 `
+            -CertificatePassword $env:CK3MPS_SIGNING_CERT_PASSWORD
+
+      - name: Verify signed startup health mode
+        shell: pwsh
+        run: |
+          $token = Join-Path $env:RUNNER_TEMP 'ck3mps-release-health.ok'
+          Remove-Item -LiteralPath $token -Force -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath ./bin/CK3MPS.exe -ArgumentList '--update-health-check', $token -PassThru -Wait
+          if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $token -PathType Leaf)) {
+            throw 'Signed executable failed updater health-check mode.'
+          }
+
+      - name: Package signed release artifacts
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -SkipBuild -RequireSignature
 
       - name: Resolve release metadata
         id: meta
@@ -61,6 +81,7 @@ jobs:
           $version = [regex]::Match($versionLine.Line, 'AppVersion = "([^"]+)"').Groups[1].Value
           if ([string]::IsNullOrWhiteSpace($version)) { throw 'AppVersion is empty.' }
           "version=$version" >> $env:GITHUB_OUTPUT
+          "asset_version=$($version.TrimStart('v','V'))" >> $env:GITHUB_OUTPUT
           "notes=docs/release-notes-$version.md" >> $env:GITHUB_OUTPUT
 
       - name: Publish GitHub release
@@ -72,5 +93,6 @@ jobs:
           files: |
             release/CK3MPS.exe
             release/CK3MPS.exe.sha256
-            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.version }}.zip
-            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.version }}.zip.sha256
+            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.asset_version }}.zip
+            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.asset_version }}.zip.sha256
+            ../CK3MPS_exports/CK3MPS-${{ steps.meta.outputs.asset_version }}.zip.manifest.json
