@@ -52,13 +52,70 @@ namespace CK3MPS
             {
                 lastReadinessFailures = failures;
                 SetStatusText("Not ready. Scan found FAIL lines: " + failures);
-                Log("INFO Final readiness summary corrected from scan FAIL lines: " + failures);
-                Log("RESULT NOT READY. Failed checks found in Scan Settings: " + failures);
-                runLogLines = SnapshotRunLogLines();
+                runLogLines = ReplaceScanFinalResultLines(runLogLines, failures);
+                ReplaceRunLogLines(runLogLines);
+            }
+            else if (failures > 0)
+            {
+                runLogLines = ReplaceScanFinalResultLines(runLogLines, failures);
+                ReplaceRunLogLines(runLogLines);
             }
 
             scanSettingsExportReportText = BuildScanSettingsExportReportText(failures, runLogLines);
             lastCheckOnlyReportText = scanSettingsExportReportText;
+        }
+
+        private void ReplaceRunLogLines(string[] lines)
+        {
+            lock (runLogSync)
+            {
+                runLogLines.Clear();
+                if (lines != null)
+                    runLogLines.AddRange(lines);
+            }
+        }
+
+        private string[] ReplaceScanFinalResultLines(string[] runLogLines, int failures)
+        {
+            List<string> output = new List<string>();
+            bool finalSummaryReplaced = false;
+            bool resultReplaced = false;
+            foreach (string raw in runLogLines ?? new string[0])
+            {
+                string line = raw ?? "";
+                string trimmed = line.Trim();
+                if (trimmed.IndexOf("Final readiness summary", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (!finalSummaryReplaced)
+                    {
+                        output.Add("INFO Final readiness summary | scan FAIL checks: " + failures);
+                        finalSummaryReplaced = true;
+                    }
+                    continue;
+                }
+
+                if (trimmed.StartsWith("RESULT", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!resultReplaced)
+                    {
+                        output.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + failures);
+                        resultReplaced = true;
+                    }
+                    continue;
+                }
+
+                if (trimmed.IndexOf("Final readiness summary corrected from scan FAIL lines", StringComparison.OrdinalIgnoreCase) >= 0
+                    || trimmed.IndexOf("Failed checks found in Scan Settings", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+
+                output.Add(line);
+            }
+
+            if (!finalSummaryReplaced)
+                output.Add("INFO Final readiness summary | scan FAIL checks: " + failures);
+            if (!resultReplaced)
+                output.Add("RESULT NOT READY. Failed checks found in Scan Settings: " + failures);
+            return output.ToArray();
         }
 
         private int CountImportantScanFailLines(string[] runLogLines)
@@ -136,7 +193,7 @@ namespace CK3MPS
             if (readinessFailures > 0)
             {
                 string correctedResult = "RESULT| NOT READY. Failed checks found in Scan Settings: " + readinessFailures;
-                if (emitted.Add(correctedResult))
+                if (emitted.Add(CollapseScanExportWhitespace(correctedResult)))
                     sb.AppendLine(correctedResult);
             }
 
