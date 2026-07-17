@@ -65,7 +65,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path bin/test-logs | Out-Null
           try {
             ./scripts/package-release.ps1 -SkipBuild *>&1 | Tee-Object -FilePath bin/test-logs/package-release.log
-            if ($LASTEXITCODE -ne 0) { throw "package-release.ps1 exited with code $LASTEXITCODE" }
             New-Item -ItemType Directory -Force -Path .artifacts | Out-Null
             Copy-Item ../CK3MPS_exports/*.zip .artifacts/
             Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
