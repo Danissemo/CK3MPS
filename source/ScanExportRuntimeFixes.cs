@@ -19,14 +19,19 @@ namespace CK3MPS
 
         private async void RunScanSettingsAndCaptureExport()
         {
+            bool previousLiveLogWritesEnabled = liveLogWritesEnabled;
             try
             {
                 scanSettingsExportReportText = "";
                 exportScanReportButton.Enabled = false;
+                liveLogWritesEnabled = false;
+                liveLogBuffer.Length = 0;
                 await RunCheckOnlyAsync();
             }
             finally
             {
+                liveLogWritesEnabled = previousLiveLogWritesEnabled;
+                liveLogBuffer.Length = 0;
                 CaptureScanSettingsExportReport();
                 exportScanReportButton.Enabled = !busyUi && !String.IsNullOrWhiteSpace(scanSettingsExportReportText);
                 if (exportScanReportButton.Enabled)
