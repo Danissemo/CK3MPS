@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Windows build and validation
+    name: Windows legacy and modern validation
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -23,19 +23,36 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
 
-      - name: Build
+      - name: Setup modern .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build legacy .NET Framework client
         shell: pwsh
         run: ./scripts/build.ps1
 
-      - name: Verify build output
+      - name: Verify legacy build output
         shell: pwsh
         run: |
           if (-not (Test-Path -LiteralPath ./bin/CK3MPS.exe -PathType Leaf)) {
-            throw 'Build completed without bin\CK3MPS.exe.'
+            throw 'Legacy build completed without bin\CK3MPS.exe.'
           }
-          Write-Host 'Verified build output: bin\CK3MPS.exe'
+          Write-Host 'Verified legacy build output: bin\CK3MPS.exe'
 
-      - name: Run all tests
+      - name: Build shared core
+        shell: pwsh
+        run: dotnet build ./CK3MPS.SharedCore.csproj --configuration Release --no-restore
+
+      - name: Build modern Windows client
+        shell: pwsh
+        run: dotnet build ./CK3MPS.Modern.csproj --configuration Release
+
+      - name: Run modern shared-core characterization tests
+        shell: pwsh
+        run: dotnet run --project ./tests/CK3MPS.SharedCore.Tests.csproj --configuration Release
+
+      - name: Run legacy test suite
         shell: pwsh
         run: ./scripts/test-all.ps1
 
@@ -59,7 +76,7 @@ jobs:
         shell: pwsh
         run: ./scripts/validate-release.ps1
 
-      - name: Package tested release artifacts
+      - name: Package tested legacy release artifacts
         shell: pwsh
         run: |
           ./scripts/package-release.ps1 -SkipBuild
@@ -68,20 +85,27 @@ jobs:
           Copy-Item ../CK3MPS_exports/*.sha256 .artifacts/
           Copy-Item release/CK3MPS.exe.sha256 .artifacts/
 
-      - name: Upload executable
+      - name: Upload legacy executable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: CK3MPS-exe
+          name: CK3MPS-legacy-net48-exe
           path: release/CK3MPS.exe
+
+      - name: Upload modern compile candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CK3MPS-modern-net8-compile-candidate
+          path: bin/Release/net8.0-windows/**
+          if-no-files-found: error
 
       - name: Upload release zip
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: CK3MPS-release-zip
+          name: CK3MPS-legacy-release-zip
           path: .artifacts/*.zip
 
       - name: Upload release checksums
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: CK3MPS-release-checksums
+          name: CK3MPS-legacy-release-checksums
           path: .artifacts/*.sha256
