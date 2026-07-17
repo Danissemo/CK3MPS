@@ -32,6 +32,8 @@ function Find-MSBuild {
     return $Candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
+& (Join-Path $ScriptDir "apply-fix-result-contract-source-patch.ps1")
+
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $MSBuild = Find-MSBuild
