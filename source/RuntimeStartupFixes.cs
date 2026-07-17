@@ -8,10 +8,9 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
-        private static readonly bool RuntimeStartupHooksInstalled = InstallRuntimeStartupHooks();
         private bool runtimeStartupFixesApplied;
 
-        private static bool InstallRuntimeStartupHooks()
+        static MainForm()
         {
             Application.Idle += delegate
             {
@@ -22,7 +21,6 @@ namespace CK3MPS
                         main.ApplyRuntimeStartupFixesOnce();
                 }
             };
-            return true;
         }
 
         private void ApplyRuntimeStartupFixesOnce()
@@ -31,8 +29,8 @@ namespace CK3MPS
                 return;
 
             runtimeStartupFixesApplied = true;
-            RecoverSteamSharedConfigPath();
             ConfigureScanExportRuntimeFix();
+            RecoverSteamSharedConfigPath();
         }
 
         private void RecoverSteamSharedConfigPath()
@@ -44,7 +42,10 @@ namespace CK3MPS
 
                 string detected = FindSteamSharedConfigWithFallback();
                 if (String.IsNullOrEmpty(detected))
+                {
+                    Log("WARN Steam sharedconfig.vdf was not found in Steam userdata. Checked userdata/<id>/7/remote and userdata/<id>/config.");
                     return;
+                }
 
                 sharedConfig = detected;
                 Log("OK   Steam sharedconfig.vdf detected: " + sharedConfig);
@@ -68,8 +69,8 @@ namespace CK3MPS
             List<string> candidates = new List<string>();
             foreach (string userDir in BoundedTraversalUtilities.EnumerateSteamUserDirectories(userData, MaxSteamUserDataUsers, MaxBoundedTraversalElapsedMs))
             {
-                AddSharedConfigCandidate(candidates, Path.Combine(userDir, "config", "sharedconfig.vdf"));
                 AddSharedConfigCandidate(candidates, Path.Combine(userDir, "7", "remote", "sharedconfig.vdf"));
+                AddSharedConfigCandidate(candidates, Path.Combine(userDir, "config", "sharedconfig.vdf"));
             }
 
             string fallback = "";
@@ -80,7 +81,8 @@ namespace CK3MPS
                 try
                 {
                     string text = ReadTextShared(candidate);
-                    if (text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (text.IndexOf("\"1158310\"", StringComparison.OrdinalIgnoreCase) >= 0
+                        || text.IndexOf("Crusader Kings III", StringComparison.OrdinalIgnoreCase) >= 0)
                         return candidate;
                 }
                 catch
