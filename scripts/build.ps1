@@ -12,6 +12,7 @@ $ReleaseDir = Join-Path $Root "release"
 $ReleaseExe = Join-Path $ReleaseDir "CK3MPS.exe"
 $Csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $Project = Join-Path $Root "CK3MPS.csproj"
+$MsBuildLog = Join-Path $OutDir "msbuild.log"
 
 function Find-MSBuild {
     $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -35,11 +36,17 @@ function Find-MSBuild {
 & (Join-Path $ScriptDir "apply-fix-result-contract-source-patch.ps1")
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+Remove-Item -LiteralPath $MsBuildLog -Force -ErrorAction SilentlyContinue
 
 $MSBuild = Find-MSBuild
 if ($MSBuild) {
-    & $MSBuild $Project /p:Configuration=Release /nologo /v:minimal
+    & $MSBuild $Project /p:Configuration=Release /nologo /v:minimal "/flp:logfile=$MsBuildLog;verbosity=diagnostic"
     if ($LASTEXITCODE -ne 0) {
+        if (Test-Path -LiteralPath $MsBuildLog) {
+            Write-Host "--- MSBuild failure tail ---"
+            Get-Content -LiteralPath $MsBuildLog -Tail 120 | ForEach-Object { Write-Host $_ }
+            Write-Host "--- End MSBuild failure tail ---"
+        }
         throw "MSBuild failed with exit code $LASTEXITCODE"
     }
 } else {
