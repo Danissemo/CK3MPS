@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -11,14 +12,14 @@ namespace CK3MPS
 {
     internal sealed partial class MainForm
     {
-        private const int WorkflowLargeSaveRuleScanBytes = 8 * 1024 * 1024;
+        private const int WorkflowLargeSaveRuleScanBytes = 16 * 1024 * 1024;
         private const int WorkflowLargeSaveCopyBufferBytes = 1024 * 1024;
 
         private sealed class WorkflowLargeSaveRewriteResult
         {
             public bool Success;
             public string FailureReason = "";
-            public List<string> AppliedRules = new List<string>();
+            public readonly List<string> AppliedRules = new List<string>();
         }
 
         private sealed class WorkflowLargeSaveApplyResult
@@ -107,7 +108,7 @@ namespace CK3MPS
                     }
                     else
                     {
-                        SetWorkflowFixProgress(1, "repairing selected save in background");
+                        SetWorkflowFixProgress(1, "repairing selected save rules");
                         IProgress<string> progress = new Progress<string>(delegate (string message)
                         {
                             if (String.IsNullOrWhiteSpace(message) || workflowVerdictLabel == null)
@@ -258,14 +259,14 @@ namespace CK3MPS
                     InvalidateHostSaveAnalysisCache();
                     RefreshWorkflowSaveSelectionList();
                     SafeAtomicFile.TryDeleteTempFile(repairedPath);
-                    applyResult.Reason = "streamed repaired save was created but post-check still scores " + (repaired == null ? 0 : repaired.Score) + "/100";
+                    applyResult.Reason = "streamed repaired save was created but post-check still scores " + (repaired == null ? 0 : repaired.Score) + "/100; remaining rules: " + WorkflowSaveScoreRuleDiagnostics(repaired);
                     return applyResult;
                 }
 
                 applyResult.Success = true;
                 applyResult.Reason = rewrite.AppliedRules == null || rewrite.AppliedRules.Count == 0
-                    ? "safe game-rule profile injected with bounded streaming repair"
-                    : "safe game-rule profile injected with bounded streaming repair: " + String.Join(", ", rewrite.AppliedRules.ToArray());
+                    ? "safe game-rule profile normalized for score checks"
+                    : "safe game-rule profile normalized for score checks: " + String.Join(", ", rewrite.AppliedRules.ToArray());
                 return applyResult;
             }
             catch (Exception ex)
@@ -303,15 +304,11 @@ namespace CK3MPS
 
         private WorkflowLargeSaveRewriteResult RewriteWorkflowLargeSaveStreaming(string sourcePath, string tempPath, IProgress<string> progress)
         {
-            WorkflowLargeSaveRewriteResult result = new WorkflowLargeSaveRewriteResult();
             long zipOffset;
             bool startsWithZip;
             string failureReason;
             if (!TryDetectLargeScoreZipLayout(sourcePath, out startsWithZip, out zipOffset, out failureReason))
-            {
-                result.FailureReason = failureReason;
-                return result;
-            }
+                return new WorkflowLargeSaveRewriteResult { FailureReason = failureReason };
 
             if (startsWithZip || zipOffset > 0)
                 return RewriteWorkflowLargeZipStreaming(sourcePath, startsWithZip ? 0 : zipOffset, tempPath, progress);
@@ -338,7 +335,7 @@ namespace CK3MPS
                     bool changed = RewriteWorkflowTextStreamPrefix(input, output, result.AppliedRules);
                     if (!changed)
                     {
-                        result.FailureReason = "save text does not expose a repairable game_rules block in the analysis window";
+                        result.FailureReason = "save text does not expose repairable score game_rules in the analysis window";
                         return result;
                     }
                     output.Flush(true);
@@ -434,7 +431,7 @@ namespace CK3MPS
 
                 if (!changed)
                 {
-                    result.FailureReason = "save zip meta/gamestate entries did not expose a repairable game_rules block in the analysis window";
+                    result.FailureReason = "save zip meta/gamestate entries did not expose repairable score game_rules in the analysis window";
                     return result;
                 }
 
@@ -489,7 +486,7 @@ namespace CK3MPS
 
             string originalPrefix = Encoding.UTF8.GetString(prefixBuffer, 0, transformLength);
             List<string> entryRules;
-            string updatedPrefix = ApplyBroadCriticalRuleRepairsToText(originalPrefix, out entryRules);
+            string updatedPrefix = ApplyScoreDrivenCriticalRuleRepairsToText(originalPrefix, out entryRules);
             bool changed = entryRules != null
                 && entryRules.Count > 0
                 && !String.Equals(originalPrefix, updatedPrefix, StringComparison.Ordinal);
@@ -509,6 +506,104 @@ namespace CK3MPS
                 output.Write(prefixBuffer, transformLength, totalRead - transformLength);
             CopyWorkflowStreamToEnd(input, output);
             return changed;
+        }
+
+        private string ApplyScoreDrivenCriticalRuleRepairsToText(string text, out List<string> appliedRules)
+        {
+            string repaired = ApplyBroadCriticalRuleRepairsToText(text, out appliedRules);
+            if (String.IsNullOrEmpty(repaired))
+                return repaired;
+
+            string normalized = NormalizeGameRuleSettingsForScore(repaired, appliedRules);
+            return normalized;
+        }
+
+        private string NormalizeGameRuleSettingsForScore(string text, List<string> appliedRules)
+        {
+            string body;
+            int settingsOpen;
+            int settingsClose;
+            if (!TryLocateGameRuleSettingsBody(text, out body, out settingsOpen, out settingsClose))
+                return InjectSafeGameRuleSettingsBlock(text, out appliedRules);
+
+            List<string> preserved = new List<string>();
+            MatchCollection tokens = Regex.Matches(body ?? "", "\"[^\"]+\"|\\S+");
+            foreach (Match tokenMatch in tokens)
+            {
+                string token = (tokenMatch.Value ?? "").Trim().Trim('"');
+                if (String.IsNullOrWhiteSpace(token))
+                    continue;
+                if (IsManagedCriticalRuleSettingsToken(token))
+                    continue;
+                AddUniqueToken(preserved, token);
+            }
+
+            bool changed = false;
+            foreach (CriticalSaveRuleDefinition definition in CriticalSaveRuleDefinitions)
+            {
+                if (String.IsNullOrWhiteSpace(definition.SafeToken))
+                    continue;
+                if (!ContainsToken(preserved, definition.SafeToken))
+                {
+                    preserved.Add(definition.SafeToken);
+                    changed = true;
+                }
+                AddAppliedRuleName(appliedRules, definition.DisplayName);
+            }
+
+            string replacement = " " + String.Join(" ", preserved.ToArray()) + " ";
+            string updated = text.Substring(0, settingsOpen + 1) + replacement + text.Substring(settingsClose);
+            if (!changed && String.Equals(updated, text, StringComparison.Ordinal))
+                return text;
+            return updated;
+        }
+
+        private bool IsManagedCriticalRuleSettingsToken(string token)
+        {
+            string normalized = (token ?? "").Trim().Trim('"');
+            if (String.IsNullOrWhiteSpace(normalized))
+                return false;
+            foreach (CriticalSaveRuleDefinition definition in CriticalSaveRuleDefinitions)
+            {
+                if (String.Equals(normalized, definition.SafeToken, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                foreach (string option in definition.SettingsTokens ?? new string[0])
+                    if (String.Equals(normalized, option, StringComparison.OrdinalIgnoreCase))
+                        return true;
+            }
+            return false;
+        }
+
+        private bool ContainsToken(List<string> tokens, string value)
+        {
+            foreach (string token in tokens ?? new List<string>())
+                if (String.Equals(token, value, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        private void AddUniqueToken(List<string> tokens, string value)
+        {
+            if (tokens == null || String.IsNullOrWhiteSpace(value) || ContainsToken(tokens, value))
+                return;
+            tokens.Add(value);
+        }
+
+        private string WorkflowSaveScoreRuleDiagnostics(HostSaveCandidateResult result)
+        {
+            if (result == null || result.Save == null || result.Save.Rules == null)
+                return "no post-check rule data";
+            List<string> unsafeRules = new List<string>();
+            foreach (SaveRuleCheckResult rule in result.Save.Rules)
+            {
+                if (rule == null)
+                    continue;
+                if (!rule.Found)
+                    unsafeRules.Add(rule.DisplayName + " missing");
+                else if (!rule.Safe)
+                    unsafeRules.Add(rule.DisplayName + "=" + NullText(rule.Actual));
+            }
+            return unsafeRules.Count == 0 ? "no unsafe rules reported" : String.Join("; ", unsafeRules.ToArray());
         }
 
         private void CopyWorkflowStreamBounded(Stream input, Stream output, long byteCount)
