@@ -29,7 +29,6 @@ namespace CK3MPS
                 return;
             }
 
-            string reason;
             try
             {
                 HostSaveCandidateResult before = AnalyzeWorkflowHostSaveCandidate();
@@ -44,14 +43,15 @@ namespace CK3MPS
                         }
                     });
 
-                    if (await TryPublishAnalyzerOverlaySafeSaveAsync(progress, out reason))
+                    AnalyzerOverlayPublishResult publish = await TryPublishAnalyzerOverlaySafeSaveAsync(progress);
+                    if (publish.Success)
                     {
                         HostSaveCandidateResult after = AnalyzeWorkflowHostSaveCandidate();
-                        Log("OK   Workflow analyzer-overlay save pre-repair selected save " + ScoreText(before) + " -> " + ScoreText(after) + ": " + reason);
+                        Log("OK   Workflow analyzer-overlay save pre-repair selected save " + ScoreText(before) + " -> " + ScoreText(after) + ": " + publish.Reason);
                     }
                     else
                     {
-                        Log("WARN Workflow analyzer-overlay save pre-repair did not reach ready state: " + reason);
+                        Log("WARN Workflow analyzer-overlay save pre-repair did not reach ready state: " + publish.Reason);
                     }
                 }
             }
@@ -63,24 +63,30 @@ namespace CK3MPS
             RunWorkflowSaveAndHostFixNonBlocking();
         }
 
-        private async Task<bool> TryPublishAnalyzerOverlaySafeSaveAsync(IProgress<string> progress, out string reason)
+        private sealed class AnalyzerOverlayPublishResult
         {
-            reason = "";
+            public bool Success;
+            public string Reason = "";
+        }
+
+        private async Task<AnalyzerOverlayPublishResult> TryPublishAnalyzerOverlaySafeSaveAsync(IProgress<string> progress)
+        {
+            AnalyzerOverlayPublishResult result = new AnalyzerOverlayPublishResult();
             HostSaveCandidateResult current = AnalyzeWorkflowHostSaveCandidate();
             if (current == null || current.Save == null || String.IsNullOrWhiteSpace(current.Save.Path) || !File.Exists(current.Save.Path))
             {
-                reason = "selected save is missing";
-                return false;
+                result.Reason = "selected save is missing";
+                return result;
             }
             if (!current.Save.Readable)
             {
-                reason = "selected save is not safely readable";
-                return false;
+                result.Reason = "selected save is not safely readable";
+                return result;
             }
             if (!current.Save.VersionMatchesInstalled)
             {
-                reason = "selected save version does not match installed CK3 version";
-                return false;
+                result.Reason = "selected save version does not match installed CK3 version";
+                return result;
             }
 
             string sourcePath = current.Save.Path;
@@ -99,10 +105,10 @@ namespace CK3MPS
 
                 if (rewrite == null || !rewrite.Success)
                 {
-                    reason = rewrite == null || String.IsNullOrWhiteSpace(rewrite.FailureReason)
+                    result.Reason = rewrite == null || String.IsNullOrWhiteSpace(rewrite.FailureReason)
                         ? "selected save could not be rewritten with analyzer-visible safe rules"
                         : rewrite.FailureReason;
-                    return false;
+                    return result;
                 }
 
                 RecordCreatedFileForRestore(repairedPath, "CK3MPS analyzer-visible repaired host save copy: " + repairedPath);
@@ -115,19 +121,20 @@ namespace CK3MPS
                 HostSaveCandidateResult repaired = AnalyzeWorkflowHostSaveCandidate();
                 if (WorkflowSaveIsReady(repaired))
                 {
-                    reason = rewrite.AppliedRules.Count == 0
+                    result.Success = true;
+                    result.Reason = rewrite.AppliedRules.Count == 0
                         ? "analyzer-visible safe critical rules published"
                         : "analyzer-visible safe critical rules published: " + String.Join(", ", rewrite.AppliedRules.ToArray());
-                    return true;
+                    return result;
                 }
 
-                reason = "analyzer-visible copy still failed post-check " + ScoreText(repaired) + "; remaining rules: " + WorkflowSaveScoreRuleDiagnostics(repaired);
+                result.Reason = "analyzer-visible copy still failed post-check " + ScoreText(repaired) + "; remaining rules: " + WorkflowSaveScoreRuleDiagnostics(repaired);
                 workflowSelectedSavePath = originalSelectedPath;
                 SaveAppConfig();
                 InvalidateHostSaveAnalysisCache();
                 RefreshWorkflowSaveSelectionList();
                 SafeAtomicFile.TryDeleteTempFile(repairedPath);
-                return false;
+                return result;
             }
             catch (Exception ex)
             {
@@ -135,8 +142,8 @@ namespace CK3MPS
                 SaveAppConfig();
                 InvalidateHostSaveAnalysisCache();
                 RefreshWorkflowSaveSelectionList();
-                reason = ex.Message;
-                return false;
+                result.Reason = ex.Message;
+                return result;
             }
             finally
             {
