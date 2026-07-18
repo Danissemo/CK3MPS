@@ -128,12 +128,12 @@ namespace CK3MPS
                     return result;
                 }
 
-                result.Reason = "analyzer-visible copy still failed post-check " + ScoreText(repaired) + "; remaining rules: " + WorkflowSaveScoreRuleDiagnostics(repaired);
+                result.Reason = "analyzer-visible copy still failed post-check " + ScoreText(repaired) + "; remaining rules: " + WorkflowSaveScoreRuleDiagnostics(repaired) + "; repaired copy kept at: " + repairedPath;
                 workflowSelectedSavePath = originalSelectedPath;
                 SaveAppConfig();
                 InvalidateHostSaveAnalysisCache();
                 RefreshWorkflowSaveSelectionList();
-                SafeAtomicFile.TryDeleteTempFile(repairedPath);
+                Log("WARN Workflow analyzer-overlay kept repaired save for diagnostics after failed post-check: " + repairedPath);
                 return result;
             }
             catch (Exception ex)
