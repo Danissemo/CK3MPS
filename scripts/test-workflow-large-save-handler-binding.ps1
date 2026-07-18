@@ -31,6 +31,21 @@ if ($nonBlocking -notmatch 'Task\.Run') {
 if ($nonBlocking -notmatch 'RewriteWorkflowTextStreamPrefix') {
     throw 'Large save repair is not using bounded streaming text transformation.'
 }
+if ($nonBlocking -notmatch 'ApplyScoreDrivenCriticalRuleRepairsToText') {
+    throw 'Save repair is not using a score-driven critical rule normalizer.'
+}
+if ($nonBlocking -notmatch 'NormalizeGameRuleSettingsForScore') {
+    throw 'Save repair does not normalize the game_rules/settings token list used by score checks.'
+}
+if ($nonBlocking -notmatch 'IsManagedCriticalRuleSettingsToken') {
+    throw 'Save repair does not remove unsafe managed critical rule tokens before adding safe tokens.'
+}
+if ($nonBlocking -notmatch 'WorkflowSaveScoreRuleDiagnostics') {
+    throw 'Post-check failure does not report remaining score rule diagnostics.'
+}
+if ($nonBlocking -notmatch 'WorkflowLargeSaveRuleScanBytes = 16 \* 1024 \* 1024') {
+    throw 'Score repair scan window was not expanded enough for large CK3 headers.'
+}
 if ($nonBlocking -notmatch 'CompressionLevel\.Fastest') {
     throw 'Large save repair is not using the bounded fast recompression path.'
 }
@@ -59,4 +74,4 @@ if ($binding -notmatch 'ConfigureNonBlockingSaveHostFixHandler\(\)') {
     throw 'Binding watcher does not activate the non-blocking handler.'
 }
 
-Write-Host 'Workflow non-blocking large-save handler checks passed.'
+Write-Host 'Workflow score-driven non-blocking large-save handler checks passed.'
