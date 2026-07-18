@@ -9,7 +9,7 @@ namespace CK3MPS
     internal sealed partial class MainForm
     {
         private static readonly bool RuntimeStartupFixesInstalled = InstallRuntimeStartupFixes();
-        private bool runtimeStartupFixesApplied;
+        private bool runtimeStartupFixesRecoveredSharedConfig;
 
         private static bool InstallRuntimeStartupFixes()
         {
@@ -21,7 +21,7 @@ namespace CK3MPS
                     {
                         MainForm main = form as MainForm;
                         if (main != null)
-                            main.ApplyRuntimeStartupFixesOnce();
+                            main.ApplyRuntimeStartupFixes();
                     }
                 };
             }
@@ -31,14 +31,19 @@ namespace CK3MPS
             return true;
         }
 
-        private void ApplyRuntimeStartupFixesOnce()
+        private void ApplyRuntimeStartupFixes()
         {
-            if (runtimeStartupFixesApplied)
-                return;
-
-            runtimeStartupFixesApplied = true;
+            // Workflow runtime fixes can run after OnLoad and replace the Scan Settings handler.
+            // Keep this wiring authoritative so the first click always uses the read-only-safe
+            // Scan Settings capture/export path instead of the legacy live-log-writing path.
             ConfigureScanExportRuntimeFix();
-            RecoverSteamSharedConfigPath();
+            GuardReadOnlyScanLiveLogState();
+
+            if (!runtimeStartupFixesRecoveredSharedConfig)
+            {
+                runtimeStartupFixesRecoveredSharedConfig = true;
+                RecoverSteamSharedConfigPath();
+            }
         }
 
         private void RecoverSteamSharedConfigPath()
