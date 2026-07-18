@@ -22,8 +22,15 @@ namespace CK3MPS
             workflowLargeSaveBindingWatcherConfigured = true;
             workflowApplySafeStartButton.TextChanged += delegate { QueueLargeSaveBindingRefresh(); };
             workflowApplySafeStartButton.EnabledChanged += delegate { QueueLargeSaveBindingRefresh(); };
+            workflowApplySafeStartButton.MouseDown += delegate { ConfigureAnalyzerOverlaySaveHostFixHandler(); };
+            workflowApplySafeStartButton.KeyDown += delegate (object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space)
+                    ConfigureAnalyzerOverlaySaveHostFixHandler();
+            };
             if (workflowModeBox != null)
                 workflowModeBox.SelectedIndexChanged += delegate { QueueLargeSaveBindingRefresh(); };
+            Activated += delegate { QueueLargeSaveBindingRefresh(); };
             Shown += delegate { QueueLargeSaveBindingRefresh(); };
             QueueLargeSaveBindingRefresh();
         }
@@ -42,7 +49,7 @@ namespace CK3MPS
                     if (IsDisposed || workflowApplySafeStartButton == null || workflowSaveHostFixInProgress)
                         return;
 
-                    ConfigureLargeSaveScoreWorkflowFixHandler();
+                    ConfigureAnalyzerOverlaySaveHostFixHandler();
                 });
             });
         }
